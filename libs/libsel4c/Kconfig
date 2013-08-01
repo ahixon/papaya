@@ -1,0 +1,13 @@
+# @LICENSE(NICTA_CORE)
+
+config LIB_SEL4_C
+    bool "Build seL4 std C library"
+    default y
+    select HAVE_LIBC
+    help
+        Build stdc library for seL4
+
+config HAVE_LIBC
+    bool
+    default y
+    depends on LIB_SEL4_C || LIB_MUSL_C

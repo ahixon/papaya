@@ -1,0 +1,302 @@
+# @LICENSE(NICTA_CORE)
+
+CFLAGS :=
+CPPFLAGS :=
+ASFLAGS :=
+
+ifeq ($(NK_BUILD),y)
+
+ifeq ($(objtree),)
+	objtree := $(KBUILD_DIR)
+endif
+
+include $(PWD)/tools/kbuild/Kbuild.include
+else
+cflags-y  = $(call cc-option,-Wall,)
+cflags-y += $(call cc-option,-Wstrict-prototypes,)
+cflags-y += $(call cc-option,-Wmissing-prototypes,)
+cflags-y += $(call cc-option,-Wnested-externs,)
+cflags-y += $(call cc-option,-Wmissing-declarations,)
+cflags-y += $(call cc-option,-Wredundant-decls,)
+cflags-y += $(call cc-option,-Wundefpointer-arith,)
+cflags-y += $(call cc-option,-Wno-nonnull,)
+cflags-y += $(call cc-option,-Wdeclaration-after-statement,)
+cflags-y += $(call cc-option,-nostdlib,)
+cflags-y += $(call cc-option,-nostdinc,)
+cflags-y += $(call cc-option,-O2,)
+cflags-y += $(call cc-option,-Werror,)
+cflags-y += $(call cc-option,-std=gnu99,)
+endif
+
+# NON-KERNEL BUILD CFLAGS used by common.mk
+NK_CFLAGS =
+NK_LDFLAGS =
+NK_ASFLAGS =
+
+ifeq ($(CONFIG_ARCH_I386),y)
+	cflags-y += $(call cc-option,-m32)
+	cflags-y += $(call cc-option,-fno-stack-protector)
+	cflags-y += $(call cc-option,-mno-sse)
+	cflags-y += $(call cc-option,-mno-sse2)
+	cflags-y += $(call cc-option,-mno-mmx)
+	cflags-y += $(call cc-option,-mno-3dnow)
+	DEFINES += IA32
+	DEFINES += ARCH_IA32
+	export ARCH = ia32
+endif
+
+ifeq ($(CONFIG_ARCH_ARM),y)
+	DEFINES += ARCH_ARM
+	export ARCH = arm
+endif
+
+ifeq ($(CONFIG_ARCH_IA32),y)
+	cflags-y += $(call cc-option,-m32)
+
+	LDFLAGS += -m elf_i386
+	ASFLAGS += --32
+
+	NK_LDFLAGS += -m elf_i386
+	NK_CFLAGS += -m32
+	NK_ASFLAGS += --32
+
+	DEFINES += X86_32
+endif
+
+ifeq ($(CONFIG_ARCH_X86_64),y)
+	cflags-y += $(call cc-option,-m64)
+	ASFLAGS += --64
+	DEFINES += X86_64
+	export ARCH=x86_64
+	NK_ASFLAGS += --64
+endif
+
+ifeq ($(CONFIG_X86_64),y)
+	cflags-y += $(call cc-option,-m64)
+	cflags-y += $(call cc-option,-mno-red-zone)
+	cflags-y += -mcmodel=large
+	LDFLAGS += -m elf_x86_64 -nodefaultlibs
+	ASFLAGS  += -m64 -mcmodel=large
+	NK_LDFLAGS += -m elf_x86_64
+	NK_CFLAGS  += -m64
+	NK_ASFLAGS += -m64
+	DEFINES  += X86_64
+endif
+
+ifeq ($(CONFIG_PXA255),y)
+	cflags-y += $(call cc-option,-mcpu=xscale,-march=armv5te)
+	DEFINES += XSCALE
+	DEFINES += ARMV5
+	export ARMV=armv5
+	NK_CFLAGS += $(call cc-option,-mcpu=xscale,-march=armv5te)
+endif
+
+ifeq ($(CONFIG_IXP420),y)
+	cflags-y += $(call cc-option, -march=armv5te -mtune=xscale,)
+	cflags-y += $(call cc-option,-mbig-endian,)
+	LDFLAGS += -EB
+	DEFINES += XSCALE
+	DEFINES += ARMV5
+	DEFINES += IXP420
+	export ARMV=armv5
+	export CPU=ixp420
+	NK_LDFLAGS += -EB
+	NK_CFLAGS += $(call cc-option, -march=armv5te -mtune=xscale,)
+	NK_CFLAGS += $(call cc-option,-mbig-endian,)
+endif
+
+ifeq ($(CONFIG_ARM1136JF_S),y)
+	cflags-y += $(call cc-option,-mcpu=arm1136jf-s,-march=armv6)
+	ASFLAGS += -mcpu=arm1136jf-s -march=armv6
+	DEFINES += ARMV6
+	DEFINES += ARM1136J_S
+	export ARMV=armv6
+	export CPU=arm1136jf-s
+	NK_CFLAGS += $(call cc-option,-mcpu=arm1136jf-s,-march=armv6)
+	NK_ASFLAGS += -mcpu=arm1136jf-s -march=armv6
+endif
+
+ifeq ($(CONFIG_ARM926EJ_S),y)
+	cflags-y += $(call cc-option,-mcpu=arm926ej-s,-march=armv5te)
+	DEFINES += ARMV5
+	export ARMV=armv5
+	NK_CFLAGS += $(call cc-option,-mcpu=arm926ej-s,-march=armv5te)
+endif
+
+ifeq ($(CONFIG_ARM_CORTEX_A8),y)
+	cflags-y += $(call cc-option, -mtune=cortex-a8,-march=armv7-a)
+	DEFINES += ARMV7_A
+	DEFINES += ARM_CORTEX_A8
+	export ARMV=armv7-a
+	NK_CFLAGS += $(call cc-option,-march=armv7-a)
+	export CPU=cortex-a8
+	NK_CFLAGS += $(call cc-option, -mtune=cortex-a8,-march=armv7-a)
+endif
+
+ifeq ($(CONFIG_ARM_CORTEX_A9),y)
+	cflags-y += $(call cc-option, -mcpu=cortex-a9, -march=armv7-a)
+	DEFINES += ARMV7_A
+	DEFINES += ARM_CORTEX_A9
+	export ARMV=armv7-a
+	export CPU=cortex-a9
+	NK_CFLAGS += $(call cc-option, -mcpu=cortex-a9, -march=armv7-a)
+endif
+
+ifeq ($(CONFIG_ARM_CORTEX_A15),y)
+	cflags-y += $(call cc-option, -mtune=cortex-a15,)
+	cflags-y += -marm -march=armv7-a
+	DEFINES += ARMV7_A
+	DEFINES += ARM_CORTEX_A15
+	export ARMV=armv7-a
+	export CPU=cortex-a15
+	NK_CFLAGS += $(call cc-option, -mtune=cortex-a15,)
+	NK_CFLAGS += -marm -march=armv7-a
+endif
+
+ifeq ($(CONFIG_PLAT_INTEGRATORCP),y)
+	DEFINES += INTEGRATORCP
+	export PLAT = integratorcp
+endif
+
+ifeq ($(CONFIG_PLAT_KZM),y)
+	DEFINES += KZM
+	DEFINES += PLAT_IMX31
+	export PLAT = imx31
+endif
+
+ifeq ($(CONFIG_PLAT_PC99),y)
+	DEFINES += PLAT_PC99
+	export PLAT = pc99
+endif
+
+ifeq ($(CONFIG_PLAT_PXA255),y)
+	DEFINES += PXA255
+	DEFINES += PLAT_PXA255
+	export PLAT = pxa255
+endif
+
+ifeq ($(CONFIG_PLAT_NSLU2),y)
+	DEFINES += NSLU2
+	DEFINES += BIG_ENDIAN
+	export PLAT = nslu2
+endif
+
+ifeq ($(CONFIG_PLAT_REALVIEW),y)
+	DEFINES += REALVIEW
+	export PLAT=realview
+endif
+
+ifeq ($(CONFIG_PLAT_OMAP3),y)
+	DEFINES += OMAP3
+	DEFINES += PLAT_OMAP3
+	export PLAT=omap3
+endif
+
+ifeq ($(CONFIG_PLAT_AM335X),y)
+	DEFINES += AM335X
+	DEFINES += PLAT_AM335x
+	export PLAT=am335x
+endif
+
+ifeq ($(CONFIG_PLAT_EXYNOS4),y)
+	DEFINES += EXYNOS4
+	DEFINES += PLAT_EXYNOS4
+	export PLAT=exynos4
+endif
+
+ifeq ($(CONFIG_PLAT_EXYNOS5),y)
+	DEFINES += EXYNOS5
+	DEFINES += PLAT_EXYNOS5
+	export PLAT=exynos5
+endif
+
+ifeq ($(CONFIG_PLAT_IMX6),y)
+	DEFINES += IMX6
+	DEFINES += __LITTLE_ENDIAN
+	export PLAT=imx6
+endif
+
+ifeq ($(CONFIG_PLAT_OMAP4),y)
+	DEFINES += OMAP4
+	DEFINES += TI_MSHIELD
+	export PLAT=omap4
+endif
+
+ifeq ($(CONFIG_SMP_ARM_MPCORE),y)
+	DEFINES += SMP_ARM_MPCORE
+endif
+
+# Kernel debugging.
+ifeq ($(CONFIG_DEBUG_BUILD),y)
+	cflags-y += $(call cc-option,-g)
+	DEFINES += DEBUG
+	DEFINES += SEL4_DEBUG_KERNEL
+	export DEBUG=1
+else
+    DEFINES += NDEBUG
+endif
+
+# Userspace debugging.
+ifeq (${CONFIG_USER_DEBUG_INFO},y)
+NK_CFLAGS += $(call cc-option,-g3,-g) $(call cc-option,-ggdb3,-ggdb) $(call cc-option,-save-temps,)
+endif
+
+ifeq ($(CONFIG_DANGEROUS_CODE_INJECTION),y)
+   DEFINES += DANGEROUS_CODE_INJECTION
+   DEFINES += SEL4_DANGEROUS_CODE_INJECTION_KERNEL
+endif
+
+ifeq ($(CONFIG_IOMMU),y)
+	DEFINES += IOMMU
+endif
+
+ifeq ($(CONFIG_VTX),y)
+	DEFINES += VTX
+endif
+
+ifeq ($(CONFIG_FASTPATH),y)
+	DEFINES += FASTPATH
+endif
+
+# beware, the CPPFLAGS is also used during compiling, so we don't need to
+# append the macros to include paths to the CFLAGS again
+CFLAGS += -DHAVE_AUTOCONF -I$(objtree)/include/generated ${DEFINES:%=-D%} ${cflags-y}
+
+ifneq (${CONFIG_USER_EXTRA_CFLAGS},"")
+# Add Kconfig-specified cflags. Note that these can be trumped by the contents
+# of CONFIG_USER_CFLAGS.
+NK_CFLAGS += $(patsubst %",%,$(patsubst "%,%,${CONFIG_USER_EXTRA_CFLAGS})) # Gross double substitution because Make doesn't understand strings.
+#")") Help syntax-highlighting editors.
+endif
+
+# Break up KERNEL_CFLAGS.
+CONFIG_KERNEL_CFLAGS := $(shell echo "${CONFIG_KERNEL_CFLAGS}")
+
+CPPFLAGS += -DHAVE_AUTOCONF ${DEFINES:%=-D%} -I$(objtree)/include/generated
+CPPFLAGS += $(call cc-option,-std=gnu99)
+
+# pass the macros to the non-kernel builing system
+NK_CFLAGS += -I$(objtree)/include/generated ${DEFINES:%=-D%}
+
+ifeq ($(NK_BUILD),y)
+	export NK_CFLAGS NK_LDFLAGS NK_ASFLAGS
+else
+	export CFLAGS LDFLAGS ASFLAGS CPPFLAGS NK_CFLAGS NK_LDFLAGS NK_ASFLAGS
+	# Export KBuild variables so the kernel's Makefile can access them.
+	export \
+		CONFIG_OPTIMISATION_Os \
+		CONFIG_OPTIMISATION_O0 \
+		CONFIG_OPTIMISATION_O1 \
+		CONFIG_OPTIMISATION_O2 \
+		CONFIG_OPTIMISATION_O3
+	export \
+		CONFIG_KERNEL_COMPILER \
+		CONFIG_KERNEL_CFLAGS \
+		CONFIG_KERNEL_EXTRA_CPPFLAGS
+ifeq (${CONFIG_FASTPATH},y)
+export FASTPATH=1
+endif
+endif
+
+# Allow a project to add additional project-specific flags.
+-include ${PWD}/Makefile.flags

@@ -1,0 +1,10 @@
+config LIB_NFS
+    bool "Build libnfs"
+    select LIB_SEL4 
+    select LIB_SEL4_C
+    select LIB_LWIP 
+    select LIB_SEL4_SYNC
+    select HAVE_SEL4_LIBS
+    default y
+    help
+        "Basic nfs library for seL4 sos"

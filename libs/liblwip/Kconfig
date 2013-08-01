@@ -1,0 +1,7 @@
+config LIB_LWIP
+    bool "Build LwIP"
+    depends on HAVE_LIBC
+    default y
+    help
+        Lighweight TPC/IP network stack library.
+

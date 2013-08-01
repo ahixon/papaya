@@ -1,0 +1,4 @@
+# @LICENSE(NICTA_CORE)
+
+libs-$(CONFIG_LIB_SEL4_ELF) += libsel4elf
+libsel4elf: $(libc) common

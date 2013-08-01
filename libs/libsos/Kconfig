@@ -1,0 +1,6 @@
+config LIB_SOS
+    bool "Build sos library"
+    select HAVE_SEL4_LIBS
+    default y
+    help
+        "C platform dependant function implementations for sos clients"

@@ -1,0 +1,8 @@
+# @LICENSE(NICTA_CORE)
+
+config LIB_CPIO
+    bool "CPIO library"
+    default y
+    help
+        Library for parsing ".cpio" file headers.
+

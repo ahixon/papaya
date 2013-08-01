@@ -1,0 +1,15 @@
+# This file is included from tools/common/Makefile.flags
+# It allows a project to override or add to existing build flags.
+# These flags are used for both the kernel build and other build through
+# common.mk.
+CFLAGS = "-std=c99"
+
+NK_CFLAGS += -Wno-packed -Wall -Werror -funwind-tables -g
+
+LIBGCC_PATH       := $(shell $(CC) $(CFLAGS) -print-libgcc-file-name | sed 's/\(.*\)\(libgcc\.a\)/\1/' )
+NK_LDFLAGS += -L $(LIBGCC_PATH)
+
+# See if we should link against gcc_eh
+ifneq ($(shell $(CC) $(CFLAGS) -print-file-name=libgcc_eh.a | grep "^/"),)
+NK_LDFLAGS += -l gcc_eh
+endif

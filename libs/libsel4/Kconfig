@@ -1,0 +1,8 @@
+# @LICENSE(NICTA_CORE)
+
+config LIB_SEL4
+    bool "Build sel4 library"
+    depends on HAVE_LIBC
+    default y
+    help
+        "Build the sel4 library"

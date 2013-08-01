@@ -1,0 +1,48 @@
+<?xml version="1.0" ?>
+<!-- @LICENSE(NICTA_CORE) -->
+<api>
+	<registers>
+		<register name="PC"/>
+		<register name="SP"/>
+		<register name="CPSR"/>
+		<register name="R0"/>
+		<register name="R1"/>
+		<register name="R8"/>
+		<register name="R9"/>
+		<register name="R10"/>
+		<register name="R11"/>
+		<register name="R12"/>
+		<register name="R2"/>
+		<register name="R3"/>
+		<register name="R4"/>
+		<register name="R5"/>
+		<register name="R6"/>
+		<register name="R7"/>
+		<register name="R14"/>
+	</registers>
+	<interface name="seL4_ARM_PageDirectory"/>
+	<interface name="seL4_ARM_PageTable">
+		<method id="ARMPageTableMap" name="Map">
+			<param dir="in" name="pd" type="seL4_ARM_PageDirectory"/>
+			<param dir="in" name="vaddr" type="seL4_Word"/>
+			<param dir="in" name="attr" type="seL4_ARM_VMAttributes"/>
+		</method>
+		<method id="ARMPageTableUnmap" name="Unmap">
+		</method>
+	</interface>
+	<interface name="seL4_ARM_Page">
+		<method id="ARMPageMap" name="Map">
+			<param dir="in" name="pd" type="seL4_ARM_PageDirectory"/>
+			<param dir="in" name="vaddr" type="seL4_Word"/>
+			<param dir="in" name="rights" type="seL4_CapRights"/>
+			<param dir="in" name="attr" type="seL4_ARM_VMAttributes"/>
+		</method>
+		<method id="ARMPageRemap" name="Remap">
+			<param dir="in" name="pd" type="seL4_ARM_PageDirectory"/>
+			<param dir="in" name="rights" type="seL4_CapRights"/>
+			<param dir="in" name="attr" type="seL4_ARM_VMAttributes"/>
+		</method>
+		<method id="ARMPageUnmap" name="Unmap"/>
+		<method id="ARMPageFlushCaches" name="FlushCaches"/>
+	</interface>
+</api>

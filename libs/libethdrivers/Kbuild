@@ -1,0 +1,6 @@
+# @LICENSE(NICTA_CORE)
+
+libs-$(CONFIG_LIB_ETHIF) += libethdrivers
+libethdrivers: liblwip libsel4 $(libc) common
+
+

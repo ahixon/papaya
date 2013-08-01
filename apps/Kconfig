@@ -1,0 +1,13 @@
+config SEL4_APPS_PATH
+    string
+    option env="SEL4_APPS_PATH"
+
+menu "seL4 Applications"
+
+source "$SEL4_APPS_PATH/sos/Kconfig"
+source "$SEL4_APPS_PATH/sosh/Kconfig"
+source "$SEL4_APPS_PATH/tty_test/Kconfig"
+
+
+
+endmenu

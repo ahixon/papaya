@@ -1,0 +1,4 @@
+# @LICENSE(NICTA_CORE)
+
+libs-$(CONFIG_LIB_LWIP) += liblwip
+liblwip: $(libc) common

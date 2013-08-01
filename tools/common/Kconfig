@@ -1,0 +1,101 @@
+# @LICENSE(NICTA_CORE)
+
+# This options are imported into the top-level project of all projects.
+menu "Toolchain Options"
+    config CROSS_COMPILER_PREFIX
+        string "Cross compiler prefix"
+    default "arm-linux-gnueabi-" if ARCH_ARM
+    default "i686-pc-linux-gnu-" if ARCH_I386
+    default ""
+        help
+            Set the cross compiler prefix, like arm-linux-gnueabi-
+            Ensure the compiler is in your PATH or include the full
+            path of the compiler in the prefix, such as
+            /opt/toolchains/gcc4/arm-linux-gnueabi-
+
+    config KERNEL_COMPILER
+        string "Path to a different compiler to use for the kernel"
+    default ""
+        help
+            If you set this option to a non-empty string, this compiler will be
+            used for compiling the kernel. The compiler specified by your
+            cross-compiler prefix will still be used for user-space. Note that
+            this option does not affect the pre-processor, assembler or linker
+            used on the kernel.
+
+    config KERNEL_CFLAGS
+        string "Compiler flags to use for compiling the kernel."
+    default ""
+        help
+            Setting this option to a non-empty string overrides the default
+            flags (and those you have selected elsewhere in the build
+            configuration) that are passed to the compiler when compiling the
+            kernel. This does not affect the compiler flags passed when
+            compiling user-space.
+
+            Use this option with care as it will prevent several sane default
+            options that are normally passed. Note that this does not prevent
+            DEFINES being passed to the compiler. This causes the pre-processor
+            invocations in the kernel to assume they are targetting a non-GNU
+            compiler. It does not affect the assembling or linking of the
+            kernel.
+
+    config KERNEL_EXTRA_CPPFLAGS
+        string "Extra CPP flags to use for compiling the kernel."
+        default ""
+        help
+            These flags will be appended to the C pre-processor flags used when
+            compiling the kernel. Note these will not be applied during
+            user-space pre-processing.
+
+    config USER_DEBUG_INFO
+        bool "Emit debugging information"
+        default y
+        help
+            Emit debugging information when compiling applications and
+            libraries. This does not affect the compiler flags applied to the
+            kernel.
+
+    config USER_EXTRA_CFLAGS
+        string "Extra userspace CFLAGS"
+        default ""
+        help
+            Extra flags to append when compiling applications and libraries.
+            This does not affect the flags applied when compiling the kernel.
+
+    config USER_CFLAGS
+        string "Override userspace CFLAGS"
+        default ""
+        help
+            A set of flags to be used as the ONLY options when compiling
+            applications and libraries. This does not affect the flags applied
+            when compiling the kernel. This option takes precedence over "Extra
+            userspace CFLAGS" and should be used with care.
+
+    config BUILDSYS_USE_CCACHE
+        bool "Use ccache to improve build performance"
+        default y
+        help
+            ccache will cache object files based on compiler name, compile flags
+            and source file name. On the next attempt to compile this file with
+            the same compiler and flags, the object file will be copied from the
+            cache rather than compiling from source.
+
+    config BUILDSYS_USE_GOANNA
+        bool "Use Goanna for static analysis"
+        default y
+        help
+            Goanna is a static analysis tool developed internally. Select this
+            option to enable it during compilation if you have it installed.
+
+    config BUILDSYS_GOANNA_PROFILE
+        string "Goanna profile"
+        default ""
+        depends on BUILDSYS_USE_GOANNA
+        help
+            Goanna needs a profile file describing the behaviour of your
+            compiler. Set this value to the profile file that describes your
+            cross-compiler.
+
+endmenu
+

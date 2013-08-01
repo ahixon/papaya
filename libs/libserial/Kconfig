@@ -1,0 +1,9 @@
+config LIB_SERIAL
+    bool "Build libserial"
+    select LIB_SEL4 
+    select LIB_SEL4_C
+    select LIB_LWIP
+    select HAVE_SEL4_LIBS
+    default y
+    help
+        "Basic serial library for seL4 sos"

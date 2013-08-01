@@ -1,0 +1,28 @@
+config SEL4_LIBS_PATH
+    string
+    option env="SEL4_LIBS_PATH"
+
+config HAVE_SEL4_LIBS
+    bool
+
+menu "seL4 Libraries"
+
+source "$SEL4_LIBS_PATH/libsel4c/Kconfig"
+source "$SEL4_LIBS_PATH/libsel4/Kconfig"
+source "$SEL4_LIBS_PATH/libsel4cspace/Kconfig"
+source "$SEL4_LIBS_PATH/libsel4sync/Kconfig"
+source "$SEL4_LIBS_PATH/liblwip/Kconfig"
+source "$SEL4_LIBS_PATH/libserial/Kconfig"
+source "$SEL4_LIBS_PATH/libnfs/Kconfig"
+source "$SEL4_LIBS_PATH/libclock/Kconfig"
+source "$SEL4_LIBS_PATH/libsel4elf/Kconfig"
+source "$SEL4_LIBS_PATH/elfloader/Kconfig"
+source "$SEL4_LIBS_PATH/libcpio/Kconfig"
+source "$SEL4_LIBS_PATH/libethdrivers/Kconfig"
+
+source "$SEL4_LIBS_PATH/libsos/Kconfig"
+
+
+
+endmenu
+

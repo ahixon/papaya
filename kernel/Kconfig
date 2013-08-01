@@ -1,0 +1,50 @@
+config HAVE_DOT_CONFIG
+	bool
+	default y
+config ARCH_ARM_V7A
+	bool
+	default y
+config KERNEL_SEARCHABLE_CDT
+	bool
+	default y
+config ARCH_ARM
+	bool
+	default y
+config ARM_CORTEX_A9
+	bool
+	default y
+config PLAT_IMX6
+	bool
+	default y
+config ROOT_CNODE_SIZE_BITS
+	int
+	default 12
+config TIME_SLICE
+	int
+	default 5
+config RETYPE_FAN_OUT_LIMIT
+	int
+	default 256
+config MAX_WORK_UNITS_PER_PREEMPTION
+	int
+	default 100
+config MAX_NUM_BOOTINFO_DEVICE_REGIONS
+	int
+	default 199
+config MAX_NUM_BOOTINFO_UNTYPED_CAPS
+	int
+	default 167
+config DEBUG_BUILD
+	bool
+	default y
+config OPTIMISATION_O2
+	bool
+	default y
+config KERNEL_PATH
+    string
+    option env=KERNEL_ROOT_PATH
+
+config COMMON_PATH
+    string
+    option env=COMMON_PATH
+

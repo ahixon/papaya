@@ -1,0 +1,7 @@
+# @LICENSE(NICTA_CORE)
+
+max-instatement-indent=20
+style=otbs
+pad-header
+indent=spaces=4
+pad-oper

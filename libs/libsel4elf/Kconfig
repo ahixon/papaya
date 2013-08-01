@@ -1,0 +1,8 @@
+# @LICENSE(NICTA_CORE)
+
+config LIB_SEL4_ELF
+    bool "seL4 ELF manipulation library"
+    depends on HAVE_LIBC
+    default y
+    help
+        seL4 ELF related library

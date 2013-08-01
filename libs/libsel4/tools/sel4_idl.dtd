@@ -1,0 +1,21 @@
+<!-- @LICENSE(NICTA_CORE) -->
+
+<!ELEMENT api (registers*,interface*)>
+
+<!ELEMENT registers (register*)>
+
+<!ELEMENT register EMPTY>
+<!ATTLIST register name CDATA #REQUIRED>
+
+<!ELEMENT interface (method*)>
+<!ATTLIST interface name CDATA #REQUIRED>
+
+<!ELEMENT method (param*)>
+<!ATTLIST method name CDATA #REQUIRED>
+<!ATTLIST method id CDATA #REQUIRED>
+
+<!ELEMENT param EMPTY>
+<!ATTLIST param type CDATA #REQUIRED>
+<!ATTLIST param name CDATA #REQUIRED>
+<!ATTLIST param dir CDATA #REQUIRED>
+

@@ -1,0 +1,10 @@
+mainmenu "Project Configuration"
+
+
+source "kernel/Kconfig"
+
+
+source libs/Kconfig
+source apps/Kconfig
+source "$COMMON_PATH/Kconfig"
+

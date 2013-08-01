@@ -1,0 +1,17 @@
+/* @LICENSE(UNKNOWN) */
+
+#define _USE_XOPEN
+#include <string.h>
+#include <stdlib.h>
+
+char *
+strdup(const char *s)
+{
+	int len = strlen(s);
+	char *d;
+	d = malloc(len+1);
+	if (d == NULL)
+		return NULL;
+	strcpy(d, s);
+	return d;
+}

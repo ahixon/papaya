@@ -1,0 +1,5 @@
+# @LICENSE(NICTA_CORE)
+libs-$(CONFIG_LIB_NFS) += libnfs
+libdocs-$(CONFIG_LIB_NFS) += libnfs
+
+libnfs: liblwip $(libc) libsel4 libsel4sync common

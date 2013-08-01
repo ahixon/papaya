@@ -1,0 +1,30 @@
+syntax: glob
+
+# Generated files
+build
+images
+staging
+stage
+include/generated
+include/config
+.config
+.config.old
+kernel.elf
+
+# Developer files
+cscope.*
+**/*.swp
+.settings
+.cproject
+.project
+docs/latex/*
+docs/*.pdf
+*.cmd
+*.o
+tools/kbuild/basic/docproc
+tools/kbuild/basic/fixdep
+tools/kbuild/basic/split-include
+tools/kbuild/kconfig/conf
+tools/kbuild/kconfig/mconf
+null.i
+null.s
