@@ -541,7 +541,7 @@ enum rpc_stat nfs_read(const fhandle_t *fh, int offset, int count,
                        nfs_read_cb_t callback, uintptr_t token);
 
 /**
- * Asynchronous function used for writing data to a file.i
+ * Asynchronous function used for writing data to a file.
  * nfs_write will start at "offset" bytes within the file provided as "fh" and
  * write a maximum of "count" bytes of the provided "data". When the transaction
  * has completed, the provided callback function (@ref nfs_write_cb_t) will be
@@ -560,7 +560,7 @@ enum rpc_stat nfs_read(const fhandle_t *fh, int offset, int count,
  *                     will be called once the response to this request has been
  *                     received.
  */
-enum rpc_stat nfs_write(const fhandle_t *fh, int offset, int bytes, 
+enum rpc_stat nfs_write(const fhandle_t *fh, int offset, int count, 
                         const void *data,
                         nfs_write_cb_t callback, uintptr_t token);
 

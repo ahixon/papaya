@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Project Configuration
-# Thu Aug  1 15:31:06 2013
+# Fri Aug  2 09:21:44 2013
 #
 CONFIG_HAVE_DOT_CONFIG=y
 CONFIG_ARCH_ARM_V7A=y
@@ -53,7 +53,7 @@ CONFIG_APP_TTY_TEST=y
 #
 # Toolchain Options
 #
-CONFIG_CROSS_COMPILER_PREFIX="arm-linux-gnueabi-"
+CONFIG_CROSS_COMPILER_PREFIX="arm-none-linux-gnueabi-"
 CONFIG_KERNEL_COMPILER=""
 CONFIG_KERNEL_CFLAGS=""
 CONFIG_KERNEL_EXTRA_CPPFLAGS=""

@@ -4,7 +4,7 @@
 menu "Toolchain Options"
     config CROSS_COMPILER_PREFIX
         string "Cross compiler prefix"
-    default "arm-linux-gnueabi-" if ARCH_ARM
+    default "arm-none-linux-gnueabi-" if ARCH_ARM
     default "i686-pc-linux-gnu-" if ARCH_I386
     default ""
         help
