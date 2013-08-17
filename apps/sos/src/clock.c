@@ -228,8 +228,7 @@ handle_timer(void)
     conditional_panic(err, "Failure to acknowledge pending interrupts");
 
     // now actually process it using our saved status
-    if (regs->status & SR_ROV) {
-        //printf ("rollover occured\n");
+    if (status & SR_ROV) {
         struct timer_node* t = timers;
         while (t) {
             if (t->overflows > 0) {
@@ -244,6 +243,7 @@ handle_timer(void)
         }
 
         regs->status &= ~SR_ROV;
+        overflows++;
     }
 
     if (status & SR_OF1) {
