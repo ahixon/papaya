@@ -400,10 +400,10 @@ int main(void) {
 
     seL4_CPtr timer_cap;
     timer_cap = cspace_mint_cap(cur_cspace,
-                                  cur_cspace,
-                                  _sos_interrupt_ep_cap,
-                                  seL4_AllRights, seL4_CapData_Badge_new(IPC_TIMER_BADGE)
-                                  );
+                    cur_cspace,
+                    _sos_interrupt_ep_cap,
+                    seL4_AllRights, seL4_CapData_Badge_new(IPC_TIMER_BADGE)
+                    );
 
     /* Initialise timers */
     start_timer(timer_cap);
