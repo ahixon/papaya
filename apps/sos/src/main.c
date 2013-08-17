@@ -58,10 +58,13 @@ struct {
 /*
  * A dummy starting syscall
  */
-#define SOS_SYSCALL0 0
+#define SOS_SYSCALL0            0
+#define SOS_SYSCALL_NETWRITE    1
 
 seL4_CPtr _sos_ipc_ep_cap;
 seL4_CPtr _sos_interrupt_ep_cap;
+
+struct serial* ser_device;
 
 /**
  * NFS mount point
@@ -72,6 +75,7 @@ extern fhandle_t mnt_point;
 void handle_syscall(seL4_Word badge, int num_args) {
     seL4_Word syscall_number;
     seL4_CPtr reply_cap;
+    seL4_MessageInfo_t reply;
 
 
     syscall_number = seL4_GetMR(0);
@@ -85,11 +89,41 @@ void handle_syscall(seL4_Word badge, int num_args) {
     case SOS_SYSCALL0:
         dprintf(0, "syscall: thread made syscall 0!\n");
 
-        seL4_MessageInfo_t reply = seL4_MessageInfo_new(0, 0, 0, 1);
+        reply = seL4_MessageInfo_new(0, 0, 0, 1);
         seL4_SetMR(0, 0);
         seL4_Send(reply_cap, reply);
 
         /* Free the saved reply cap */
+        cspace_free_slot(cur_cspace, reply_cap);
+
+        break;
+
+    case SOS_SYSCALL_NETWRITE:
+        if (num_args < 0) {
+            break;
+        }
+
+        int sent;
+        char* data = malloc (sizeof (char) * num_args);
+
+        if (data != NULL) {
+            for (int i = 0; i < num_args; i++) {
+                data[i] = (char)seL4_GetMR (i + 1);
+            }
+
+            sent = serial_send (ser_device, data, num_args);
+            free (data);
+        } else {
+            dprintf (0, "syscall: could not allocate memory for serial buffer\n");
+            /* malloc failed, so return negative status code
+             * so that client doesn't try to re-send */
+            sent = -1;
+        }
+        
+        reply = seL4_MessageInfo_new(0, 0, 0, 1);
+        seL4_SetMR(0, sent);
+        seL4_Send(reply_cap, reply);
+
         cspace_free_slot(cur_cspace, reply_cap);
 
         break;
@@ -387,6 +421,7 @@ static void _sos_init(seL4_CPtr* ipc_ep, seL4_CPtr* async_ep){
  * Main entry point - called by crt.
  */
 int main(void) {
+    int ret;
 
     dprintf(0, "\nSOS Starting...\n");
 
@@ -395,9 +430,14 @@ int main(void) {
     /* Initialise the network hardware */
     network_init(_sos_interrupt_ep_cap);
 
+    /* Initialise serial driver */ 
+    ser_device = serial_init(); 
+    conditional_panic(!ser_device, "Failed to initialise serial device\n"); 
+
     /* Start the user application */
     start_first_process(TTY_NAME, _sos_ipc_ep_cap);
 
+    /* Initialise timers */
     seL4_CPtr timer_cap;
     timer_cap = cspace_mint_cap(cur_cspace,
                     cur_cspace,
@@ -405,8 +445,8 @@ int main(void) {
                     seL4_AllRights, seL4_CapData_Badge_new(IPC_TIMER_BADGE)
                     );
 
-    /* Initialise timers */
-    start_timer(timer_cap);
+    ret = start_timer(timer_cap);
+    conditional_panic(ret != CLOCK_R_OK, "Failed to initialise timer\n");
 
     /* Wait on synchronous endpoint for IPC */
     dprintf(0, "\nSOS entering syscall loop\n");
