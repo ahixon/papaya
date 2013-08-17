@@ -9,6 +9,7 @@
 #include <nfs/nfs.h>
 #include <elf/elf.h>
 #include <serial/serial.h>
+#include <clock/clock.h>
 
 #include "network.h"
 #include "elf.h"
@@ -29,6 +30,7 @@
 #define TTY_NAME             CONFIG_SOS_STARTUP_APP
 #define TTY_PRIORITY         (0)
 #define TTY_EP_BADGE         (101)
+#define IPC_TIMER_BADGE      (102)
 
 /* The linker will link this symbol to the start address  *
  * of an archive of attached applications.                */
@@ -128,6 +130,11 @@ void syscall_loop(seL4_CPtr ep) {
              * are orred together in message register 0.
              */
             interrupts_fired = seL4_GetMR(0);
+
+            if (badge & IPC_TIMER_BADGE) {
+                handle_timer();
+            }
+
             network_irq(interrupts_fired);
             break;
 
@@ -390,6 +397,16 @@ int main(void) {
 
     /* Start the user application */
     start_first_process(TTY_NAME, _sos_ipc_ep_cap);
+
+    seL4_CPtr timer_cap;
+    timer_cap = cspace_mint_cap(cur_cspace,
+                                  cur_cspace,
+                                  _sos_interrupt_ep_cap,
+                                  seL4_AllRights, seL4_CapData_Badge_new(IPC_TIMER_BADGE)
+                                  );
+
+    /* Initialise timers */
+    start_timer(timer_cap);
 
     /* Wait on synchronous endpoint for IPC */
     dprintf(0, "\nSOS entering syscall loop\n");
