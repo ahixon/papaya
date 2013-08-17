@@ -348,11 +348,13 @@ time_stamp(void)
     uint32_t counter = regs->counter;
     uint32_t status = regs->status;
     uint32_t local_overflows = overflows;
-    // had an overflow we haven't handled yet, so increment our counter (temporarily)
+
+    // had an overflow we haven't handled yet
     if (status & SR_ROV) {
         local_overflows++;
+        counter = regs->counter;
     }
 
-    int64_t tt = ((uint64_t)(local_overflows) << 32) | (regs->counter);
+    int64_t tt = ((uint64_t)(local_overflows) << 32) | (counter);
     return tt;
 }
