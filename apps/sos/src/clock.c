@@ -199,16 +199,15 @@ install_timers (void) {
  */
 static void
 fire_timer (void) {
-    //struct timer_node* t = find_timer (expiry);
     struct timer_node* t = timers;
 
-    assert (t != NULL);
-    assert (t->overflows == 0);
+    if (t) {
+        assert (t->overflows == 0);
+        printf ("** TIMER FIRED\tscheduled wakeup=%lld, owner=%p\n", t->compare, (void*)t->owner);
+        // FIXME: actually wake up the client when we have IPC
 
-    printf ("** TIMER FIRED\tscheduled wakeup=%lld, owner=%p\n", t->compare, (void*)t->owner);
-    // FIXME: actually wake up the client when we have IPC
-
-    destroy_timer (t);
+        destroy_timer (t);
+    }
 }
 
 /* Public API */
