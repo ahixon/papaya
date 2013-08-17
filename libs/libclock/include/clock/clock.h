@@ -44,4 +44,6 @@ timestamp_t time_stamp(void);
  */
 int stop_timer(void);
 
+void handle_timer(void);
+
 #endif /* _CLOCK_H_ */
