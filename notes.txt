@@ -1,0 +1,13 @@
+{Fibonacci,Pairing,Brodal} heap for frame thing
+	so we can do cap -> frame lookup
+	will be sorted, caps generally also allocated sequentially
+	delete (ie REALLY free frame) will take logn - happens only on page fault
+
+	heap array split over frames
+	allocated as required
+
+same deal for virtual address?
+	just implement regular two level page table?
+	virtualised page map?
+
+what about paddr -> cap lookup?
