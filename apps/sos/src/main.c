@@ -435,6 +435,17 @@ int main(void) {
     ser_device = serial_init(); 
     conditional_panic(!ser_device, "Failed to initialise serial device\n"); 
 
+    frametable_init();
+
+    printf ("========================\n==== Running Test 1 ====\n========================\n");
+    ft_test1();
+    printf ("========================\n==== Running Test 2 ====\n========================\n");
+    ft_test2();
+    printf ("========================\n====  Freeing  RAM  ====\n========================\n");
+    frametable_freeall();
+    printf ("========================\n==== Running Test 3 ====\n========================\n");
+    ft_test3();
+
     /* Start the user application */
     //start_first_process(TTY_NAME, _sos_ipc_ep_cap);
 
@@ -448,10 +459,6 @@ int main(void) {
 
     ret = start_timer(timer_cap);
     conditional_panic(ret != CLOCK_R_OK, "Failed to initialise timer\n");
-
-    frametable_init();
-
-    ft_test1();
 
     /* Wait on synchronous endpoint for IPC */
     dprintf(0, "\nSOS entering syscall loop\n");

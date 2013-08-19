@@ -12,21 +12,17 @@ ft_test1(void)
     /* Allocate 10 pages and make sure you can touch them all */
     for (int i = 0; i < 10; i++) {
         /* Allocate a page */
-        seL4_Word vaddr;
-        frame_alloc(&vaddr);
+        vaddr_t vaddr = frame_alloc();
         assert(vaddr);
 
         /* Test you can touch the page */
-        int* vv = (int*)vaddr;
-        printf ("vv points to = %p\n", vv);
-
-        *vv = 0x37;
-        assert(*vv == 0x37);
+        *(int*)(vaddr) = 0x37;
+        assert(*(int*)(vaddr) == 0x37);
 
         printf("Page #%d allocated at %p\n",  i, (void *) vaddr);
     }
 }
-#if 0
+
 void
 ft_test2(void)
 {
@@ -34,16 +30,16 @@ ft_test2(void)
        and doesn't crash */
     for (;;) {
         /* Allocate a page */
-        seL4_Word vaddr;
-        frame_alloc(&vaddr);
+        vaddr_t vaddr = frame_alloc();
         if (!vaddr) {
-        printf("Out of memory!\n");
-        break;
+            printf("Out of memory!\n");
+            break;
         }
 
         /* Test you can touch the page */
-        *vaddr = 0x37;
-        assert(*vaddr == 0x37);
+        int* i = (int*)vaddr;
+        *i = 0x37;
+        assert(*i == 0x37);
     }
 }
 
@@ -54,24 +50,15 @@ ft_test3(void)
         This loop should never finish */
     for (int i = 0;; i++) {
         /* Allocate a page */
-        seL4_Word vaddr;
-        page = frame_alloc(&vaddr);
+        vaddr_t vaddr = frame_alloc();
         assert(vaddr != 0);
 
         /* Test you can touch the page */
-        *vaddr = 0x37;
-        assert(*vaddr == 0x37);
+        *(int*)vaddr = 0x37;
+        assert(*(int*)vaddr == 0x37);
 
-        printf("Page #%d allocated at %p\n",  i, vaddr);
+        printf("Page #%d allocated at %p\n",  i, (void*)vaddr);
 
-        frame_free(page);
+        frame_free(vaddr);
     }
 }
-
-void
-ft_testall(void) {
-    ft_test1();
-    ft_test2();
-    ft_test3();
-}
-#endif
