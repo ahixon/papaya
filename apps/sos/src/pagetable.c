@@ -78,7 +78,7 @@ _pagetable_map (addrspace_t as, seL4_ARM_VMAttributes attributes, vaddr_t vaddr)
                                  cur_cspace,
                                  &pt_cap);
     if (err) {
-        printf ("_pagetable_map: retype failed\n");
+        printf ("_pagetable_map: retype failed: %s\n", seL4_Error_Message (err));
         ut_free (pt_addr, seL4_PageTableBits);
         return 0;
     }
@@ -122,7 +122,6 @@ _page_map (vaddr_t vaddr, frameidx_t frame, struct as_region* region, addrspace_
     printf ("           perms = %d, attrib = %d, pagedir cap = 0x%x\n", region->permissions, region->attributes, as->pagedir_cap);
     err = seL4_ARM_Page_Map(dest_cap, as->pagedir_cap, vaddr, region->permissions, region->attributes);
 
-    /* FIXME: don't try and map first */
     if (err) {
         printf ("_page_map: failed to map page: %s\n", seL4_Error_Message (err));
         return false;
