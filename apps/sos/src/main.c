@@ -17,7 +17,9 @@
 #include "ut_manager/ut.h"
 #include "vmem_layout.h"
 #include "mapping.h"
+
 #include "frametable.h"
+#include "addrspace.h"
 
 #include <autoconf.h>
 
@@ -54,6 +56,8 @@ struct {
     cspace_t *croot;
 
 } tty_test_process;
+
+addrspace_t default_addrspace;
 
 
 /*
@@ -152,6 +156,15 @@ void syscall_loop(seL4_CPtr ep) {
             break;
 
         case seL4_VMFault:
+            if (!seL4_GetMR(2)) {
+                /* data fault; try to map in page */
+                if (as_map_page (default_addrspace, seL4_GetMR(1))) {
+                    /* restart calling thread now we have the page set */
+                    seL4_Reply (message);
+                    break;
+                }
+            }
+
             dprintf(0, "vm fault at 0x%08x, pc = 0x%08x, %s\n", seL4_GetMR(1),
                     seL4_GetMR(0),
                     seL4_GetMR(2) ? "Instruction Fault" : "Data fault");
@@ -329,6 +342,15 @@ void start_first_process(char* app_name, seL4_CPtr fault_ep) {
                                  &stack_cap);
     conditional_panic(err, "Unable to allocate page for stack");
 
+    /* setup frametable */
+    printf ("initialising frametable\n");
+    frametable_init();
+
+    /* create address space for process */
+    printf ("creating address space\n");
+    default_addrspace = addrspace_create (tty_test_process.vroot);
+    printf ("address space = %p\n", default_addrspace);
+
     /* Map in the stack frame for the user app */
     err = map_page(stack_cap, tty_test_process.vroot,
                    PROCESS_STACK_TOP - (1 << seL4_PageBits),
@@ -434,8 +456,6 @@ int main(void) {
     /* Initialise serial driver */ 
     ser_device = serial_init(); 
     conditional_panic(!ser_device, "Failed to initialise serial device\n"); 
-
-    frametable_init();
 
     /* Start the user application */
     start_first_process(TTY_NAME, _sos_ipc_ep_cap);
