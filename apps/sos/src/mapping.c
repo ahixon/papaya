@@ -34,7 +34,7 @@ _map_page_table(seL4_ARM_PageDirectory pd, seL4_Word vaddr){
                                  cur_cspace,
                                  &pt_cap);
     if(err){
-        ut_free(pt_addr);
+        ut_free(pt_addr, seL4_PageTableBits);
         return !0;
     }
     /* Tell seL4 to map the PT in for us */
@@ -43,9 +43,9 @@ _map_page_table(seL4_ARM_PageDirectory pd, seL4_Word vaddr){
                                  vaddr, 
                                  seL4_ARM_Default_VMAttributes);
     if(err){
-        ut_free(pt_addr);
+        ut_free(pt_addr, seL4_PageTableBits);
     }
-    
+
     return err;
 }
 
