@@ -437,17 +437,8 @@ int main(void) {
 
     frametable_init();
 
-    printf ("========================\n==== Running Test 1 ====\n========================\n");
-    ft_test1();
-    printf ("========================\n==== Running Test 2 ====\n========================\n");
-    ft_test2();
-    printf ("========================\n====  Freeing  RAM  ====\n========================\n");
-    frametable_freeall();
-    printf ("========================\n==== Running Test 3 ====\n========================\n");
-    ft_test3();
-
     /* Start the user application */
-    //start_first_process(TTY_NAME, _sos_ipc_ep_cap);
+    start_first_process(TTY_NAME, _sos_ipc_ep_cap);
 
     /* Initialise timers */
     seL4_CPtr timer_cap;
