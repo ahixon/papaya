@@ -16,7 +16,7 @@ typedef seL4_Word frameidx_t;
 
 struct frameinfo {
     paddr_t paddr;
-    seL4_Word capability;
+    seL4_CPtr capability;
     uint32_t flags;
 };
 
@@ -32,7 +32,7 @@ frame_alloc (void);
 void
 frame_free (frameidx_t idx);
 
-seL4_Word
+seL4_CPtr
 frametable_fetch_cap (frameidx_t frame);
 
 void ft_test1(void);

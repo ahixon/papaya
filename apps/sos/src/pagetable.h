@@ -44,10 +44,13 @@ pagetable_init (void);
 void
 pagetable_free (pagetable_t pt);
 
-int
+frameidx_t
 page_map (struct addrspace * as, struct as_region * region, vaddr_t vaddr);
 
 void
 page_free (pagetable_t pt, vaddr_t vaddr);
+
+struct pt_entry*
+page_fetch (pagetable_t pt, vaddr_t vaddr);
 
 #endif

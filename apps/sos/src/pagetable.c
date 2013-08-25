@@ -133,7 +133,7 @@ _page_map (vaddr_t vaddr, frameidx_t frame, struct as_region* region, addrspace_
 /*
  * CALLER should double check that the vaddr is in a valid region
  */
-int
+frameidx_t
 page_map (addrspace_t as, struct as_region* region, vaddr_t vaddr) {
     assert (as != NULL);
 
@@ -193,20 +193,26 @@ page_map (addrspace_t as, struct as_region* region, vaddr_t vaddr) {
     entry->frame_idx = frame;
     entry->flags |= PAGE_ALLOCATED;
 
-    return vaddr;
+    return frame;
 }
 
-void
-page_free (pagetable_t pt, vaddr_t vaddr) {
+struct pt_entry*
+page_fetch (pagetable_t pt, vaddr_t vaddr) {
     uint32_t l1 = L1_IDX(vaddr);
     uint32_t l2 = L2_IDX(vaddr);
 
     struct pt_table* table = pt->entries[l1];
     if (!table) {
-        return;
+        return NULL;
     }
 
     struct pt_entry* entry = &(table->entries[l2]);
+    return entry;
+}
+
+void
+page_free (pagetable_t pt, vaddr_t vaddr) {
+    struct pt_entry* entry = page_fetch (pt, vaddr);
     if (!entry) {
         return;
     }

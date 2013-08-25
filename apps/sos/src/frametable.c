@@ -103,27 +103,14 @@ frame_alloc (void)
         return 0;
     }
 
-    // ok now map from vaddr into SOS
     frameidx_t index = IDX_PHYS(untyped_addr);
-    /*vaddr_t vaddr = FRAMEWINDOW_VSTART + (index << (seL4_PageBits));
-    err = map_page(frame_cap, seL4_CapInitThreadPD,
-                   vaddr, seL4_AllRights, seL4_ARM_Default_VMAttributes);
-
-    if (err != seL4_NoError) {
-        ut_free (untyped_addr, seL4_PageBits);
-        printf ("could not map page: %d\n", err);
-        return 0;
-    }*/
-
-    // and record the new frame
     struct frameinfo* frame = &frametable[index];
 
     frame->flags |= FRAME_MAPPED;
-    printf ("frame_alloc: installed framecap 0x%x\n", frame_cap);
     frame->capability = frame_cap;
     frame->paddr = untyped_addr;
 
-    printf ("frame_alloc: allocated physical frame at 0x%x, returning index 0x%x\n", untyped_addr, index);
+    printf ("frame_alloc: allocated physical frame at 0x%x and cap = 0x%x, returning index 0x%x\n", untyped_addr, frame_cap, index);
     return index;
 }
 
@@ -165,7 +152,7 @@ frametable_freeall (void) {
     }
 }
 
-seL4_Word
+seL4_CPtr
 frametable_fetch_cap (frameidx_t frame) {
     if (frame > high_idx) {
         return 0;

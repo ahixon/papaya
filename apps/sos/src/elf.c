@@ -8,7 +8,11 @@
 
 #include <vmem_layout.h>
 #include <ut_manager/ut.h>
-#include <mapping.h>
+#include <frametable.h>
+#include <addrspace.h>
+#include <pagetable.h>
+
+#include <mapping.h>    // I SHOULD GO BECAUSE I SUCK
 
 #define verbose 0
 #include <sys/debug.h>
@@ -43,9 +47,8 @@ static inline seL4_Word get_sel4_rights_from_elf(unsigned long permissions) {
 
 /*
  * Inject data into the given vspace.
- * TODO: Don't keep these pages mapped in
  */
-static int load_segment_into_vspace(seL4_ARM_PageDirectory dest_as,
+static int load_segment_into_vspace(addrspace_t dest_as,
                                     char *src, unsigned long segment_size,
                                     unsigned long file_size, unsigned long dst,
                                     unsigned long permissions) {
@@ -53,12 +56,16 @@ static int load_segment_into_vspace(seL4_ARM_PageDirectory dest_as,
 
     unsigned long pos;
 
+    if (!as_define_region (dest_as, dst, segment_size, permissions, REGION_GENERIC)) {
+        return 1;
+    }
+
     /* We work a page at a time in the destination vspace. */
     pos = 0;
     while(pos < segment_size) {
-        seL4_Word paddr;
-        seL4_CPtr sos_cap, tty_cap;
+        seL4_CPtr sos_cap;
         seL4_Word vpage, kvpage;
+
         unsigned long kdst;
         int nbytes;
         int err;
@@ -67,36 +74,31 @@ static int load_segment_into_vspace(seL4_ARM_PageDirectory dest_as,
         vpage  = PAGE_ALIGN(dst);
         kvpage = PAGE_ALIGN(kdst);
 
-        /* First we need to create a frame */
-        paddr = ut_alloc(seL4_PageBits);
-        conditional_panic(!paddr, "Out of memory - could not allocate frame");
-        err = cspace_ut_retype_addr(paddr,
-                                    seL4_ARM_SmallPageObject,
-                                    seL4_PageBits,
-                                    cur_cspace,
-                                    &tty_cap);
-        conditional_panic(err, "Failed to retype to a frame object");
+        /* Map the page into the destination address space */
+        frameidx_t frame = as_map_page (dest_as, vpage);
+        if (!frame) {
+            panic ("failed to map into process addrspace");
+        }
 
-        /* Copy the frame cap as we need to map it into 2 address spaces */
-        sos_cap = cspace_copy_cap(cur_cspace, cur_cspace, tty_cap, seL4_AllRights);
-        conditional_panic(sos_cap == 0, "Failed to copy frame cap");
+        /* Map the frame into SOS as well so we can copy into it */
+        /* FIXME: do we want to use a different function or is this OK */
+        sos_cap = frametable_fetch_cap (frame);
+        conditional_panic (!sos_cap, "could not fetch cap from frametable");
 
-        /* Map the frame into tty_test address spaces */
-        err = map_page(tty_cap, dest_as, vpage, permissions, 
-                       seL4_ARM_Default_VMAttributes);
-        conditional_panic(err, "Failed to map to tty address space");
-        /* Map the frame into sos address spaces */
         err = map_page(sos_cap, seL4_CapInitThreadPD, kvpage, seL4_AllRights, 
                        seL4_ARM_Default_VMAttributes);
         conditional_panic(err, "Failed to map sos address space");
 
-        /* Now copy our data into the destination vspace. */
+        /* Now copy our data into the destination vspace */
         nbytes = PAGESIZE - (dst & PAGEMASK);
         if (pos < file_size){
             memcpy((void*)kdst, (void*)src, MIN(nbytes, file_size - pos));
         }
 
+        /* FIXME: unmap page! */
+
         /* Not observable to I-cache yet so flush the frame */
+        /* FIXME: put this outside the loop? */
         seL4_ARM_Page_FlushCaches(sos_cap);
 
         pos += nbytes;
@@ -106,7 +108,7 @@ static int load_segment_into_vspace(seL4_ARM_PageDirectory dest_as,
     return 0;
 }
 
-int elf_load(seL4_ARM_PageDirectory dest_as, char *elf_file) {
+int elf_load(addrspace_t dest_as, char *elf_file) {
 
     int num_headers;
     int err;
@@ -139,6 +141,10 @@ int elf_load(seL4_ARM_PageDirectory dest_as, char *elf_file) {
                                        get_sel4_rights_from_elf(flags) & seL4_AllRights);
         conditional_panic(err != 0, "Elf loading failed!\n");
     }
+
+    /* create stack and heap */
+    as_define_region (dest_as, PROCESS_STACK_TOP - 1024*(1 << seL4_PageBits), 1024*(1 << seL4_PageBits), seL4_AllRights, REGION_STACK);
+    as_define_region (dest_as, 0x50000000, (1 << seL4_PageBits), seL4_AllRights, REGION_HEAP);
 
     return 0;
 }

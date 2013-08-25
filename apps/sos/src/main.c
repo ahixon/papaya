@@ -22,6 +22,8 @@
 #include "frametable.h"
 #include "addrspace.h"
 
+#include "thread.h"
+
 #include <autoconf.h>
 
 #define verbose 5
@@ -36,32 +38,18 @@
 #define TTY_EP_BADGE         (101)
 #define IPC_TIMER_BADGE      (102)
 
+#define PAGE_SIZE           (1 << seL4_PageBits)
+
 /* The linker will link this symbol to the start address  *
  * of an archive of attached applications.                */
 extern char _cpio_archive[];
 
 const seL4_BootInfo* _boot_info;
 
-
-struct {
-
-    seL4_Word tcb_addr;
-    seL4_TCB tcb_cap;
-
-    seL4_Word vroot_addr;
-    seL4_ARM_PageDirectory vroot;
-
-    seL4_Word ipc_buffer_addr;
-    seL4_CPtr ipc_buffer_cap;
-
-    cspace_t *croot;
-
-} tty_test_process;
-
-addrspace_t default_addrspace;
-
 seL4_CPtr _sos_ipc_ep_cap;
 seL4_CPtr _sos_interrupt_ep_cap;
+
+struct thread initial_process;
 
 struct serial* ser_device;
 
@@ -120,10 +108,10 @@ void handle_syscall(seL4_Word badge, int num_args) {
             break;
         }
 
-        struct as_region* reg = as_get_region_by_type (default_addrspace, REGION_HEAP);
+        struct as_region* reg = as_get_region_by_type (initial_process.as, REGION_HEAP);
         if (reg) {
             printf ("got heap region, trying to resize by 0x%x\n", seL4_GetMR(1));
-            reg = as_resize_region (default_addrspace, reg, seL4_GetMR (1));
+            reg = as_resize_region (initial_process.as, reg, seL4_GetMR (1));
         }
 
         reply = seL4_MessageInfo_new(0, 0, 0, 1);
@@ -160,7 +148,7 @@ void syscall_loop(seL4_CPtr ep) {
         case seL4_VMFault:
             if (!seL4_GetMR(2)) {
                 /* data fault; try to map in page */
-                if (as_map_page (default_addrspace, seL4_GetMR(1))) {
+                if (as_map_page (initial_process.as, seL4_GetMR(1))) {
                     /* restart calling thread now we have the page set */
                     seL4_Reply (message);
                     break;
@@ -259,9 +247,6 @@ static void print_bootinfo(const seL4_BootInfo* info) {
 
 void start_first_process(char* app_name, seL4_CPtr fault_ep) {
     int err;
-
-    seL4_Word stack_addr;
-    seL4_CPtr stack_cap;
     seL4_CPtr user_ep_cap;
 
     /* These required for setting up the TCB */
@@ -271,33 +256,12 @@ void start_first_process(char* app_name, seL4_CPtr fault_ep) {
     char* elf_base;
     unsigned long elf_size;
 
-    /* Create a VSpace */
-    tty_test_process.vroot_addr = ut_alloc(seL4_PageDirBits);
-    conditional_panic(!tty_test_process.vroot_addr, 
-                      "No memory for new Page Directory");
-    err = cspace_ut_retype_addr(tty_test_process.vroot_addr,
-                                seL4_ARM_PageDirectoryObject,
-                                seL4_PageDirBits,
-                                cur_cspace,
-                                &tty_test_process.vroot);
-    conditional_panic(err, "Failed to allocate page directory cap for client");
-
     /* Create a simple 1 level CSpace */
-    tty_test_process.croot = cspace_create(1);
-    assert(tty_test_process.croot != NULL);
-
-    /* Create an IPC buffer */
-    tty_test_process.ipc_buffer_addr = ut_alloc(seL4_PageBits);
-    conditional_panic(!tty_test_process.ipc_buffer_addr, "No memory for ipc buffer");
-    err =  cspace_ut_retype_addr(tty_test_process.ipc_buffer_addr,
-                                 seL4_ARM_SmallPageObject,
-                                 seL4_PageBits,
-                                 cur_cspace,
-                                 &tty_test_process.ipc_buffer_cap);
-    conditional_panic(err, "Unable to allocate page for IPC buffer");
+    initial_process.croot = cspace_create(1);
+    assert(initial_process.croot != NULL);
 
     /* Copy the fault endpoint to the user app to enable IPC */
-    user_ep_cap = cspace_mint_cap(tty_test_process.croot,
+    user_ep_cap = cspace_mint_cap(initial_process.croot,
                                   cur_cspace,
                                   fault_ep,
                                   seL4_AllRights, seL4_CapData_Badge_new(TTY_EP_BADGE)
@@ -307,22 +271,34 @@ void start_first_process(char* app_name, seL4_CPtr fault_ep) {
     assert(user_ep_cap == USER_EP_CAP);
 
     /* Create a new TCB object */
-    tty_test_process.tcb_addr = ut_alloc(seL4_TCBBits);
-    conditional_panic(!tty_test_process.tcb_addr, "No memory for new TCB");
-    err =  cspace_ut_retype_addr(tty_test_process.tcb_addr,
+    initial_process.tcb_addr = ut_alloc(seL4_TCBBits);
+    conditional_panic(!initial_process.tcb_addr, "No memory for new TCB");
+    err =  cspace_ut_retype_addr(initial_process.tcb_addr,
                                  seL4_TCBObject,
                                  seL4_TCBBits,
                                  cur_cspace,
-                                 &tty_test_process.tcb_cap);
+                                 &initial_process.tcb_cap);
     conditional_panic(err, "Failed to create TCB");
 
-    /* Configure the TCB */
-    err = seL4_TCB_Configure(tty_test_process.tcb_cap, user_ep_cap, TTY_PRIORITY,
-                             tty_test_process.croot->root_cnode, seL4_NilData,
-                             tty_test_process.vroot, seL4_NilData, PROCESS_IPC_BUFFER,
-                             tty_test_process.ipc_buffer_cap);
-    conditional_panic(err, "Unable to configure new TCB");
+    /* create address space for process */
+    initial_process.as = addrspace_create (0);
+    conditional_panic(!initial_process.as, "failed to create process address space");
 
+    /* Map in IPC first off (since we need it for TCB configuration) */
+    as_define_region (initial_process.as, PROCESS_IPC_BUFFER, PAGE_SIZE, seL4_AllRights, REGION_IPC);
+    if (!as_map_page (initial_process.as, PROCESS_IPC_BUFFER)) {
+        panic ("could not map IPC buffer");
+    }
+
+    seL4_CPtr ipc_cap = as_get_page_cap (initial_process.as, PROCESS_IPC_BUFFER);
+    conditional_panic (!ipc_cap, "could not fetch IPC cap back just after map");
+
+    /* Configure the TCB */
+    err = seL4_TCB_Configure(initial_process.tcb_cap, user_ep_cap, TTY_PRIORITY,
+                             initial_process.croot->root_cnode, seL4_NilData,
+                             initial_process.as->pagedir_cap, seL4_NilData, PROCESS_IPC_BUFFER,
+                             ipc_cap);
+    conditional_panic(err, "Unable to configure new TCB");
 
     /* parse the dite image */
     dprintf(1, "\nStarting \"%s\"...\n", app_name);
@@ -330,46 +306,14 @@ void start_first_process(char* app_name, seL4_CPtr fault_ep) {
     conditional_panic(!elf_base, "Unable to locate cpio header");
 
     /* load the elf image */
-    err = elf_load(tty_test_process.vroot, elf_base);
+    err = elf_load(initial_process.as, elf_base);
     conditional_panic(err, "Failed to load elf image");
-
-
-    /* Create a stack frame */
-    stack_addr = ut_alloc(seL4_PageBits);
-    conditional_panic(!stack_addr, "No memory for stack");
-    err =  cspace_ut_retype_addr(stack_addr,
-                                 seL4_ARM_SmallPageObject,
-                                 seL4_PageBits,
-                                 cur_cspace,
-                                 &stack_cap);
-    conditional_panic(err, "Unable to allocate page for stack");
-
-    /* setup frametable */
-    printf ("initialising frametable\n");
-    frametable_init();
-
-    /* create address space for process */
-    printf ("creating address space\n");
-    default_addrspace = addrspace_create (tty_test_process.vroot);
-    printf ("address space = %p\n", default_addrspace);
-
-    /* Map in the stack frame for the user app */
-
-    printf ("defining stack and heap regions..\n");
-    as_define_region (default_addrspace, PROCESS_STACK_TOP - 1024*(1 << seL4_PageBits), 1024*(1 << seL4_PageBits), seL4_AllRights, REGION_STACK);
-    as_define_region (default_addrspace, 0x50000000, (1 << seL4_PageBits), seL4_AllRights, REGION_HEAP);
-
-    /* Map in the IPC buffer for the thread */
-    err = map_page(tty_test_process.ipc_buffer_cap, tty_test_process.vroot,
-                   PROCESS_IPC_BUFFER,
-                   seL4_AllRights, seL4_ARM_Default_VMAttributes);
-    conditional_panic(err, "Unable to map IPC buffer for user app");
 
     /* Start the new process */
     memset(&context, 0, sizeof(context));
     context.pc = elf_getEntryPoint(elf_base);
     context.sp = PROCESS_STACK_TOP;
-    seL4_TCB_WriteRegisters(tty_test_process.tcb_cap, 1, 0, 2, &context);
+    seL4_TCB_WriteRegisters(initial_process.tcb_cap, 1, 0, 2, &context);
 }
 
 static void _sos_ipc_init(seL4_CPtr* ipc_ep, seL4_CPtr* async_ep){
@@ -437,8 +381,12 @@ static void _sos_init(seL4_CPtr* ipc_ep, seL4_CPtr* async_ep){
     err = dma_init(dma_addr, DMA_SIZE_BITS);
     conditional_panic(err, "Failed to intiialise DMA memory\n");
 
+    /* Initialise frametable */
+    frametable_init();
+
     /* Initialiase other system compenents here */
 
+    /* Finally, setup IPC */
     _sos_ipc_init(ipc_ep, async_ep);
 }
 
