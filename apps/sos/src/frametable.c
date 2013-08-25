@@ -20,6 +20,7 @@
 
 struct frameinfo* frametable;
 seL4_Word low, high;        /* FIXME: really should be public globals rather than re-declaring what ut_manages has (_low, _high) */
+frameidx_t high_idx;
 
 static void
 _frame_alloc_internal (vaddr_t prev) {
@@ -62,7 +63,9 @@ frametable_init (void)
     vaddr_t current_vaddr = (vaddr_t)frametable;
     current_vaddr -= FRAME_SIZE;
 
-    vaddr_t final_vaddr = (vaddr_t)(&frametable[IDX_PHYS(high)]);
+    high_idx = IDX_PHYS(high);
+
+    vaddr_t final_vaddr = (vaddr_t)(&frametable[high_idx]);
     while (current_vaddr <= final_vaddr) {
         _frame_alloc_internal (current_vaddr);
         current_vaddr += FRAME_SIZE;
@@ -73,7 +76,7 @@ frametable_init (void)
     //printf ("physical\tvirtual\t\tIDX_PHYS\tIDX_VIRT\tcapability\n");
 }
 
-vaddr_t
+frameidx_t
 frame_alloc (void)
 {
     seL4_Word untyped_addr;
@@ -84,6 +87,7 @@ frame_alloc (void)
     untyped_addr = ut_alloc(seL4_PageBits);
     if (!untyped_addr) {
         /* oops, out of memory! */
+        printf ("frame_alloc: out of memory\n");
         return 0;
     }
 
@@ -95,46 +99,44 @@ frame_alloc (void)
                                  &frame_cap);
     if (err != seL4_NoError) {
         ut_free (untyped_addr, seL4_PageBits);
-        //printf ("could not retype: %d\n", err);
+        printf ("frame_alloc: could not retype: %s\n", seL4_Error_Message(err));
         return 0;
     }
 
     // ok now map from vaddr into SOS
-    seL4_Word index = IDX_PHYS(untyped_addr);
-    vaddr_t vaddr = FRAMEWINDOW_VSTART + (index << (seL4_PageBits));
+    frameidx_t index = IDX_PHYS(untyped_addr);
+    /*vaddr_t vaddr = FRAMEWINDOW_VSTART + (index << (seL4_PageBits));
     err = map_page(frame_cap, seL4_CapInitThreadPD,
                    vaddr, seL4_AllRights, seL4_ARM_Default_VMAttributes);
 
     if (err != seL4_NoError) {
         ut_free (untyped_addr, seL4_PageBits);
-        //printf ("could not map page: %d\n", err);
+        printf ("could not map page: %d\n", err);
         return 0;
-    }
+    }*/
 
     // and record the new frame
     struct frameinfo* frame = &frametable[index];
 
     frame->flags |= FRAME_MAPPED;
+    printf ("frame_alloc: installed framecap 0x%x\n", frame_cap);
     frame->capability = frame_cap;
     frame->paddr = untyped_addr;
 
-    //printf ("0x%x\t0x%x\t%d\t\t%d\t\t0x%x\n", untyped_addr, vaddr, IDX_PHYS(untyped_addr), IDX_VIRT(vaddr), frame_cap);
-    return vaddr;
+    printf ("frame_alloc: allocated physical frame at 0x%x, returning index 0x%x\n", untyped_addr, index);
+    return index;
 }
 
-/* FIXME: if we have the input be the physical address, we don't even need to
-   store it in the struct at all?? */
-
 void
-frame_free (vaddr_t vaddr) {
-    seL4_Word idx = IDX_VIRT(vaddr);
-    if (idx > high) {
+frame_free (frameidx_t idx) {
+    if (idx > high_idx) {
         return;
     }
 
     struct frameinfo* fi = &frametable[idx];
 
     if (!(fi->flags & FRAME_MAPPED)) {
+        printf ("frame_free: frame already mapped!\n");
         /* don't unmap an unmapped frame */
         return;
     }
@@ -142,10 +144,12 @@ frame_free (vaddr_t vaddr) {
     /* first, unmap the frame on our window */
     if (seL4_ARM_Page_Unmap(fi->capability)) {
         /* FIXME: what to do if we couldn't unmap??? */
+        printf ("frame_free: unmap failed\n");
         return;
     }
 
     if (cspace_delete_cap (cur_cspace, fi->capability)) {
+        printf ("frame_free: could not delete cap\n");
         return;
     }
 
@@ -156,14 +160,16 @@ frame_free (vaddr_t vaddr) {
 /* shouldn't really be used except for debugging */
 void
 frametable_freeall (void) {
-    int numentries = IDX_PHYS(high);
-    for (int i = 0; i < numentries; i++) {
-        //printf ("freeing frame idx #0x%x\n", i);
-        vaddr_t vaddr = i << seL4_PageBits;
-        vaddr += FRAMEWINDOW_VSTART;
+    for (int i = 0; i < high_idx; i++) {
+        frame_free (i);
+    }
+}
 
-        frame_free (vaddr);
+seL4_Word
+frametable_fetch_cap (frameidx_t frame) {
+    if (frame > high_idx) {
+        return 0;
     }
 
-    //printf ("all done!\n");
+    return frametable[frame].capability;
 }

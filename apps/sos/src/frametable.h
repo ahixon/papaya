@@ -12,6 +12,7 @@
 
 typedef seL4_Word paddr_t;
 typedef seL4_Word vaddr_t;
+typedef seL4_Word frameidx_t;
 
 struct frameinfo {
     paddr_t paddr;
@@ -25,11 +26,14 @@ frametable_init (void);
 void
 frametable_freeall (void);
 
-vaddr_t
+frameidx_t
 frame_alloc (void);
 
 void
-frame_free (vaddr_t vaddr);
+frame_free (frameidx_t idx);
+
+seL4_Word
+frametable_fetch_cap (frameidx_t frame);
 
 void ft_test1(void);
 void ft_test2(void);
