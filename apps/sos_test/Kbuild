@@ -1,0 +1,4 @@
+components-$(CONFIG_APP_SOS_TEST) += sos_test
+
+sos_test: $(libc) libsel4 libsos
+

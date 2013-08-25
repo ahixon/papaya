@@ -1,0 +1,7 @@
+config APP_SOS_TEST
+    bool "SOS tests"
+    depends on LIB_SEL4 && LIB_SEL4_C && LIB_SOS
+    default y
+    select HAVE_SEL4_APPS
+    help
+        Several userland tests for SOS.
