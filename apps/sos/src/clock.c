@@ -253,7 +253,7 @@ handle_timer(void)
 
     // check OC3 for weird 100ms tick
     if (status & SR_OF3) {
-        printf ("** 100ms tick, timestamp = %lld\n", time_stamp());
+        //printf ("** 100ms tick, timestamp = %lld\n", time_stamp());
         regs->ocr[2] = regs->ocr[2] + TICK_100MS;
     }
 }
