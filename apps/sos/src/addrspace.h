@@ -35,7 +35,7 @@ struct as_region {
 addrspace_t
 addrspace_create (seL4_ARM_PageTable pd);
 
-int
+frameidx_t
 as_map_page (addrspace_t as, vaddr_t vaddr);
 
 struct as_region*
@@ -49,5 +49,8 @@ as_get_region_by_type (addrspace_t as, as_region_type type);
 
 struct as_region*
 as_get_region_by_addr (addrspace_t as, vaddr_t start);
+
+seL4_CPtr
+as_get_page_cap (addrspace_t as, vaddr_t vaddr);
 
 #endif

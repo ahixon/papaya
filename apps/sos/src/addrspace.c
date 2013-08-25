@@ -18,6 +18,8 @@
 #include <sys/debug.h>
 #include <sys/panic.h>
 
+#include <assert.h>
+
 #define PAGE_SIZE (1 << seL4_PageBits)
 #define PAGE_MASK (~(PAGE_SIZE - 1))
 
@@ -30,7 +32,6 @@ addrspace_create (seL4_ARM_PageTable pd)
 		return NULL;
 	}
 
-	printf ("initialising pagetable\n");
 	as->pagetable = pagetable_init();
 	if (!as->pagetable) {
 		free (as);
@@ -39,12 +40,12 @@ addrspace_create (seL4_ARM_PageTable pd)
 
 	as->regions = NULL;
 
-	printf ("setting pagedir cap\n");
 	if (pd != 0) {
+		printf ("addrspace_create: using provided pagedir cap 0x%x\n", pd);
 		as->pagedir_cap = pd;
 	} else {
-		printf ("!!!! creating new pagedir DO YOU WANT THIS?\n");
 		/* create a new page directory */
+		printf ("addrspace_create: creating new pagedir\n");
 		int err;
 
 		as->pagedir_addr = ut_alloc(seL4_PageDirBits);
@@ -79,7 +80,7 @@ addrspace_destroy (addrspace_t as) {
 	/* FIXME: free page directory - doesn't matter if root since we never destroy it! */
 }
 
-int
+frameidx_t
 as_map_page (addrspace_t as, vaddr_t vaddr) {
 	/* check if vaddr in a region */
 
@@ -89,7 +90,7 @@ as_map_page (addrspace_t as, vaddr_t vaddr) {
 	struct as_region* reg = as_get_region_by_addr (as, vaddr);
 	if (!reg) {
 		printf ("as_map_page: vaddr 0x%x does not belong to any region\n", vaddr);
-		return false;
+		return 0;
 	}
 
 	return page_map (as, reg, vaddr);
@@ -101,7 +102,7 @@ int
 as_region_overlaps (addrspace_t as, struct as_region* region_check) {
      struct as_region* region = as->regions;
      while (region) {
-     	/* don't check ourselves */
+     	/* don't check ourselves - FIXME: is this correct? */
      	if (region != region_check) {
 			vaddr_t check_base = region_check->vbase;
 			vaddr_t check_limit = check_base + region_check->size;
@@ -122,8 +123,6 @@ as_region_overlaps (addrspace_t as, struct as_region* region_check) {
 
 struct as_region*
 as_get_region_by_addr (addrspace_t as, vaddr_t vaddr) {
-	printf ("looking up region with vaddr 0x%x\n", vaddr);
-
 	struct as_region* region = as->regions;
 
 	/* find a region that contains the fault address */
@@ -207,4 +206,16 @@ as_resize_region (addrspace_t as, struct as_region* reg, size_t amount) {
 	}
 
 	return reg;
+}
+
+seL4_CPtr
+as_get_page_cap (addrspace_t as, vaddr_t vaddr) {
+	assert (as != NULL);
+
+	struct pt_entry* page = page_fetch (as->pagetable, vaddr);
+	if (!page) {
+		return 0;
+	}
+
+	return frametable_fetch_cap (page->frame_idx);
 }
