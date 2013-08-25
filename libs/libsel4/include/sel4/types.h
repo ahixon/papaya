@@ -91,6 +91,26 @@ typedef seL4_CPtr seL4_Untyped;
 
 #define seL4_NilData seL4_CapData_Badge_new(0)
 
+/* XXX: this is for debug only! */
+static char* _seL4_messages[11] = {
+    "No Error",
+    "Invalid Argument",
+    "Invalid Capability",
+    "Illegal Operation",
+    "Range Error",
+    "Alignment Error",
+    "Failed Lookup",
+    "Truncated Message",
+    "Delete First",
+    "Revoke First",
+    "Not Enough Memory"
+};
+
+static inline char*
+seL4_Error_Message (seL4_Error err) {
+    return _seL4_messages[err];
+}
+
 #include <sel4/arch/constants.h>
 
 #endif
