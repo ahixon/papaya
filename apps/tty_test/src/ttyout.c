@@ -17,6 +17,7 @@
 #include "ttyout.h"
 
 #include <sel4/sel4.h>
+#include <syscalls.h>
 
 void ttyout_init(void) {
     /* Run a quick test */

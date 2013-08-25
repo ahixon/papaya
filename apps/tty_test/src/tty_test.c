@@ -14,7 +14,7 @@
 #include <stdlib.h>
 
 #include <sel4/sel4.h>
-
+#include <syscalls.h>
 
 #include "ttyout.h"
 

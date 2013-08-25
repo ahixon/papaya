@@ -10,6 +10,7 @@
 #include <elf/elf.h>
 #include <serial/serial.h>
 #include <clock/clock.h>
+#include <syscalls.h>
 
 #include "network.h"
 #include "elf.h"
@@ -59,13 +60,6 @@ struct {
 
 addrspace_t default_addrspace;
 
-
-/*
- * A dummy starting syscall
- */
-#define SOS_SYSCALL0            0
-#define SOS_SYSCALL_NETWRITE    1
-
 seL4_CPtr _sos_ipc_ep_cap;
 seL4_CPtr _sos_interrupt_ep_cap;
 
@@ -91,19 +85,7 @@ void handle_syscall(seL4_Word badge, int num_args) {
 
     /* Process system call */
     switch (syscall_number) {
-    case SOS_SYSCALL0:
-        dprintf(0, "syscall: thread made syscall 0!\n");
-
-        reply = seL4_MessageInfo_new(0, 0, 0, 1);
-        seL4_SetMR(0, 0);
-        seL4_Send(reply_cap, reply);
-
-        /* Free the saved reply cap */
-        cspace_free_slot(cur_cspace, reply_cap);
-
-        break;
-
-    case SOS_SYSCALL_NETWRITE:
+    case SYSCALL_NETWRITE:
         if (num_args < 0) {
             break;
         }
