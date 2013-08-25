@@ -115,6 +115,26 @@ void handle_syscall(seL4_Word badge, int num_args) {
 
         break;
 
+    case SYSCALL_SBRK:
+        if (num_args < 0) {
+            break;
+        }
+
+        struct as_region* reg = as_get_region_by_type (default_addrspace, REGION_HEAP);
+        if (reg) {
+            printf ("got heap region, trying to resize by 0x%x\n", seL4_GetMR(1));
+            reg = as_resize_region (default_addrspace, reg, seL4_GetMR (1));
+        }
+
+        reply = seL4_MessageInfo_new(0, 0, 0, 1);
+        printf ("syscall returning vbase = 0x%x\n", reg ? reg->vbase : 0);
+
+        seL4_SetMR(0, reg ? reg->vbase : 0);
+        seL4_Send(reply_cap, reply);
+
+        cspace_free_slot(cur_cspace, reply_cap);
+        break;
+
     default:
         printf("Unknown syscall %d\n", syscall_number);
         /* we don't want to reply to an unknown syscall */
@@ -334,10 +354,10 @@ void start_first_process(char* app_name, seL4_CPtr fault_ep) {
     printf ("address space = %p\n", default_addrspace);
 
     /* Map in the stack frame for the user app */
-    err = map_page(stack_cap, tty_test_process.vroot,
-                   PROCESS_STACK_TOP - (1 << seL4_PageBits),
-                   seL4_AllRights, seL4_ARM_Default_VMAttributes);
-    conditional_panic(err, "Unable to map stack IPC buffer for user app");
+
+    printf ("defining stack and heap regions..\n");
+    as_define_region (default_addrspace, PROCESS_STACK_TOP - 1024*(1 << seL4_PageBits), 1024*(1 << seL4_PageBits), seL4_AllRights, REGION_STACK);
+    as_define_region (default_addrspace, 0x50000000, (1 << seL4_PageBits), seL4_AllRights, REGION_HEAP);
 
     /* Map in the IPC buffer for the thread */
     err = map_page(tty_test_process.ipc_buffer_cap, tty_test_process.vroot,

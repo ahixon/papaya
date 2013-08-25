@@ -19,4 +19,6 @@ typedef union header Header;
 Header* morecore(unsigned int new_units);
 void free(void* p);
 
+void *sbrk(intptr_t increment);
+
 #endif /* _LIBC_K_R_MALLOC_H_ */
