@@ -61,9 +61,9 @@ pagetable_init (void) {
 }
 
 static seL4_Word
-_pagetable_map (addrspace_t as, seL4_ARM_VMAttributes attributes, vaddr_t vaddr) {
+_pagetable_map (addrspace_t as, seL4_ARM_VMAttributes attributes, vaddr_t vaddr, seL4_Word* pt_ret_addr) {
     int err;
-    seL4_Word pt_addr, pt_cap;
+    seL4_Word pt_cap, pt_addr;
 
     pt_addr = ut_alloc(seL4_PageTableBits);
     if (pt_addr == 0){
@@ -100,6 +100,7 @@ _pagetable_map (addrspace_t as, seL4_ARM_VMAttributes attributes, vaddr_t vaddr)
         }
     }
 
+    *pt_ret_addr = pt_addr;
     return pt_cap;
 }
 
@@ -143,7 +144,7 @@ page_map (addrspace_t as, struct as_region* region, vaddr_t vaddr) {
     int l1 = L1_IDX (vaddr);
     struct pt_table* table = pt->entries[l1];
     if (!table) {
-        seL4_Word pt_cap;
+        seL4_Word pt_cap, pt_addr;
 
         //printf ("page_map: mallocing new PT in page dir at idx %d\n", l1);
         table = malloc (sizeof (struct pt_table));
@@ -155,14 +156,15 @@ page_map (addrspace_t as, struct as_region* region, vaddr_t vaddr) {
         memset (table, 0, sizeof (struct pt_table));
 
         /* now create the capability */
-        pt_cap = _pagetable_map (as, region->attributes, vaddr);
+        pt_cap = _pagetable_map (as, region->attributes, vaddr, &pt_addr);
         if (!pt_cap) {
             free (table);
             return 0;
         }
 
-        pt->table_caps[l1] = pt_cap;
-        pt->entries   [l1] = table;
+        pt->table_caps [l1] = pt_cap;
+        pt->entries    [l1] = table;
+        pt->table_addrs[l1] = pt_addr;  /* so we can free back to ut allocator */
     }
 
     int l2 = L2_IDX (vaddr);
@@ -230,6 +232,7 @@ pagetable_free (pagetable_t pt) {
         if (table) {
             /* walk level 2 */
             /* and revoke initial cap - will destroy our copy but not the original */
+            /* FIXME: finish this! */
         }
 
         l1++;

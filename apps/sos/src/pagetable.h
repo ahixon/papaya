@@ -34,8 +34,9 @@ struct pt_directory {
     struct pt_table* entries[PAGETABLE_L1_SIZE];
 
     /* could have one CPtr inside each pt_table, BUT then doesn't fit neatly into
-     * frames. however, tradeoff might be caching access? BENCHMARK */
-    seL4_CPtr table_caps[PAGETABLE_L1_SIZE];
+     * frames. however, tradeoff might be caching access? XXX: BENCHMARK */
+    seL4_CPtr table_caps [PAGETABLE_L1_SIZE];
+    seL4_Word table_addrs[PAGETABLE_L1_SIZE];
 };
 
 pagetable_t
