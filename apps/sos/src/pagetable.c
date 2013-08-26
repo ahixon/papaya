@@ -84,7 +84,7 @@ _pagetable_map (addrspace_t as, seL4_ARM_VMAttributes attributes, vaddr_t vaddr)
     }
 
     /* Tell seL4 to map the PT in for us */
-    printf ("_pagetable_map: mapping 0x%x ptcap to vaddr 0x%x (0x%x pagedir)\n", pt_cap, vaddr, as->pagedir_cap);
+    //printf ("_pagetable_map: mapping 0x%x ptcap to vaddr 0x%x (0x%x pagedir)\n", pt_cap, vaddr, as->pagedir_cap);
     err = seL4_ARM_PageTable_Map(pt_cap, 
                                  as->pagedir_cap, 
                                  vaddr, 
@@ -118,8 +118,8 @@ _page_map (vaddr_t vaddr, frameidx_t frame, struct as_region* region, addrspace_
         return false;
     }
 
-    printf ("_page_map: mapping cap (originally 0x%x, copy is 0x%x) to vaddr 0x%x\n", frame_cap, dest_cap, vaddr);
-    printf ("           perms = %d, attrib = %d, pagedir cap = 0x%x\n", region->permissions, region->attributes, as->pagedir_cap);
+    //printf ("_page_map: mapping cap (originally 0x%x, copy is 0x%x) to vaddr 0x%x\n", frame_cap, dest_cap, vaddr);
+    //printf ("           perms = %d, attrib = %d, pagedir cap = 0x%x\n", region->permissions, region->attributes, as->pagedir_cap);
     err = seL4_ARM_Page_Map(dest_cap, as->pagedir_cap, vaddr, region->permissions, region->attributes);
 
     if (err) {
@@ -145,7 +145,7 @@ page_map (addrspace_t as, struct as_region* region, vaddr_t vaddr) {
     if (!table) {
         seL4_Word pt_cap;
 
-        printf ("page_map: mallocing new PT in page dir at idx %d\n", l1);
+        //printf ("page_map: mallocing new PT in page dir at idx %d\n", l1);
         table = malloc (sizeof (struct pt_table));
         if (!table) {
             printf ("page_map: malloc failed\n");
@@ -167,10 +167,6 @@ page_map (addrspace_t as, struct as_region* region, vaddr_t vaddr) {
 
     int l2 = L2_IDX (vaddr);
     struct pt_entry* entry = &(table->entries[l2]);
-    if (!entry) {
-        printf ("page_map: mallocing new PTE\n");
-        memset (entry, 0, sizeof (struct pt_entry));
-    }
 
     if (entry->flags & PAGE_ALLOCATED) {
         printf ("page_map: page at vaddr 0x%x already allocated!\n", vaddr);
@@ -184,7 +180,7 @@ page_map (addrspace_t as, struct as_region* region, vaddr_t vaddr) {
         return 0;
     }
 
-    printf ("page_map: mapping @ vaddr 0x%x and frame idx 0x%x (L1 idx = 0x%x, L2 idx = 0x%x)\n", vaddr, frame, l1, l2);
+    //printf ("page_map: mapping @ vaddr 0x%x and frame idx 0x%x (L1 idx = 0x%x, L2 idx = 0x%x)\n", vaddr, frame, l1, l2);
     if (!_page_map (vaddr, frame, region, as)) {
         frame_free (frame);
         return 0;

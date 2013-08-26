@@ -58,7 +58,6 @@ frametable_init (void)
 
     /* try to allocate a sequence of contiguous frames in the vspace */
     frametable = (struct frameinfo*)FRAMETABLE_VSTART;
-    printf ("address of frametable = %p\n", frametable);
 
     vaddr_t current_vaddr = (vaddr_t)frametable;
     current_vaddr -= FRAME_SIZE;
@@ -71,7 +70,7 @@ frametable_init (void)
         current_vaddr += FRAME_SIZE;
     }
 
-    printf ("\nlow\t = 0x%x (IDX_PHYS = %d, vaddr = %p)\n", low, IDX_PHYS(low), &frametable[IDX_PHYS(low)]);
+    printf ("low\t = 0x%x (IDX_PHYS = %d, vaddr = %p)\n", low, IDX_PHYS(low), &frametable[IDX_PHYS(low)]);
     printf ("high\t = 0x%x (IDX_PHYS = %d, vaddr = %p)\n\n", high, IDX_PHYS(high), &frametable[IDX_PHYS(high)]);
     //printf ("physical\tvirtual\t\tIDX_PHYS\tIDX_VIRT\tcapability\n");
 }

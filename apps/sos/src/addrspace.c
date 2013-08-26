@@ -85,7 +85,7 @@ as_map_page (addrspace_t as, vaddr_t vaddr) {
 	/* check if vaddr in a region */
 
 	vaddr &= ~(PAGE_SIZE - 1);
-	printf ("as_map_page: aligned vaddr = 0x%x\n", vaddr);
+	//printf ("as_map_page: aligned vaddr = 0x%x\n", vaddr);
 
 	struct as_region* reg = as_get_region_by_addr (as, vaddr);
 	if (!reg) {
@@ -158,7 +158,7 @@ as_get_region_by_type (addrspace_t as, as_region_type type) {
 
 struct as_region*
 as_define_region (addrspace_t as, vaddr_t vbase, size_t size, seL4_CapRights permissions, as_region_type type) {
-	printf ("as_define_region: before alignment: vbase = 0x%x, size = 0x%x\n", vbase, size);
+	//printf ("as_define_region: before alignment: vbase = 0x%x, size = 0x%x\n", vbase, size);
 
 	/* make sure we're page aligned */
 	size += vbase & ~((vaddr_t)PAGE_MASK);
@@ -166,7 +166,7 @@ as_define_region (addrspace_t as, vaddr_t vbase, size_t size, seL4_CapRights per
 
 	size = (size + PAGE_SIZE - 1) & PAGE_MASK;
 
-	printf ("as_define_region: after alignment:  vbase = 0x%x, size = 0x%x\n", vbase, size);
+	//printf ("as_define_region: after alignment:  vbase = 0x%x, size = 0x%x\n", vbase, size);
 
 	if (vbase == 0) {
 		printf ("as_create_region: mapping 0th page is invalid\n");
