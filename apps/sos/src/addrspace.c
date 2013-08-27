@@ -23,77 +23,79 @@
 #define PAGE_SIZE (1 << seL4_PageBits)
 #define PAGE_MASK (~(PAGE_SIZE - 1))
 
+#define DEFAULT_HEAP_SIZE   2       /* number of pages */
+
 addrspace_t
 addrspace_create (seL4_ARM_PageTable pd)
 {
-	addrspace_t as = malloc (sizeof (struct addrspace));
+    addrspace_t as = malloc (sizeof (struct addrspace));
 
-	if (!as) {
-		return NULL;
-	}
+    if (!as) {
+        return NULL;
+    }
 
-	as->pagetable = pagetable_init();
-	if (!as->pagetable) {
-		free (as);
-		return NULL;
-	}
+    as->pagetable = pagetable_init();
+    if (!as->pagetable) {
+        free (as);
+        return NULL;
+    }
 
-	as->regions = NULL;
+    as->regions = NULL;
 
-	if (pd != 0) {
-		printf ("addrspace_create: using provided pagedir cap 0x%x\n", pd);
-		as->pagedir_cap = pd;
-	} else {
-		/* create a new page directory */
-		printf ("addrspace_create: creating new pagedir\n");
-		int err;
+    if (pd != 0) {
+        printf ("addrspace_create: using provided pagedir cap 0x%x\n", pd);
+        as->pagedir_cap = pd;
+    } else {
+        /* create a new page directory */
+        printf ("addrspace_create: creating new pagedir\n");
+        int err;
 
-		as->pagedir_addr = ut_alloc(seL4_PageDirBits);
-		if (!as->pagedir_addr) {
-			pagetable_free (as->pagetable);
-			free (as);
-			return NULL;
-		}
-	    
-	    err = cspace_ut_retype_addr(as->pagedir_addr,
-	                                seL4_ARM_PageDirectoryObject,
-	                                seL4_PageDirBits,
-	                                cur_cspace,
-	                                &as->pagedir_cap);
-	    if (err) {
-	    	ut_free (as->pagedir_addr, seL4_PageDirBits);
-	    	pagetable_free (as->pagetable);
-			free (as);
-	    	return NULL;
-	    }
-	}
+        as->pagedir_addr = ut_alloc(seL4_PageDirBits);
+        if (!as->pagedir_addr) {
+            pagetable_free (as->pagetable);
+            free (as);
+            return NULL;
+        }
+        
+        err = cspace_ut_retype_addr(as->pagedir_addr,
+                                    seL4_ARM_PageDirectoryObject,
+                                    seL4_PageDirBits,
+                                    cur_cspace,
+                                    &as->pagedir_cap);
+        if (err) {
+            ut_free (as->pagedir_addr, seL4_PageDirBits);
+            pagetable_free (as->pagetable);
+            free (as);
+            return NULL;
+        }
+    }
 
-	return as;
+    return as;
 }
 
 void
 addrspace_destroy (addrspace_t as) {
-	pagetable_free (as->pagetable);
-	as->pagetable = NULL;
+    pagetable_free (as->pagetable);
+    as->pagetable = NULL;
 
-	/* FIXME: free regions list */
-	/* FIXME: free page directory - doesn't matter if root since we never destroy it! */
+    /* FIXME: free regions list */
+    /* FIXME: free page directory - doesn't matter if root since we never destroy it! */
 }
 
 frameidx_t
 as_map_page (addrspace_t as, vaddr_t vaddr) {
-	/* check if vaddr in a region */
+    /* check if vaddr in a region */
 
-	vaddr &= ~(PAGE_SIZE - 1);
-	//printf ("as_map_page: aligned vaddr = 0x%x\n", vaddr);
+    vaddr &= ~(PAGE_SIZE - 1);
+    //printf ("as_map_page: aligned vaddr = 0x%x\n", vaddr);
 
-	struct as_region* reg = as_get_region_by_addr (as, vaddr);
-	if (!reg) {
-		printf ("as_map_page: vaddr 0x%x does not belong to any region\n", vaddr);
-		return 0;
-	}
+    struct as_region* reg = as_get_region_by_addr (as, vaddr);
+    if (!reg) {
+        printf ("as_map_page: vaddr 0x%x does not belong to any region\n", vaddr);
+        return 0;
+    }
 
-	return page_map (as, reg, vaddr);
+    return page_map (as, reg, vaddr);
 }
 
 /* Region handling */
@@ -102,20 +104,20 @@ int
 as_region_overlaps (addrspace_t as, struct as_region* region_check) {
      struct as_region* region = as->regions;
      while (region) {
-     	/* don't check ourselves - FIXME: is this correct? */
-     	if (region != region_check) {
-			vaddr_t check_base = region_check->vbase;
-			vaddr_t check_limit = check_base + region_check->size;
+        /* don't check ourselves - FIXME: is this correct? */
+        if (region != region_check) {
+            vaddr_t check_base = region_check->vbase;
+            vaddr_t check_limit = check_base + region_check->size;
 
-			vaddr_t reg_base = region->vbase;
-			vaddr_t reg_limit = reg_base + region->size;
+            vaddr_t reg_base = region->vbase;
+            vaddr_t reg_limit = reg_base + region->size;
 
-			if (check_base < reg_limit && check_limit > reg_base) {
-				return true;
-			}
-		}
+            if (check_base < reg_limit && check_limit > reg_base) {
+                return true;
+            }
+        }
 
-		region = region->next;
+        region = region->next;
      }
  
      return false;
@@ -123,99 +125,227 @@ as_region_overlaps (addrspace_t as, struct as_region* region_check) {
 
 struct as_region*
 as_get_region_by_addr (addrspace_t as, vaddr_t vaddr) {
-	struct as_region* region = as->regions;
+    struct as_region* region = as->regions;
 
-	/* find a region that contains the fault address */
-	while (region != NULL) {
-		if (vaddr >= region->vbase && vaddr <= (region->vbase + region->size)) {
-			break;
-		}
+    /* find a region that contains the fault address */
+    while (region != NULL) {
+        if (vaddr >= region->vbase && vaddr <= (region->vbase + region->size)) {
+            break;
+        }
 
-		region = region->next;
-	}
+        region = region->next;
+    }
 
-	return region;
+    return region;
 }
 
 void 
 as_region_insert (addrspace_t as, struct as_region* reg) {
-	struct as_region* last = as->regions;
-     while (last != NULL && last->next != NULL) {
-         last = last->next;
-     }
- 
-     if (last != NULL) {
-         last->next = reg;
-     } else {
-         as->regions = reg;
-     }
+    struct as_region *prev, *cur;
+    cur = as->regions;
+    prev = NULL;
+
+    if (!cur) {
+        as->regions = reg;
+    } else {
+        while (cur) {
+            if (cur->vbase > reg->vbase) {
+                break;
+            }
+
+            prev = cur;
+            cur = cur->next;
+        }
+
+        reg->next = cur;
+
+        if (prev) {
+            prev->next = reg;
+        } else {
+            as->regions = reg;
+        }
+    }
 }
 
 struct as_region*
 as_get_region_by_type (addrspace_t as, as_region_type type) {
-	return as->special_regions[type];
+    return as->special_regions[type];
 }
 
 struct as_region*
 as_define_region (addrspace_t as, vaddr_t vbase, size_t size, seL4_CapRights permissions, as_region_type type) {
-	//printf ("as_define_region: before alignment: vbase = 0x%x, size = 0x%x\n", vbase, size);
+    printf ("as_define_region: before alignment: vbase = 0x%x, size = 0x%x\n", vbase, size);
 
-	/* make sure we're page aligned */
-	size += vbase & ~((vaddr_t)PAGE_MASK);
-	vbase &= PAGE_MASK;
+    /* make sure we're page aligned */
+    size += vbase & ~((vaddr_t)PAGE_MASK);
+    vbase &= PAGE_MASK;
 
-	size = (size + PAGE_SIZE - 1) & PAGE_MASK;
+    size = (size + PAGE_SIZE - 1) & PAGE_MASK;
 
-	//printf ("as_define_region: after alignment:  vbase = 0x%x, size = 0x%x\n", vbase, size);
+    printf ("as_define_region: after alignment:  vbase = 0x%x, size = 0x%x\n", vbase, size);
 
-	if (vbase == 0) {
-		printf ("as_create_region: mapping 0th page is invalid\n");
-		return NULL;
-	}
+    if (vbase == 0) {
+        printf ("as_create_region: mapping 0th page is invalid\n");
+        return NULL;
+    }
 
-	struct as_region* reg = malloc (sizeof (struct as_region));
-	if (!reg) {
-		return NULL;
-	}
+    struct as_region* reg = malloc (sizeof (struct as_region));
+    if (!reg) {
+        printf ("as_create_region: no more space to malloc\n");
+        return NULL;
+    }
 
-	reg->vbase = vbase;
-	reg->size = size;
-	reg->permissions = permissions;
-	//reg->type = type;
+    reg->vbase = vbase;
+    reg->size = size;
+    reg->permissions = permissions;
+    //reg->type = type;
 
-	if (as_region_overlaps (as, reg)) {
-		free (reg);
-		return NULL;
-	}
+    if (as_region_overlaps (as, reg)) {
+        printf ("as_create_region: region overlaps\n");
+        free (reg);
+        return NULL;
+    }
 
-	as_region_insert (as, reg);
+    as_region_insert (as, reg);
 
-	if (type != REGION_GENERIC) {
-		as->special_regions[type] = reg;
-	}
+    if (type != REGION_GENERIC) {
+        printf ("as_create_region: inserting into special regions\n");
+        as->special_regions[type] = reg;
+    }
 
-	return reg;
+    return reg;
 }
 
 struct as_region*
 as_resize_region (addrspace_t as, struct as_region* reg, size_t amount) {
-	reg->size += amount;
-	if (as_region_overlaps (as, reg)) {
-		reg->size -= amount;
-		return NULL;
-	}
+    /* FIXME: should be page aligned! */
+    reg->size += amount;
+    if (as_region_overlaps (as, reg)) {
+        reg->size -= amount;
+        return NULL;
+    }
 
-	return reg;
+    return reg;
 }
 
 seL4_CPtr
 as_get_page_cap (addrspace_t as, vaddr_t vaddr) {
-	assert (as != NULL);
+    assert (as != NULL);
 
-	struct pt_entry* page = page_fetch (as->pagetable, vaddr);
-	if (!page) {
-		return 0;
-	}
+    struct pt_entry* page = page_fetch (as->pagetable, vaddr);
+    if (!page) {
+        return 0;
+    }
 
-	return frametable_fetch_cap (page->frame_idx);
+    return frametable_fetch_cap (page->frame_idx);
+}
+
+struct as_region*
+as_create_region_largest (addrspace_t as, seL4_CapRights permissions, as_region_type type) {
+    vaddr_t cur_addr = PAGE_SIZE;   /* don't start on 0th page */
+
+    vaddr_t largest_vaddr = cur_addr;
+    size_t largest_extent = 0;
+
+    /* FIXME: probably should go to top of virtual memory rather than only within existing regions */
+    /* Works OK at the moment for processes since we define IPC buffer at (near) the top */
+    struct as_region* reg = as->regions;
+    while (reg) {
+        size_t size = reg->vbase - cur_addr;
+        printf ("extent of free space from 0x%x -> 0x%x = 0x%x\n", cur_addr, reg->vbase, size);
+
+        if (size > largest_extent) {
+            printf ("beats our previous free size of 0x%x\n", largest_extent);
+            largest_extent = size;
+            largest_vaddr = cur_addr;
+        }
+
+        /* start looking from address is end of current region */
+        cur_addr = reg->vbase + reg->size;
+        printf ("this region goes from 0x%x -> 0x%x\n", reg->vbase, cur_addr);
+        reg = reg->next;
+    }
+
+    if (largest_extent == 0) {
+        return NULL;
+    }
+
+    printf ("ok using 0x%x size 0x%x\n", largest_vaddr, largest_extent);
+
+    return as_define_region (as, largest_vaddr, largest_extent, permissions, type);
+}
+
+/* returns the upper half of the divided region - lower rounds up */
+struct as_region*
+as_divide_region (addrspace_t as, struct as_region* reg, as_region_type upper_type) {
+    /* FIXME: make sure reg is in addrspace?? probably want to check all funcs too */
+    /* FIXME: make sure reg->size is EVENLY divideable by 2 */
+
+    vaddr_t region_top = reg->vbase + reg->size;
+
+    reg->size = reg->size / 2;
+    reg->size = (reg->size + PAGE_SIZE - 1) & PAGE_MASK;
+    /*size += vbase & ~((vaddr_t)PAGE_MASK);
+    vbase &= PAGE_MASK;*/
+
+    vaddr_t upper_vaddr = reg->vbase + reg->size;
+
+    printf ("as_divide_region: upper region vstart = 0x%x, len = 0x%x\n", upper_vaddr, region_top - upper_vaddr);
+    printf ("                  lower region vstart = 0x%x, len = 0x%x\n", reg->vbase, reg->size);
+
+    // FIXME: probably also want to sanity check results (ie upper > lower vaddrs)
+
+    struct as_region* upper_reg = as_define_region (as, upper_vaddr, region_top - upper_vaddr, reg->permissions, upper_type);
+    return upper_reg;
+}
+
+int
+as_create_stack_heap (addrspace_t as, struct as_region** stack, struct as_region** heap) {
+    struct as_region* cur_stack = as_create_region_largest (as, seL4_AllRights, REGION_STACK);
+    //conditional_panic (!stack, "could not create large stack region\n");
+    if (!cur_stack) {
+        return false;
+    }
+
+    /* create a guard page and move stack for one page of heap to start with */
+    vaddr_t heap_vbase = cur_stack->vbase;
+    cur_stack->vbase += (PAGE_SIZE * DEFAULT_HEAP_SIZE) + PAGE_SIZE;
+    struct as_region* cur_heap = as_define_region (as, heap_vbase, PAGE_SIZE, seL4_AllRights, REGION_HEAP);
+
+    if (cur_stack && heap) {
+        if (stack != NULL) {
+            *stack = cur_stack;
+        }
+
+        if (heap != NULL) {
+            *heap = cur_heap;
+        }
+
+        return true;
+    } else {
+        return false;
+    }
+}
+
+struct as_region*
+as_resize_heap (addrspace_t as, size_t amount) {
+    struct as_region* heap = as_get_region_by_type (as, REGION_HEAP);
+
+    if (amount == 0) {
+        return heap;
+    }
+
+    struct as_region* stack = as_get_region_by_type (as, REGION_STACK);
+
+    if (heap && stack) {
+        stack->vbase += amount;
+        heap = as_resize_region (as, heap, seL4_GetMR (1));
+    }
+
+    /* put stack back. bringing sexy back. */
+    if (!heap) {
+        stack->vbase -= amount;
+    }
+
+    return heap;
 }

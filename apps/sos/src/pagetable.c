@@ -3,8 +3,6 @@
  *  really only diff is vmalloc would call all these functions but with a special addrspace and
  *  as->pagetable would be initialised in a special way (such that we use initial heap or vaddr that will never be unmapped)
  *
- * GIANT FIXME: leaking memory on ut_alloc stuff! :(
- *
  * two level page table
  * top 20 bits for physical address, bottom for bit flags
  * 

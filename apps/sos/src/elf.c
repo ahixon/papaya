@@ -142,9 +142,8 @@ int elf_load(addrspace_t dest_as, char *elf_file) {
         conditional_panic(err != 0, "Elf loading failed!\n");
     }
 
-    /* create stack and heap */
-    as_define_region (dest_as, PROCESS_STACK_TOP - 1024*(1 << seL4_PageBits), 1024*(1 << seL4_PageBits), seL4_AllRights, REGION_STACK);
-    as_define_region (dest_as, 0x50000000, (1 << seL4_PageBits), seL4_AllRights, REGION_HEAP);
+    err = as_create_stack_heap (dest_as, NULL, NULL);
+    conditional_panic (err, "failed to create stack and heap\n");
 
     return 0;
 }

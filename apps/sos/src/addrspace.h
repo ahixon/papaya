@@ -53,4 +53,17 @@ as_get_region_by_addr (addrspace_t as, vaddr_t start);
 seL4_CPtr
 as_get_page_cap (addrspace_t as, vaddr_t vaddr);
 
+struct as_region*
+as_create_region_largest (addrspace_t as, seL4_CapRights permissions, as_region_type type);
+
+/* returns the upper half of the divided region */
+struct as_region*
+as_divide_region (addrspace_t as, struct as_region* reg, as_region_type upper_type);
+
+int
+as_create_stack_heap (addrspace_t as, struct as_region** stack, struct as_region** heap);
+
+struct as_region*
+as_resize_heap (addrspace_t as, size_t amount);
+
 #endif

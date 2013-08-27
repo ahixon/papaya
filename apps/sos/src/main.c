@@ -108,16 +108,10 @@ void handle_syscall(seL4_Word badge, int num_args) {
             break;
         }
 
-        struct as_region* reg = as_get_region_by_type (initial_process.as, REGION_HEAP);
-        if (reg) {
-            printf ("got heap region, trying to resize by 0x%x\n", seL4_GetMR(1));
-            reg = as_resize_region (initial_process.as, reg, seL4_GetMR (1));
-        }
+        struct as_region* heap = as_resize_heap (initial_process.as, seL4_GetMR (1));
 
         reply = seL4_MessageInfo_new(0, 0, 0, 1);
-        printf ("syscall returning vbase = 0x%x\n", reg ? reg->vbase : 0);
-
-        seL4_SetMR(0, reg ? reg->vbase : 0);
+        seL4_SetMR(0, heap ? heap->vbase : 0);
         seL4_Send(reply_cap, reply);
 
         cspace_free_slot(cur_cspace, reply_cap);
@@ -309,10 +303,16 @@ void start_first_process(char* app_name, seL4_CPtr fault_ep) {
     err = elf_load(initial_process.as, elf_base);
     conditional_panic(err, "Failed to load elf image");
 
+    /* find where we put the stack */
+    struct as_region* stack = as_get_region_by_type (initial_process.as, REGION_STACK);
+    vaddr_t stack_top = stack->vbase + stack->size;
+    printf ("stack top = 0x%x\n", stack_top);
+    printf ("stack base = 0x%x\n", stack->vbase);
+
     /* Start the new process */
     memset(&context, 0, sizeof(context));
     context.pc = elf_getEntryPoint(elf_base);
-    context.sp = PROCESS_STACK_TOP;
+    context.sp = stack_top;
     seL4_TCB_WriteRegisters(initial_process.tcb_cap, 1, 0, 2, &context);
 }
 
