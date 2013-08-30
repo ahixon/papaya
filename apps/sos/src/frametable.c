@@ -109,7 +109,7 @@ frame_alloc (void)
     frame->capability = frame_cap;
     frame->paddr = untyped_addr;
 
-    printf ("frame_alloc: allocated physical frame at 0x%x and cap = 0x%x, returning index 0x%x\n", untyped_addr, frame_cap, index);
+    //printf ("frame_alloc: allocated physical frame at 0x%x and cap = 0x%x, returning index 0x%x\n", untyped_addr, frame_cap, index);
     return index;
 }
 

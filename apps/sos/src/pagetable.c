@@ -156,6 +156,7 @@ page_map (addrspace_t as, struct as_region* region, vaddr_t vaddr) {
         /* now create the capability */
         pt_cap = _pagetable_map (as, region->attributes, vaddr, &pt_addr);
         if (!pt_cap) {
+            printf ("pagetable map failed\n");
             free (table);
             return 0;
         }
@@ -180,8 +181,12 @@ page_map (addrspace_t as, struct as_region* region, vaddr_t vaddr) {
         return 0;
     }
 
-    //printf ("page_map: mapping @ vaddr 0x%x and frame idx 0x%x (L1 idx = 0x%x, L2 idx = 0x%x)\n", vaddr, frame, l1, l2);
+    if (vaddr == 0x9fffe000) {
+        printf ("page_map: mapping @ vaddr 0x%x and frame idx 0x%x (L1 idx = 0x%x, L2 idx = 0x%x)\n", vaddr, frame, l1, l2);
+    }
+    
     if (!_page_map (vaddr, frame, region, as)) {
+        printf ("actual page map failed\n");
         frame_free (frame);
         return 0;
     }

@@ -108,10 +108,12 @@ void handle_syscall(seL4_Word badge, int num_args) {
             break;
         }
 
-        struct as_region* heap = as_resize_heap (initial_process.as, seL4_GetMR (1));
+        printf ("syscall: asked for sbrk\n");
+
+        vaddr_t new_addr = as_resize_heap (initial_process.as, seL4_GetMR (1));
 
         reply = seL4_MessageInfo_new(0, 0, 0, 1);
-        seL4_SetMR(0, heap ? heap->vbase : 0);
+        seL4_SetMR(0, new_addr);
         seL4_Send(reply_cap, reply);
 
         cspace_free_slot(cur_cspace, reply_cap);

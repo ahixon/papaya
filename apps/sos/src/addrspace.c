@@ -23,7 +23,20 @@
 #define PAGE_SIZE (1 << seL4_PageBits)
 #define PAGE_MASK (~(PAGE_SIZE - 1))
 
-#define DEFAULT_HEAP_SIZE   2       /* number of pages */
+#define STACK_SIZE   (1 * 1024 * PAGE_SIZE)      /* 1 MB */
+
+static void
+addrspace_print_regions (addrspace_t as) {
+    char* types[5] = {"STACK", "HEAP ", "IPC  ", "  -  "};
+
+    struct as_region* reg = as->regions;
+    printf ("\tvbase\t\tvlimit\t\tsize\t\tperms\tattrs\n");
+
+    while (reg) {
+        printf ("%s\t0x%08x\t0x%08x\t0x%08x\t%d\t%d\n", types[reg->type], reg->vbase, reg->vbase + reg->size, reg->size, reg->permissions, reg->attributes);
+        reg = reg->next;
+    }
+}
 
 addrspace_t
 addrspace_create (seL4_ARM_PageTable pd)
@@ -41,6 +54,7 @@ addrspace_create (seL4_ARM_PageTable pd)
     }
 
     as->regions = NULL;
+    as->stack_vaddr = 0;
 
     if (pd != 0) {
         printf ("addrspace_create: using provided pagedir cap 0x%x\n", pd);
@@ -85,6 +99,7 @@ addrspace_destroy (addrspace_t as) {
 frameidx_t
 as_map_page (addrspace_t as, vaddr_t vaddr) {
     /* check if vaddr in a region */
+    assert (as != NULL);
 
     vaddr &= ~(PAGE_SIZE - 1);
     //printf ("as_map_page: aligned vaddr = 0x%x\n", vaddr);
@@ -93,6 +108,15 @@ as_map_page (addrspace_t as, vaddr_t vaddr) {
     if (!reg) {
         printf ("as_map_page: vaddr 0x%x does not belong to any region\n", vaddr);
         return 0;
+    }
+
+    /* stack grows downwards */
+    if (as->special_regions[REGION_STACK] == reg) {
+        //printf ("wanted to map page on stack (stack addr = 0x%x, vaddr = 0x%x\n", as->stack_vaddr, vaddr);
+        if (vaddr < as->stack_vaddr) {
+            printf ("was less, updating stack vaddr = 0x%x\n", vaddr);
+            as->stack_vaddr = vaddr;
+        }
     }
 
     return page_map (as, reg, vaddr);
@@ -198,7 +222,8 @@ as_define_region (addrspace_t as, vaddr_t vbase, size_t size, seL4_CapRights per
     reg->vbase = vbase;
     reg->size = size;
     reg->permissions = permissions;
-    //reg->type = type;
+    reg->type = type;
+    reg->attributes = seL4_ARM_Default_VMAttributes;
 
     if (as_region_overlaps (as, reg)) {
         printf ("as_create_region: region overlaps\n");
@@ -219,7 +244,15 @@ as_define_region (addrspace_t as, vaddr_t vbase, size_t size, seL4_CapRights per
 struct as_region*
 as_resize_region (addrspace_t as, struct as_region* reg, size_t amount) {
     /* FIXME: should be page aligned! */
+    size_t old_size = reg->size;
     reg->size += amount;
+
+    /* check for wrap around */
+    if (reg->size < old_size) {
+        reg->size = old_size;
+        return NULL;
+    }
+
     if (as_region_overlaps (as, reg)) {
         reg->size -= amount;
         return NULL;
@@ -300,6 +333,31 @@ as_divide_region (addrspace_t as, struct as_region* reg, as_region_type upper_ty
 }
 
 int
+as_region_shift (addrspace_t as, struct as_region* reg, int amount) {
+    vaddr_t old_vbase = reg->vbase;
+
+    reg->vbase += amount;
+    reg->size -= amount;
+
+    /* check for wrap around */
+    if (reg->vbase < old_vbase) {
+        reg->vbase = old_vbase;
+        reg->size += amount;
+
+        return false;
+    }
+
+    /* FIXME: do we need this */
+    if (as_region_overlaps (as, reg)) {
+        reg->vbase -= amount;
+        reg->size += amount;
+        return false;
+    }
+
+    return true;
+}
+
+int
 as_create_stack_heap (addrspace_t as, struct as_region** stack, struct as_region** heap) {
     struct as_region* cur_stack = as_create_region_largest (as, seL4_AllRights, REGION_STACK);
     //conditional_panic (!stack, "could not create large stack region\n");
@@ -309,8 +367,27 @@ as_create_stack_heap (addrspace_t as, struct as_region** stack, struct as_region
 
     /* create a guard page and move stack for one page of heap to start with */
     vaddr_t heap_vbase = cur_stack->vbase;
-    cur_stack->vbase += (PAGE_SIZE * DEFAULT_HEAP_SIZE) + PAGE_SIZE;
+    printf ("heap vbase = 0x%x\n", heap_vbase);
+
+    if (!as_region_shift (as, cur_stack, PAGE_SIZE + PAGE_SIZE)) {
+        panic ("uhh failed to move stack up?");
+    }
+
+    printf ("stack vbase (from heap vbase) now = 0x%x\n", as->special_regions[REGION_STACK]->vbase);
+
+    /* record the current stack page so that if go below this we update our pointer */
+    as->stack_vaddr = cur_stack->vbase + cur_stack->size;
+    printf ("setting stack vaddr to 0x%x\n", as->stack_vaddr);
+
     struct as_region* cur_heap = as_define_region (as, heap_vbase, PAGE_SIZE, seL4_AllRights, REGION_HEAP);
+
+    if (cur_stack->size < STACK_SIZE) {
+        return false;
+    }
+
+    /* and set a fixed stack size: FIXME: remove me if you don't want this! */
+    cur_stack->size = STACK_SIZE;
+    cur_stack->vbase = as->stack_vaddr - STACK_SIZE;
 
     if (cur_stack && heap) {
         if (stack != NULL) {
@@ -327,8 +404,13 @@ as_create_stack_heap (addrspace_t as, struct as_region** stack, struct as_region
     }
 }
 
-struct as_region*
+/*struct as_region**/
+vaddr_t
 as_resize_heap (addrspace_t as, size_t amount) {
+    size_t old_amount = amount;
+    amount = (amount + PAGE_SIZE - 1) & PAGE_MASK;
+    printf ("asked for 0x%x, rounded to 0x%x\n", old_amount, amount);
+
     struct as_region* heap = as_get_region_by_type (as, REGION_HEAP);
 
     if (amount == 0) {
@@ -336,16 +418,49 @@ as_resize_heap (addrspace_t as, size_t amount) {
     }
 
     struct as_region* stack = as_get_region_by_type (as, REGION_STACK);
+    printf ("currently, stack vaddr = 0x%x\n", as->stack_vaddr);
+    printf ("old heap vaddr = 0x%x\n", heap->vbase);
 
+    /* would wrap around memory? */
+    vaddr_t new_vaddr = heap->vbase + heap->size + amount;
+    if (new_vaddr < (heap->vbase + heap->size)) {
+        return 0;
+    }
+
+    printf ("new (tenative) heap vaddr = 0x%x\n", new_vaddr);
+
+    /* ensure that we're not trying to move it over our guard page or last thing we hit in the stack */
+    if (new_vaddr >= as->stack_vaddr) {
+        printf ("went past boundary 0x%x\n", as->stack_vaddr);
+        return 0;
+    }
+
+    vaddr_t old_heap_vaddr = heap->vbase + heap->size;
+
+    /* seems OK, try to move it and check we don't collide with anything else */
     if (heap && stack) {
-        stack->vbase += amount;
-        heap = as_resize_region (as, heap, seL4_GetMR (1));
+        printf ("OK cool, shifting stack up by 0x%x\n", amount);
+        if (!as_region_shift (as, stack, amount)) {
+            printf ("that failed\n");
+            return 0;
+        }
+
+        //as->stack_vaddr += (amount + PAGE_SIZE);
+
+        printf ("stack now 0x%x -> 0x%x\n", stack->vbase, stack->vbase + stack->size);
+
+        printf ("ok, finally resizing heap by 0x%x\n", amount);
+        heap = as_resize_region (as, heap, amount);
+
+        if (heap) {
+            printf ("heap now 0x%x -> 0x%x\n", heap->vbase, heap->vbase + heap->size);
+        } else {
+            printf ("well that failed\n");
+        }
     }
 
-    /* put stack back. bringing sexy back. */
-    if (!heap) {
-        stack->vbase -= amount;
-    }
+    printf ("==========\n");
+    addrspace_print_regions(as);
 
-    return heap;
+    return old_heap_vaddr;
 }

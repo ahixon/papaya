@@ -13,7 +13,7 @@ extern Header* _kr_malloc_freep;
 
 /* statically allocated morecore area */
 
-#define MORECORE_AREA_BYTE_SIZE 0x100000
+#define MORECORE_AREA_BYTE_SIZE 0x500000
 #define MORECORE_AREA_SIZE (MORECORE_AREA_BYTE_SIZE / sizeof(long long))
 // Declare morecore_area long long so it is doubleword aligned
 long long morecore_area[MORECORE_AREA_SIZE];

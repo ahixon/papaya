@@ -18,6 +18,8 @@ struct addrspace {
 	struct as_region* regions;
 	struct as_region* special_regions[NUM_SPECIAL_REGION_TYPES];
 	pagetable_t pagetable;
+
+	vaddr_t stack_vaddr;
 };
 
 typedef struct addrspace * addrspace_t;
@@ -28,6 +30,7 @@ struct as_region {
 
 	vaddr_t vbase;
 	size_t size;
+	as_region_type type;
 
 	struct as_region* next;
 };
@@ -63,7 +66,7 @@ as_divide_region (addrspace_t as, struct as_region* reg, as_region_type upper_ty
 int
 as_create_stack_heap (addrspace_t as, struct as_region** stack, struct as_region** heap);
 
-struct as_region*
+vaddr_t
 as_resize_heap (addrspace_t as, size_t amount);
 
 #endif
