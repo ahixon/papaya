@@ -84,10 +84,9 @@ static int load_segment_into_vspace(addrspace_t dest_as,
         /* FIXME: do we want to use a different function or is this OK */
         sos_cap = frametable_fetch_cap (frame);
         conditional_panic (!sos_cap, "could not fetch cap from frametable");
-
-        err = map_page(sos_cap, seL4_CapInitThreadPD, kvpage, seL4_AllRights, 
-                       seL4_ARM_Default_VMAttributes);
-        conditional_panic(err, "Failed to map sos address space");
+        
+        err = map_page(sos_cap, seL4_CapInitThreadPD, kvpage, seL4_AllRights, seL4_ARM_Default_VMAttributes);
+        conditional_panic(err, "could not map into SOS");
 
         /* Now copy our data into the destination vspace */
         nbytes = PAGESIZE - (dst & PAGEMASK);
@@ -95,11 +94,12 @@ static int load_segment_into_vspace(addrspace_t dest_as,
             memcpy((void*)kdst, (void*)src, MIN(nbytes, file_size - pos));
         }
 
-        /* FIXME: unmap page! */
-
         /* Not observable to I-cache yet so flush the frame */
-        /* FIXME: put this outside the loop? */
         seL4_ARM_Page_FlushCaches(sos_cap);
+
+        /* unmap the cap */
+        err = seL4_ARM_Page_Unmap (sos_cap);     
+        conditional_panic(err, "could not unmap from SOS");
 
         pos += nbytes;
         dst += nbytes;
