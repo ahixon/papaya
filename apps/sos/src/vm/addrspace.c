@@ -418,7 +418,7 @@ as_resize_heap (addrspace_t as, size_t amount) {
     struct as_region* heap = as_get_region_by_type (as, REGION_HEAP);
 
     if (amount == 0) {
-        return heap;
+        return heap->vbase;
     }
 
     struct as_region* stack = as_get_region_by_type (as, REGION_STACK);
