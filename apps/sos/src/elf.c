@@ -6,11 +6,11 @@
 
 #include "elf.h"
 
-#include <vmem_layout.h>
 #include <ut_manager/ut.h>
-#include <frametable.h>
-#include <addrspace.h>
-#include <pagetable.h>
+#include <vm/vm.h>
+#include <vm/addrspace.h>
+#include <vm/frametable.h>
+#include <vm/vmem_layout.h>
 
 #include <mapping.h>    // I SHOULD GO BECAUSE I SUCK
 

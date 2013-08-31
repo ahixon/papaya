@@ -7,8 +7,9 @@
 
 #include <cspace/cspace.h>
 
-#include "ut_manager/ut.h"
+#include "../ut_manager/ut.h"
 
+#include "vm.h"
 #include "mapping.h"
 #include "vmem_layout.h"
 #include "frametable.h"

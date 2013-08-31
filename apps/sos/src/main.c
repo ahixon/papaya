@@ -16,11 +16,12 @@
 #include "elf.h"
 
 #include "ut_manager/ut.h"
-#include "vmem_layout.h"
+#include "vm/vmem_layout.h"
 #include "mapping.h"
 
-#include "frametable.h"
-#include "addrspace.h"
+#include <vm/vm.h>
+#include <vm/addrspace.h>
+#include <vm/frametable.h>
 
 #include "thread.h"
 

@@ -22,8 +22,6 @@ struct addrspace {
 	vaddr_t stack_vaddr;
 };
 
-typedef struct addrspace * addrspace_t;
-
 struct as_region {
 	seL4_ARM_VMAttributes attributes;
 	seL4_CapRights permissions;
