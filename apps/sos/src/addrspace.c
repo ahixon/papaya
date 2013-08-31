@@ -227,12 +227,15 @@ as_define_region (addrspace_t as, vaddr_t vbase, size_t size, seL4_CapRights per
 
     if (as_region_overlaps (as, reg)) {
         printf ("as_create_region: region overlaps\n");
+        addrspace_print_regions(as);
         free (reg);
         return NULL;
     }
 
+    printf ("inserting region 0x%x -> 0x%x\n", vbase, vbase + size);
     as_region_insert (as, reg);
 
+    assert (type >= 0 && type <= REGION_GENERIC);
     if (type != REGION_GENERIC) {
         printf ("as_create_region: inserting into special regions\n");
         as->special_regions[type] = reg;
