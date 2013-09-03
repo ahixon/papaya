@@ -1,0 +1,72 @@
+/*
+ * FIXME: would be nice if this was just a bitmap + block array and we can free and alloc
+ * device nums as required 
+ */
+
+#include <string.h>
+
+#define NUM_DEVICES_BLOCK		((1 << 12) - 2)
+
+/* so we can build system tree */
+#define DEVICE_TYPE_SERIAL		1
+#define DEVICE_TYPE_SYSTEM		2
+
+#define DEVICE_CHAR				1
+#define DEVICE_BLOCK 			2
+
+struct device {
+	devidx_t id;		/* filled in after register */
+
+	/* FIXME: this should go at some stage when this no longer a linked list */
+	struct device* next;
+};
+
+struct device* devicelist;
+
+static struct devicelist_block*
+dlblock_alloc (struct devicelist_block* prev) {
+	struct devicelist_block* b = malloc (sizeof (devicelist_block));
+	memset (b->frames, 0, sizeof (struct devicelist_block));
+
+	b->prev = prev;
+	b->next = NULL;
+
+	return b;
+}
+
+void devicelist_init (void) {
+	devicelist.root = dlblock_alloc (NULL);
+	devicelist.current = devicelist.root;
+
+	devicelist.total_count = 0;
+	devicelist.block_index = 0;
+}
+
+int device_register (struct device* dev) {
+	/* add to device list */
+
+}
+
+struct device* device_lookup_by_id (devidx_t id) {
+	/* walk list and find device
+	 * XXX: this is SLOOOWWWWW: O(n) rather than a hash which is what we want and O(1) time. */
+	struct* device d = devicelist;
+	while (d) {
+		if (d->id == id) {
+			return d;
+		}
+
+		d = d->next;
+	}
+
+	return NULL;
+
+}
+
+int device_get_maj_min (struct device* d, int* maj, int* min) {
+	/* TODO: implement me */
+	*maj = 0;
+	*min = 0;
+
+	return false;
+}

@@ -7,17 +7,17 @@
 
 #include <cpio/cpio.h>
 #include <nfs/nfs.h>
-#include <elf/elf.h>
 #include <serial/serial.h>
 #include <clock/clock.h>
 #include <syscalls.h>
 
 #include "network.h"
-#include "elf.h"
 
 #include "ut_manager/ut.h"
 #include "vm/vmem_layout.h"
 #include "mapping.h"
+
+#include "vm/vmem_layout.h"
 
 #include <vm/vm.h>
 #include <vm/addrspace.h>
@@ -31,26 +31,14 @@
 #include <sys/debug.h>
 #include <sys/panic.h>
 
-
-#define USER_EP_CAP       (1)
-
-#define TTY_NAME             CONFIG_SOS_STARTUP_APP
-#define TTY_PRIORITY         (0)
-#define TTY_EP_BADGE         (101)
 #define IPC_TIMER_BADGE      (102)
 
-#define PAGE_SIZE           (1 << seL4_PageBits)
-
-/* The linker will link this symbol to the start address  *
- * of an archive of attached applications.                */
 extern char _cpio_archive[];
 
 const seL4_BootInfo* _boot_info;
 
 seL4_CPtr _sos_ipc_ep_cap;
 seL4_CPtr _sos_interrupt_ep_cap;
-
-struct thread initial_process;
 
 struct serial* ser_device;
 
@@ -60,7 +48,7 @@ struct serial* ser_device;
 extern fhandle_t mnt_point;
 
 
-void handle_syscall(seL4_Word badge, int num_args) {
+void handle_syscall(thread_t thread, int num_args) {
     seL4_Word syscall_number;
     seL4_CPtr reply_cap;
     seL4_MessageInfo_t reply;
@@ -110,8 +98,7 @@ void handle_syscall(seL4_Word badge, int num_args) {
         }
 
         printf ("syscall: asked for sbrk\n");
-
-        vaddr_t new_addr = as_resize_heap (initial_process.as, seL4_GetMR (1));
+        vaddr_t new_addr = as_resize_heap (thread->as, seL4_GetMR (1));
 
         reply = seL4_MessageInfo_new(0, 0, 0, 1);
         seL4_SetMR(0, new_addr);
@@ -125,7 +112,6 @@ void handle_syscall(seL4_Word badge, int num_args) {
         /* we don't want to reply to an unknown syscall */
 
     }
-
 }
 
 void syscall_loop(seL4_CPtr ep) {
@@ -137,26 +123,42 @@ void syscall_loop(seL4_CPtr ep) {
 
         message = seL4_Wait(ep, &badge);
 
+        thread_t thread;
+
         switch (seL4_MessageInfo_get_label(message)) {
         case seL4_NoFault:
-            handle_syscall(badge, seL4_MessageInfo_get_length(message) - 1);
+            thread = threadlist_lookup (badge);
+            if (!thread) {
+                printf ("syscall: invalid thread - had badge %d\n", badge);
+                break;
+            }
+
+            //printf ("had syscall from %s\n", thread->name);
+            handle_syscall(thread, seL4_MessageInfo_get_length(message) - 1);
             break;
 
         case seL4_VMFault:
+            thread = threadlist_lookup (badge);
+            if (!thread) {
+                printf ("syscall: invalid thread - had badge %d\n", badge);
+                break;
+            }
+
             if (!seL4_GetMR(2)) {
                 /* data fault; try to map in page */
-                if (as_map_page (initial_process.as, seL4_GetMR(1))) {
+                if (as_map_page (thread->as, seL4_GetMR(1))) {
                     /* restart calling thread now we have the page set */
                     seL4_Reply (message);
                     break;
                 }
             }
 
-            dprintf(0, "vm fault at 0x%08x, pc = 0x%08x, %s\n", seL4_GetMR(1),
+            /*dprintf(0, "vm fault at 0x%08x, pc = 0x%08x, %s\n", seL4_GetMR(1),
                     seL4_GetMR(0),
-                    seL4_GetMR(2) ? "Instruction Fault" : "Data fault");
+                    seL4_GetMR(2) ? "Instruction Fault" : "Data fault");*/
+            printf ("not waking thread %d (%s)...\n", thread->pid, thread->name);
 
-            assert(!"Unable to handle vm faults");
+            //assert(!"Unable to handle vm faults");
             break;
 
         case seL4_Interrupt:
@@ -223,7 +225,7 @@ static void print_bootinfo(const seL4_BootInfo* info) {
     dprintf(1,"-----------------------------------------\n\n");
 
     /* Print cpio data */
-    dprintf(1,"Parsing cpio data:\n");
+    /*dprintf(1,"Parsing cpio data:\n");
     dprintf(1,"--------------------------------------------------------\n");
     dprintf(1,"| index |        name      |  address   | size (bytes) |\n");
     dprintf(1,"|------------------------------------------------------|\n");
@@ -239,84 +241,7 @@ static void print_bootinfo(const seL4_BootInfo* info) {
             break;
         }
     }
-    dprintf(1,"--------------------------------------------------------\n");
-}
-
-void start_first_process(char* app_name, seL4_CPtr fault_ep) {
-    int err;
-    seL4_CPtr user_ep_cap;
-
-    /* These required for setting up the TCB */
-    seL4_UserContext context;
-
-    /* These required for loading program sections */
-    char* elf_base;
-    unsigned long elf_size;
-
-    /* Create a simple 1 level CSpace */
-    initial_process.croot = cspace_create(1);
-    assert(initial_process.croot != NULL);
-
-    /* Copy the fault endpoint to the user app to enable IPC */
-    user_ep_cap = cspace_mint_cap(initial_process.croot,
-                                  cur_cspace,
-                                  fault_ep,
-                                  seL4_AllRights, seL4_CapData_Badge_new(TTY_EP_BADGE)
-                                  );
-    /* should be the first slot in the space, hack I know */
-    assert(user_ep_cap == 1);
-    assert(user_ep_cap == USER_EP_CAP);
-
-    /* Create a new TCB object */
-    initial_process.tcb_addr = ut_alloc(seL4_TCBBits);
-    conditional_panic(!initial_process.tcb_addr, "No memory for new TCB");
-    err =  cspace_ut_retype_addr(initial_process.tcb_addr,
-                                 seL4_TCBObject,
-                                 seL4_TCBBits,
-                                 cur_cspace,
-                                 &initial_process.tcb_cap);
-    conditional_panic(err, "Failed to create TCB");
-
-    /* create address space for process */
-    initial_process.as = addrspace_create (0);
-    conditional_panic(!initial_process.as, "failed to create process address space");
-
-    /* Map in IPC first off (since we need it for TCB configuration) */
-    as_define_region (initial_process.as, PROCESS_IPC_BUFFER, PAGE_SIZE, seL4_AllRights, REGION_IPC);
-    if (!as_map_page (initial_process.as, PROCESS_IPC_BUFFER)) {
-        panic ("could not map IPC buffer");
-    }
-
-    seL4_CPtr ipc_cap = as_get_page_cap (initial_process.as, PROCESS_IPC_BUFFER);
-    conditional_panic (!ipc_cap, "could not fetch IPC cap back just after map");
-
-    /* Configure the TCB */
-    err = seL4_TCB_Configure(initial_process.tcb_cap, user_ep_cap, TTY_PRIORITY,
-                             initial_process.croot->root_cnode, seL4_NilData,
-                             initial_process.as->pagedir_cap, seL4_NilData, PROCESS_IPC_BUFFER,
-                             ipc_cap);
-    conditional_panic(err, "Unable to configure new TCB");
-
-    /* parse the dite image */
-    dprintf(1, "\nStarting \"%s\"...\n", app_name);
-    elf_base = cpio_get_file(_cpio_archive, app_name, &elf_size);
-    conditional_panic(!elf_base, "Unable to locate cpio header");
-
-    /* load the elf image */
-    err = elf_load(initial_process.as, elf_base);
-    conditional_panic(err, "Failed to load elf image");
-
-    /* find where we put the stack */
-    struct as_region* stack = as_get_region_by_type (initial_process.as, REGION_STACK);
-    vaddr_t stack_top = stack->vbase + stack->size;
-    printf ("stack top = 0x%x\n", stack_top);
-    printf ("stack base = 0x%x\n", stack->vbase);
-
-    /* Start the new process */
-    memset(&context, 0, sizeof(context));
-    context.pc = elf_getEntryPoint(elf_base);
-    context.sp = stack_top;
-    seL4_TCB_WriteRegisters(initial_process.tcb_cap, 1, 0, 2, &context);
+    dprintf(1,"--------------------------------------------------------\n");*/
 }
 
 static void _sos_ipc_init(seL4_CPtr* ipc_ep, seL4_CPtr* async_ep){
@@ -388,6 +313,7 @@ static void _sos_init(seL4_CPtr* ipc_ep, seL4_CPtr* async_ep){
     frametable_init();
 
     /* Initialiase other system compenents here */
+    pid_init();
 
     /* Finally, setup IPC */
     _sos_ipc_init(ipc_ep, async_ep);
@@ -410,19 +336,32 @@ int main(void) {
     ser_device = serial_init(); 
     conditional_panic(!ser_device, "Failed to initialise serial device\n"); 
 
-    /* Start the user application */
-    start_first_process(TTY_NAME, _sos_ipc_ep_cap);
-
     /* Initialise timers */
     seL4_CPtr timer_cap;
-    timer_cap = cspace_mint_cap(cur_cspace,
-                    cur_cspace,
+    timer_cap = cspace_mint_cap(cur_cspace, cur_cspace,
                     _sos_interrupt_ep_cap,
-                    seL4_AllRights, seL4_CapData_Badge_new(IPC_TIMER_BADGE)
-                    );
+                    seL4_AllRights, seL4_CapData_Badge_new(IPC_TIMER_BADGE));
 
     ret = start_timer(timer_cap);
     conditional_panic(ret != CLOCK_R_OK, "Failed to initialise timer\n");
+
+    /* Start all applications linked in the archive */
+    for (int i = 0;; i++) {
+        unsigned long size;
+        char *name;
+        void *data;
+
+        data = cpio_get_entry (_cpio_archive, i, &name, &size);
+        if (data != NULL) {
+            printf ("trying to start %s...\n", name);
+            pid_t pid = thread_create (name, 0, _sos_ipc_ep_cap);
+            printf ("started with PID %d\n", pid);
+        } else {
+            break;
+        }
+    }
+
+    seL4_TCB_Resume (threadlist_lookup(0)->tcb_cap);
 
     /* Wait on synchronous endpoint for IPC */
     dprintf(0, "\nSOS entering syscall loop\n");

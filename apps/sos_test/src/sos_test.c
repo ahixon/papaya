@@ -84,7 +84,7 @@ pt_test( void )
         buf1[i] = i;
         i++;
     }
-#endif
+
 
     printf ("stack was at %p\n", &buf1[0]);
     int i = 0;
@@ -93,6 +93,11 @@ pt_test( void )
         buf1[i] = i;
         i -= 1024;
     }
+#endif
+
+while (true) {
+    printf ("I am sos_test\n");
+}
 }
 
 

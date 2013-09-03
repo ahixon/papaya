@@ -1,0 +1,71 @@
+#ifndef __VFS_H__
+#define __VFS_H__
+
+enum vnode_type {
+	VNODE_REGULAR,
+	VNODE_DIR,
+	VNODE_BLOCK,
+	VNODE_CHARACTER,
+	/* we don't support symlinks etc yet */
+	VNODE_INVALID
+};
+
+struct vnode {
+	int refcount;
+	int flags;
+	int size;
+	enum vnode_type type;
+
+	/* pointer to operations table */
+	int		(**v_op)(void *);
+
+	void *	priv_data;
+};
+
+struct vnode_ops {
+	// read
+	// write
+	// stat
+
+	/* read/write etc */
+};
+
+struct mount {
+	// root vnode
+};
+
+struct vfsops {
+	const char *vfs_name;
+    size_t	vfs_min_mount_data;
+    int	(*vfs_mount)	(struct mount *, const char *, void *,
+     				    size_t *);
+    //int	(*vfs_start)	(struct mount *, int);
+    int	(*vfs_unmount)	(struct mount *, int);
+    int	(*vfs_root)	(struct mount *, struct vnode **);
+    //int	(*vfs_quotactl)	(struct mount *, struct quotactl_args *);
+    int	(*vfs_statvfs)	(struct mount *, struct statvfs *);
+    int	(*vfs_sync)	(struct mount *, int, struct kauth_cred *);
+    //int	(*vfs_vget)	(struct mount *, ino_t, struct vnode **);
+    //int	(*vfs_fhtovp)	(struct mount *, struct fid *,
+    // 				    struct vnode **);
+    //int	(*vfs_vptofh)	(struct vnode *, struct fid *, size_t *);
+    void	(*vfs_init)	(void);
+    //void	(*vfs_reinit)	(void);
+    //void	(*vfs_done)	(void);
+    //int	(*vfs_mountroot)(void);
+    //int	(*vfs_snapshot)	(struct mount *, struct vnode *,
+    //				    struct timespec *);
+    //int	(*vfs_extattrctl) (struct mount *, int,
+    // 				    struct vnode *, int, const char *);
+    //int	(*vfs_suspendctl) (struct mount *, int);
+    //int	(*vfs_renamelock_enter)(struct mount *);
+    //void	(*vfs_renamelock_exit)(struct mount *);
+    int	(*vfs_fsync)	(struct vnode *, int);
+    //const struct vnodeopv_desc * const *vfs_opv_descs;
+    int	vfs_refcount;
+    LIST_ENTRY(vfsops) vfs_list;
+};
+
+typedef void (*vfs_open_t)(const struct vnode *vn, void *userdata);
+
+#endif

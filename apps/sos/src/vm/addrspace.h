@@ -3,6 +3,8 @@
 #ifndef __ADDRSPACE_H__
 #define __ADDRSPACE_H__
 
+#include <vm/vm.h>
+
 #define NUM_SPECIAL_REGION_TYPES	3
 typedef enum {
 	REGION_STACK,
@@ -35,6 +37,9 @@ struct as_region {
 
 addrspace_t
 addrspace_create (seL4_ARM_PageTable pd);
+
+void
+addrspace_destroy (addrspace_t as);
 
 frameidx_t
 as_map_page (addrspace_t as, vaddr_t vaddr);

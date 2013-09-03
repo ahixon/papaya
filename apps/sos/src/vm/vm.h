@@ -7,4 +7,6 @@ typedef seL4_Word paddr_t;
 typedef seL4_Word vaddr_t;
 typedef seL4_Word frameidx_t;
 
+#define PAGE_SIZE           (1 << seL4_PageBits)
+
 #endif
