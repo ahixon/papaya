@@ -62,7 +62,7 @@ addrspace_create (seL4_ARM_PageTable pd)
         as->pagedir_cap = pd;
     } else {
         /* create a new page directory */
-        printf ("addrspace_create: creating new pagedir\n");
+        //printf ("addrspace_create: creating new pagedir\n");
         int err;
 
         as->pagedir_addr = ut_alloc(seL4_PageDirBits);
@@ -115,7 +115,7 @@ as_map_page (addrspace_t as, vaddr_t vaddr) {
     if (as->special_regions[REGION_STACK] == reg) {
         //printf ("wanted to map page on stack (stack addr = 0x%x, vaddr = 0x%x\n", as->stack_vaddr, vaddr);
         if (vaddr < as->stack_vaddr) {
-            printf ("was less, updating stack vaddr = 0x%x\n", vaddr);
+            //printf ("was less, updating stack vaddr = 0x%x\n", vaddr);
             as->stack_vaddr = vaddr;
         }
     }
@@ -199,7 +199,7 @@ as_get_region_by_type (addrspace_t as, as_region_type type) {
 
 struct as_region*
 as_define_region (addrspace_t as, vaddr_t vbase, size_t size, seL4_CapRights permissions, as_region_type type) {
-    printf ("as_define_region: before alignment: vbase = 0x%x, size = 0x%x\n", vbase, size);
+    //printf ("as_define_region: before alignment: vbase = 0x%x, size = 0x%x\n", vbase, size);
 
     /* make sure we're page aligned */
     size += vbase & ~((vaddr_t)PAGE_MASK);
@@ -207,7 +207,7 @@ as_define_region (addrspace_t as, vaddr_t vbase, size_t size, seL4_CapRights per
 
     size = (size + PAGE_SIZE - 1) & PAGE_MASK;
 
-    printf ("as_define_region: after alignment:  vbase = 0x%x, size = 0x%x\n", vbase, size);
+    //printf ("as_define_region: after alignment:  vbase = 0x%x, size = 0x%x\n", vbase, size);
 
     if (vbase == 0) {
         printf ("as_create_region: mapping 0th page is invalid\n");
@@ -233,12 +233,12 @@ as_define_region (addrspace_t as, vaddr_t vbase, size_t size, seL4_CapRights per
         return NULL;
     }
 
-    printf ("inserting region 0x%x -> 0x%x\n", vbase, vbase + size);
+    //printf ("inserting region 0x%x -> 0x%x\n", vbase, vbase + size);
     as_region_insert (as, reg);
 
     assert (type >= 0 && type <= REGION_GENERIC);
     if (type != REGION_GENERIC) {
-        printf ("as_create_region: inserting into special regions\n");
+        //printf ("as_create_region: inserting into special regions\n");
         as->special_regions[type] = reg;
     }
 
@@ -289,17 +289,17 @@ as_create_region_largest (addrspace_t as, seL4_CapRights permissions, as_region_
     struct as_region* reg = as->regions;
     while (reg) {
         size_t size = reg->vbase - cur_addr;
-        printf ("extent of free space from 0x%x -> 0x%x = 0x%x\n", cur_addr, reg->vbase, size);
+        //printf ("extent of free space from 0x%x -> 0x%x = 0x%x\n", cur_addr, reg->vbase, size);
 
         if (size > largest_extent) {
-            printf ("beats our previous free size of 0x%x\n", largest_extent);
+            //printf ("beats our previous free size of 0x%x\n", largest_extent);
             largest_extent = size;
             largest_vaddr = cur_addr;
         }
 
         /* start looking from address is end of current region */
         cur_addr = reg->vbase + reg->size;
-        printf ("this region goes from 0x%x -> 0x%x\n", reg->vbase, cur_addr);
+        //printf ("this region goes from 0x%x -> 0x%x\n", reg->vbase, cur_addr);
         reg = reg->next;
     }
 
@@ -307,7 +307,7 @@ as_create_region_largest (addrspace_t as, seL4_CapRights permissions, as_region_
         return NULL;
     }
 
-    printf ("ok using 0x%x size 0x%x\n", largest_vaddr, largest_extent);
+    //printf ("ok using 0x%x size 0x%x\n", largest_vaddr, largest_extent);
 
     return as_define_region (as, largest_vaddr, largest_extent, permissions, type);
 }
@@ -371,17 +371,17 @@ as_create_stack_heap (addrspace_t as, struct as_region** stack, struct as_region
 
     /* create a guard page and move stack for one page of heap to start with */
     vaddr_t heap_vbase = cur_stack->vbase;
-    printf ("heap vbase = 0x%x\n", heap_vbase);
+    //printf ("heap vbase = 0x%x\n", heap_vbase);
 
     if (!as_region_shift (as, cur_stack, PAGE_SIZE + PAGE_SIZE)) {
         panic ("uhh failed to move stack up?");
     }
 
-    printf ("stack vbase (from heap vbase) now = 0x%x\n", as->special_regions[REGION_STACK]->vbase);
+    //printf ("stack vbase (from heap vbase) now = 0x%x\n", as->special_regions[REGION_STACK]->vbase);
 
     /* record the current stack page so that if go below this we update our pointer */
     as->stack_vaddr = cur_stack->vbase + cur_stack->size;
-    printf ("setting stack vaddr to 0x%x\n", as->stack_vaddr);
+    //printf ("setting stack vaddr to 0x%x\n", as->stack_vaddr);
 
     struct as_region* cur_heap = as_define_region (as, heap_vbase, PAGE_SIZE, seL4_AllRights, REGION_HEAP);
 
@@ -413,7 +413,7 @@ vaddr_t
 as_resize_heap (addrspace_t as, size_t amount) {
     size_t old_amount = amount;
     amount = (amount + PAGE_SIZE - 1) & PAGE_MASK;
-    printf ("asked for 0x%x, rounded to 0x%x\n", old_amount, amount);
+    //printf ("asked for 0x%x, rounded to 0x%x\n", old_amount, amount);
 
     struct as_region* heap = as_get_region_by_type (as, REGION_HEAP);
 
@@ -422,8 +422,8 @@ as_resize_heap (addrspace_t as, size_t amount) {
     }
 
     struct as_region* stack = as_get_region_by_type (as, REGION_STACK);
-    printf ("currently, stack vaddr = 0x%x\n", as->stack_vaddr);
-    printf ("old heap vaddr = 0x%x\n", heap->vbase);
+    //printf ("currently, stack vaddr = 0x%x\n", as->stack_vaddr);
+    //printf ("old heap vaddr = 0x%x\n", heap->vbase);
 
     /* would wrap around memory? */
     vaddr_t new_vaddr = heap->vbase + heap->size + amount;
@@ -431,11 +431,11 @@ as_resize_heap (addrspace_t as, size_t amount) {
         return 0;
     }
 
-    printf ("new (tenative) heap vaddr = 0x%x\n", new_vaddr);
+    //printf ("new (tenative) heap vaddr = 0x%x\n", new_vaddr);
 
     /* ensure that we're not trying to move it over our guard page or last thing we hit in the stack */
     if (new_vaddr >= as->stack_vaddr) {
-        printf ("went past boundary 0x%x\n", as->stack_vaddr);
+        //printf ("went past boundary 0x%x\n", as->stack_vaddr);
         return 0;
     }
 
@@ -443,7 +443,7 @@ as_resize_heap (addrspace_t as, size_t amount) {
 
     /* seems OK, try to move it and check we don't collide with anything else */
     if (heap && stack) {
-        printf ("OK cool, shifting stack up by 0x%x\n", amount);
+        //printf ("OK cool, shifting stack up by 0x%x\n", amount);
         if (!as_region_shift (as, stack, amount)) {
             printf ("that failed\n");
             return 0;
@@ -451,9 +451,9 @@ as_resize_heap (addrspace_t as, size_t amount) {
 
         //as->stack_vaddr += (amount + PAGE_SIZE);
 
-        printf ("stack now 0x%x -> 0x%x\n", stack->vbase, stack->vbase + stack->size);
+        //printf ("stack now 0x%x -> 0x%x\n", stack->vbase, stack->vbase + stack->size);
 
-        printf ("ok, finally resizing heap by 0x%x\n", amount);
+        //printf ("ok, finally resizing heap by 0x%x\n", amount);
         heap = as_resize_region (as, heap, amount);
 
         if (heap) {

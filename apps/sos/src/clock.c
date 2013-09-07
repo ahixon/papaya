@@ -287,7 +287,7 @@ start_timer(seL4_CPtr interrupt_ep)
     gpt_select_clock (CLOCK_PERIPHERAL);
 
     regs->control |= CR_OM1 (OUTPUT_SET) | CR_OM2(OUTPUT_SET) | CR_OM3(OUTPUT_SET) | CR_FRR;
-    regs->interrupt |= IR_ROLLOVER | IR_OC3;
+    regs->interrupt |= IR_ROLLOVER/* XXX: don't need 100ms | IR_OC3*/;
 
     regs->ocr[2] = TICK_100MS;
     gpt_set_prescale (66);

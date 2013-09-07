@@ -42,10 +42,45 @@ seL4_CPtr _sos_interrupt_ep_cap;
 
 struct serial* ser_device;
 
+thread_t threads_running = NULL;
+
+#define MAX_SERVICE_LENGTH  64
+#define SVC_NAME_TOO_LONG       2
+#define SVC_OK                  0
+#define SVC_NOT_FOUND           404
+
 /**
  * NFS mount point
  */
 extern fhandle_t mnt_point;
+
+seL4_CPtr last_cap;
+
+void* uspace_map (addrspace_t as, vaddr_t vaddr) {
+    /* BIG FIXME: this function makes many assumptions that DEFINITELY need to be fixed:
+        * assumes that does not cross page boundary.
+        * assumes is in valid region (including crossing over to invalid region)
+    */
+    seL4_CPtr cap = as_get_page_cap (as, vaddr);
+    if (!cap) {
+        printf ("NO CAP???\n");
+        return NULL;
+    }
+
+    // FIXME: yuck!!
+    vaddr_t page_offset = vaddr % (1 << seL4_PageBits);
+
+    int err = map_page(cap, seL4_CapInitThreadPD, FRAMEWINDOW_VSTART, seL4_AllRights, seL4_ARM_Default_VMAttributes);
+    conditional_panic(err, "could not map into SOS");
+
+    last_cap = cap;
+
+    return (void*)(FRAMEWINDOW_VSTART + page_offset);
+}
+
+void uspace_unmap (void* addr) {
+    seL4_ARM_Page_Unmap (last_cap);
+}
 
 
 void handle_syscall(thread_t thread, int num_args) {
@@ -63,6 +98,7 @@ void handle_syscall(thread_t thread, int num_args) {
     /* Process system call */
     switch (syscall_number) {
     case SYSCALL_NETWRITE:
+        printf ("syscall: asked to write over network serial\n");
         if (num_args < 0) {
             break;
         }
@@ -107,6 +143,64 @@ void handle_syscall(thread_t thread, int num_args) {
         cspace_free_slot(cur_cspace, reply_cap);
         break;
 
+    case SYSCALL_FIND_SERVICE:
+        if (num_args != 2) {
+            break;
+        }
+
+        printf ("syscall: %s asked to find a service\n", thread->name);
+        reply = seL4_MessageInfo_new(0, 0, 1, 1);
+
+        if (seL4_GetMR (2) >= MAX_SERVICE_LENGTH) {
+            seL4_SetMR(0, SVC_NAME_TOO_LONG);
+        } else {
+            /* assume there's only one service at the moment */
+            // FIXME: copyin would be nicer, but since we're only using the string as read-only it's
+            // probably OK
+            char* service_name = uspace_map (thread->as, (vaddr_t)seL4_GetMR(1));
+            int found = false;
+
+            //printf ("asked for service name %s\n", service_name);
+
+            if (strcmp (service_name, "sys.net.services") == 0) {
+                thread_t thread = threadlist_first();
+                while (thread) {
+                    //printf ("comparing %s to svc_network\n", thread->name);
+                    if (strcmp (thread->name, "svc_network") == 0) {
+                        found = true;
+                        break;
+                    }
+
+                    thread = thread->next;
+                }
+
+                if (found) {
+                    //printf ("Found service!\n");
+                    seL4_SetMR (0, SVC_OK);
+
+                    //seL4_MessageInfo_set_extraCaps (reply, thread->reply_cap);
+                    //seL4_MessageInfo_set_capsUnwrapped (reply, 1);
+                    seL4_SetCap (0, thread->reply_cap);
+
+                    seL4_SetTag (reply);
+
+                    printf ("returning cap 0x%x in slot 0\n", thread->reply_cap);
+
+                    uspace_unmap (service_name);
+                    goto sendServiceReply;
+                }
+            }
+
+            printf ("Service not found!\n");
+            seL4_SetMR (0, SVC_NOT_FOUND);
+            uspace_unmap (service_name);
+        }
+
+sendServiceReply:
+        seL4_Send (reply_cap, reply);
+        cspace_free_slot(cur_cspace, reply_cap);
+
+        break;
     default:
         printf("Unknown syscall %d\n", syscall_number);
         /* we don't want to reply to an unknown syscall */
@@ -121,6 +215,7 @@ void syscall_loop(seL4_CPtr ep) {
         seL4_Word interrupts_fired;
         seL4_MessageInfo_t message;
 
+        printf ("Waiting on EP 0x%x\n", ep);
         message = seL4_Wait(ep, &badge);
 
         thread_t thread;
@@ -133,7 +228,7 @@ void syscall_loop(seL4_CPtr ep) {
                 break;
             }
 
-            //printf ("had syscall from %s\n", thread->name);
+            printf ("had syscall from %s\n", thread->name);
             handle_syscall(thread, seL4_MessageInfo_get_length(message) - 1);
             break;
 
@@ -144,10 +239,13 @@ void syscall_loop(seL4_CPtr ep) {
                 break;
             }
 
+            printf ("had VM fault from %s\n", thread->name);
+
             if (!seL4_GetMR(2)) {
                 /* data fault; try to map in page */
                 if (as_map_page (thread->as, seL4_GetMR(1))) {
                     /* restart calling thread now we have the page set */
+                    printf ("mapped page OK, restarting thread\n");
                     seL4_Reply (message);
                     break;
                 }
@@ -156,7 +254,7 @@ void syscall_loop(seL4_CPtr ep) {
             /*dprintf(0, "vm fault at 0x%08x, pc = 0x%08x, %s\n", seL4_GetMR(1),
                     seL4_GetMR(0),
                     seL4_GetMR(2) ? "Instruction Fault" : "Data fault");*/
-            printf ("not waking thread %d (%s)...\n", thread->pid, thread->name);
+            printf ("non-recoverable VM fault; not waking thread %d (%s)...\n", thread->pid, thread->name);
 
             //assert(!"Unable to handle vm faults");
             break;
@@ -167,8 +265,10 @@ void syscall_loop(seL4_CPtr ep) {
              * are orred together in message register 0.
              */
             interrupts_fired = seL4_GetMR(0);
+            printf ("interrupts fired: 0x%x\n", interrupts_fired);
 
             if (badge & IPC_TIMER_BADGE) {
+                printf ("\tincluded a timer interrupt\n");
                 handle_timer();
             }
 
@@ -354,7 +454,7 @@ int main(void) {
         data = cpio_get_entry (_cpio_archive, i, &name, &size);
         if (data != NULL) {
             printf ("trying to start %s...\n", name);
-            pid_t pid = thread_create (name, 0, _sos_ipc_ep_cap);
+            pid_t pid = thread_create (name, _sos_ipc_ep_cap);
             printf ("started with PID %d\n", pid);
         } else {
             break;

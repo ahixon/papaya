@@ -6,6 +6,8 @@
 #include <vm/addrspace.h>
 #include <cspace/cspace.h>
 
+typedef struct thread * thread_t;
+
 struct thread {
 	char* name;
 	pid_t pid;
@@ -20,12 +22,14 @@ struct thread {
     cspace_t *croot;
 
     seL4_CPtr reply_cap;
+
+    thread_t next;
 };
 
-typedef struct thread * thread_t;
-
-pid_t thread_create (char* path, seL4_CPtr reply_cap, seL4_CPtr fault_ep);
+pid_t thread_create (char* path, seL4_CPtr fault_ep);
 void threadlist_add (pid_t pid, thread_t thread);
 thread_t threadlist_lookup (pid_t pid);
+
+thread_t threadlist_first (void);
 
 #endif

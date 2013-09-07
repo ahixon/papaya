@@ -95,9 +95,9 @@ pt_test( void )
     }
 #endif
 
-while (true) {
+/*while (true) {
     printf ("I am sos_test\n");
-}
+}*/
 }
 
 

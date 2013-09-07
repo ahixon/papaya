@@ -24,7 +24,7 @@ static void
 thread_block(void){
     seL4_MessageInfo_t tag = seL4_MessageInfo_new(0, 0, 0, 1);
     seL4_SetTag(tag);
-    seL4_SetMR(0, 1);
+    seL4_SetMR(0, 0);
     seL4_Call(SYSCALL_ENDPOINT_SLOT, tag);
 }
 

@@ -1,4 +1,4 @@
 components-$(CONFIG_APP_DEV_CONSOLE) += dev_console
 
-dev_console: $(libc) libsel4 libsos
+dev_console: $(libc) libsel4 libsos libsel4cspace
 

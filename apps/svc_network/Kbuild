@@ -1,0 +1,4 @@
+components-$(CONFIG_APP_SVC_NETWORK) += svc_network
+
+svc_network: $(libc) libsel4 libsos
+

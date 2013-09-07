@@ -19,6 +19,7 @@
 #define verbose 5
 #include <sys/debug.h>
 #include <sys/panic.h>
+#include <assert.h>
 
 #define DEFAULT_PRIORITY		(0)
 
@@ -28,8 +29,11 @@ extern char _cpio_archive[];
 
 thread_t threadlist[PID_MAX] = {0};
 
+thread_t running_head = NULL;
+thread_t running_tail = NULL;
+
 /* FIXME: error codes would be nicer */
-pid_t thread_create (char* path, seL4_CPtr reply_cap, seL4_CPtr fault_ep) {
+pid_t thread_create (char* path, seL4_CPtr reply_cap) {
 	int err;
     seL4_CPtr user_ep_cap;
     seL4_UserContext context;
@@ -47,23 +51,50 @@ pid_t thread_create (char* path, seL4_CPtr reply_cap, seL4_CPtr fault_ep) {
 		goto cleanupThread;
 	}
 
+    thread->next = NULL;
+
 	/* FIXME: actually check that path terminates! */
 	thread->name = strdup (path);
 
-    /* Create a simple 1 level CSpace */
-    thread->croot = cspace_create(1);
+    thread->croot = cspace_create(2);           /* MUST BE 2 LEVEL otherwise we cannot retype into this cspace */
     if (!thread->croot) {
     	goto cleanupCSpace;
     }
 
     /* Copy the fault endpoint to the user app to enable IPC */
-    user_ep_cap = cspace_mint_cap(thread->croot, cur_cspace, fault_ep, seL4_AllRights, seL4_CapData_Badge_new (pid));
+    user_ep_cap = cspace_mint_cap(thread->croot, cur_cspace, reply_cap, seL4_AllRights | seL4_Transfer_Mint, seL4_CapData_Badge_new (pid));
+    printf ("*** Minted EP %x with badge %d to %x in process cspace\n", reply_cap, pid, user_ep_cap);
     if (!user_ep_cap) {
     	goto cleanupCSpace;
     }
     /* should be the first slot in the space, hack I know */
-    /*assert(user_ep_cap == 1);
-    assert(user_ep_cap == USER_EP_CAP);*/
+    assert(user_ep_cap == 1);
+    //assert(user_ep_cap == USER_EP_CAP);
+
+    seL4_CPtr reserved_cap = cspace_alloc_slot (thread->croot);
+    if (!reserved_cap) {
+        goto cleanupCSpace;
+    }
+
+    printf ("Got reserved cap\n");
+    assert (reserved_cap == 2);
+
+    seL4_CPtr service_cap;
+
+    seL4_Word service_addr = ut_alloc(seL4_EndpointBits);
+    conditional_panic(!service_addr, "No memory for endpoint");
+    err = cspace_ut_retype_addr(service_addr, 
+                                seL4_EndpointObject,
+                                seL4_EndpointBits,
+                                //thread->croot,
+                                cur_cspace,
+                                &service_cap);
+    conditional_panic(err, "Failed to allocate c-slot for IPC endpoint");
+
+    seL4_CPtr their_service_cap = cspace_copy_cap (thread->croot, cur_cspace, service_cap, seL4_AllRights);
+    conditional_panic(!their_service_cap, "could not copy service cap for app");
+
+    printf ("had service IPC (them = 0x%x, us = 0x%x)\n", their_service_cap, service_cap);
 
     /* Create a new TCB object */
     thread->tcb_addr = ut_alloc(seL4_TCBBits);
@@ -93,6 +124,11 @@ pid_t thread_create (char* path, seL4_CPtr reply_cap, seL4_CPtr fault_ep) {
     }
 
     /* Configure the TCB */
+    printf ("FYI: root cnode is %d\n", thread->croot->root_cnode);
+
+    seL4_CPtr root_copy = cspace_copy_cap (thread->croot, cur_cspace, thread->croot->root_cnode, seL4_AllRights);
+    printf ("And root copy = %d\n", root_copy);
+
     err = seL4_TCB_Configure(thread->tcb_cap, user_ep_cap, DEFAULT_PRIORITY,
                              thread->croot->root_cnode, seL4_NilData,
                              thread->as->pagedir_cap, seL4_NilData, PROCESS_IPC_BUFFER,
@@ -117,12 +153,20 @@ pid_t thread_create (char* path, seL4_CPtr reply_cap, seL4_CPtr fault_ep) {
     /* find where we put the stack */
     struct as_region* stack = as_get_region_by_type (thread->as, REGION_STACK);
     vaddr_t stack_top = stack->vbase + stack->size;
-    printf ("stack top = 0x%x\n", stack_top);
-    printf ("stack base = 0x%x\n", stack->vbase);
+    /*printf ("stack top = 0x%x\n", stack_top);
+    printf ("stack base = 0x%x\n", stack->vbase);*/
 
     /* install into threadlist before we start */
-    thread->reply_cap = reply_cap;
+    thread->reply_cap = service_cap;
     threadlist_add (pid, thread);
+
+    /* and stick at end of running thread queue */
+    if (running_head) {
+        running_tail->next = thread;
+    } else {
+        running_head = thread;
+        running_tail = running_head;
+    }
 
     /* Start the new process */
     memset(&context, 0, sizeof(context));
@@ -157,4 +201,16 @@ thread_t threadlist_lookup (pid_t pid) {
 	}
 
 	return threadlist[pid];
+}
+
+thread_t threadlist_first (void) {
+    return running_head;
+}
+
+thread_t thread_next (thread_t t) {
+    if (t) {
+        return t->next;
+    }
+
+    return NULL;
 }
