@@ -8,10 +8,20 @@ source "$SEL4_APPS_PATH/sos/Kconfig"
 source "$SEL4_APPS_PATH/sos_test/Kconfig"
 source "$SEL4_APPS_PATH/sosh/Kconfig"
 source "$SEL4_APPS_PATH/tty_test/Kconfig"
+
+menu "Devices"
 source "$SEL4_APPS_PATH/dev_console/Kconfig"
 source "$SEL4_APPS_PATH/dev_timer/Kconfig"
+endmenu
+
+
+menu "Services"
 source "$SEL4_APPS_PATH/svc_network/Kconfig"
+source "$SEL4_APPS_PATH/svc_vfs/Kconfig"
 
-
+menu "Filesystems"
+source "$SEL4_APPS_PATH/fs_dev/Kconfig"
+endmenu
+endmenu
 
 endmenu
