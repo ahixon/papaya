@@ -133,7 +133,7 @@ static int imx_iomux_v3_setup_multiple_pads(iomux_v3_cfg_t const *pad_list,
 void setup_iomux_enet(void)
 {
     if(base == NULL){
-        base = os_ioremap((paddr_t)IOMUXC_PADDR, IOMUXC_SIZE);
+        base = os_ioremap((eth_paddr_t)IOMUXC_PADDR, IOMUXC_SIZE);
         assert(base);
     }
 

@@ -9,6 +9,7 @@ source "$SEL4_APPS_PATH/sos_test/Kconfig"
 source "$SEL4_APPS_PATH/sosh/Kconfig"
 source "$SEL4_APPS_PATH/tty_test/Kconfig"
 source "$SEL4_APPS_PATH/dev_console/Kconfig"
+source "$SEL4_APPS_PATH/dev_timer/Kconfig"
 source "$SEL4_APPS_PATH/svc_network/Kconfig"
 
 

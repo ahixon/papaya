@@ -129,6 +129,22 @@ pid_t thread_create (char* path, seL4_CPtr reply_cap) {
     seL4_CPtr root_copy = cspace_copy_cap (thread->croot, cur_cspace, thread->croot->root_cnode, seL4_AllRights);
     printf ("And root copy = %d\n", root_copy);
 
+    seL4_CPtr async_ep;
+
+    seL4_Word aep_addr = ut_alloc(seL4_EndpointBits);
+    conditional_panic(!aep_addr, "No memory for async endpoint");
+    err = cspace_ut_retype_addr(aep_addr,
+                                seL4_AsyncEndpointObject,
+                                seL4_EndpointBits,
+                                thread->croot,
+                                &async_ep);
+    conditional_panic(err, "Failed to allocate c-slot for Interrupt endpoint");
+
+    printf ("and async ep is %d\n", async_ep);
+
+    seL4_CPtr tcb_copy = cspace_copy_cap (thread->croot, cur_cspace, thread->tcb_cap, seL4_AllRights);
+    printf ("and tcb copy is %d\n", tcb_copy);
+
     err = seL4_TCB_Configure(thread->tcb_cap, user_ep_cap, DEFAULT_PRIORITY,
                              thread->croot->root_cnode, seL4_NilData,
                              thread->as->pagedir_cap, seL4_NilData, PROCESS_IPC_BUFFER,

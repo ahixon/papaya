@@ -8,21 +8,21 @@ struct eth_driver {
     void* eth_data;
 };
 
-typedef void * paddr_t;
-typedef void * vaddr_t;
+typedef void * eth_paddr_t;
+typedef void * eth_vaddr_t;
 
 typedef struct dma_addr {
-    paddr_t phys;
-    vaddr_t virt;
+    eth_paddr_t phys;
+    eth_vaddr_t virt;
 }dma_addr_t;
 
 struct ethif_os_interface {
     void *cookie;
-    void (*clean)(void *cookie, vaddr_t addr, int range);
-    void (*invalidate)(void *cookie, vaddr_t addr, int range);
+    void (*clean)(void *cookie, eth_vaddr_t addr, int range);
+    void (*invalidate)(void *cookie, eth_vaddr_t addr, int range);
     dma_addr_t (*dma_malloc)(void *cookie, size_t size, int cached);
     void* (*malloc)(void *cookie, size_t size);
-    void* (*ioremap)(void *cookie, paddr_t dev_paddr, int size);
+    void* (*ioremap)(void *cookie, eth_paddr_t dev_paddr, int size);
 };
 
 /* 
@@ -30,7 +30,7 @@ struct ethif_os_interface {
  * @param packet the physical address of the received packet
  * @param len the length of the received packet
  */
-typedef int (*rx_cb_t)(paddr_t buf, int len);
+typedef int (*rx_cb_t)(eth_paddr_t buf, int len);
 
 /**
  * This function initialises the hardware

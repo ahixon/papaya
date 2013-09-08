@@ -75,8 +75,8 @@ static int mxc_gpio_direction(unsigned int gpio,
 	gpio &= 0x1f;
 
     if(gpio_ports[port] == 0){
-        paddr_t gpio_phys = (paddr_t)gpio_paddr[port];
-        vaddr_t gpio_virt = os_ioremap(gpio_phys, GPIO_SIZE);
+        eth_paddr_t gpio_phys = (eth_paddr_t)gpio_paddr[port];
+        eth_vaddr_t gpio_virt = os_ioremap(gpio_phys, GPIO_SIZE);
         gpio_ports[port] = (unsigned long)gpio_virt;
     }
 

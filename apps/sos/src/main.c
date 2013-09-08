@@ -143,6 +143,39 @@ void handle_syscall(thread_t thread, int num_args) {
         cspace_free_slot(cur_cspace, reply_cap);
         break;
 
+    /* could be register driver? */
+    case SYSCALL_REGISTER_IRQ:
+        if (num_args != 1) {
+            break;
+        }
+
+        printf ("syscall: %s asked to register IRQ %d\n", thread->name, seL4_GetMR(1));
+        seL4_CPtr irq_cap = cspace_irq_control_get_cap(cur_cspace, seL4_CapIRQControl, seL4_GetMR(1));
+        conditional_panic (!irq_cap, "NO IRQ CAP??");
+
+        printf ("IRQ cap now = %d\n", irq_cap);
+
+        reply = seL4_MessageInfo_new(0, 0, 1, 1);
+        seL4_SetMR (0, 0);      // OK
+        seL4_SetCap(0, irq_cap);
+        seL4_Send(reply_cap, reply);
+
+        cspace_free_slot(cur_cspace, reply_cap);
+        break;
+
+    case SYSCALL_MAP_DEVICE:
+        if (num_args != 2) {
+            break;
+        }
+
+        reply = seL4_MessageInfo_new(0, 0, 0, 1);
+        seL4_SetMR (0, (seL4_Word)map_device_thread ((void*)seL4_GetMR(1), seL4_GetMR(2), thread));
+        seL4_Send (reply_cap, reply);
+        cspace_free_slot(cur_cspace, reply_cap);
+        break;        
+
+
+
     case SYSCALL_FIND_SERVICE:
         if (num_args != 2) {
             break;
@@ -267,10 +300,10 @@ void syscall_loop(seL4_CPtr ep) {
             interrupts_fired = seL4_GetMR(0);
             printf ("interrupts fired: 0x%x\n", interrupts_fired);
 
-            if (badge & IPC_TIMER_BADGE) {
+            /*if (badge & IPC_TIMER_BADGE) {
                 printf ("\tincluded a timer interrupt\n");
                 handle_timer();
-            }
+            }*/
 
             network_irq(interrupts_fired);
             break;
@@ -423,8 +456,6 @@ static void _sos_init(seL4_CPtr* ipc_ep, seL4_CPtr* async_ep){
  * Main entry point - called by crt.
  */
 int main(void) {
-    int ret;
-
     dprintf(0, "\nSOS Starting...\n");
 
     _sos_init(&_sos_ipc_ep_cap, &_sos_interrupt_ep_cap);
@@ -436,15 +467,6 @@ int main(void) {
     ser_device = serial_init(); 
     conditional_panic(!ser_device, "Failed to initialise serial device\n"); 
 
-    /* Initialise timers */
-    seL4_CPtr timer_cap;
-    timer_cap = cspace_mint_cap(cur_cspace, cur_cspace,
-                    _sos_interrupt_ep_cap,
-                    seL4_AllRights, seL4_CapData_Badge_new(IPC_TIMER_BADGE));
-
-    ret = start_timer(timer_cap);
-    conditional_panic(ret != CLOCK_R_OK, "Failed to initialise timer\n");
-
     /* Start all applications linked in the archive */
     for (int i = 0;; i++) {
         unsigned long size;
@@ -453,9 +475,11 @@ int main(void) {
 
         data = cpio_get_entry (_cpio_archive, i, &name, &size);
         if (data != NULL) {
-            printf ("trying to start %s...\n", name);
-            pid_t pid = thread_create (name, _sos_ipc_ep_cap);
-            printf ("started with PID %d\n", pid);
+            if (strcmp (name, "dev_timer") == 0) {
+                printf ("trying to start %s...\n", name);
+                pid_t pid = thread_create (name, _sos_ipc_ep_cap);
+                printf ("started with PID %d\n", pid);
+            }
         } else {
             break;
         }

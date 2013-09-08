@@ -44,14 +44,14 @@ static seL4_Word _dma_pend = 0;
 static seL4_Word _dma_pnext = 0;
 
 void
-dma_invalidate(void* cookie, vaddr_t addr, int range){
+dma_invalidate(void* cookie, eth_vaddr_t addr, int range){
     (void)cookie;
     (void)addr;
     (void)range;
 }
 
 void
-dma_clean(void* cookie, vaddr_t addr, int range){
+dma_clean(void* cookie, eth_vaddr_t addr, int range){
     (void)cookie;
     (void)addr;
     (void)range;
@@ -119,8 +119,8 @@ sos_dma_malloc(void* cookie, uint32_t size, int cached) {
         /* Fill the dma memory */
         _dma_fill(_dma_pnext, _dma_pnext + size, cached);
         /* set return values */
-        dma_mem.phys = (paddr_t)_dma_pnext;
-        dma_mem.virt = (vaddr_t)VIRT(dma_mem.phys);
+        dma_mem.phys = (eth_paddr_t)_dma_pnext;
+        dma_mem.virt = (eth_vaddr_t)VIRT(dma_mem.phys);
         _dma_pnext += size;
     }else{
         dma_mem.phys = 0;

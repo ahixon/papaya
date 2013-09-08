@@ -3,7 +3,7 @@
 
 #include <ethdrivers/raw_iface.h>
 
-#define RESOURCE(x)     os_ioremap((paddr_t)x##_PADDR, x##_SIZE)
+#define RESOURCE(x)     os_ioremap((eth_paddr_t)x##_PADDR, x##_SIZE)
 
 extern struct ethif_os_interface _os_iface;
 
@@ -15,7 +15,7 @@ static inline void* os_malloc(size_t size){
     return _os_iface.malloc(_os_iface.cookie, size);
 }
 
-static inline void* os_ioremap(paddr_t addr, int size){
+static inline void* os_ioremap(eth_paddr_t addr, int size){
     return _os_iface.ioremap(_os_iface.cookie, addr, size);
 }
 
@@ -24,11 +24,11 @@ static inline dma_addr_t os_dma_malloc(size_t size, int cached){
 }
 
 
-static inline paddr_t os_phys(const dma_addr_t* dma_addr){
+static inline eth_paddr_t os_phys(const dma_addr_t* dma_addr){
     return dma_addr->phys;
 }
 
-static inline paddr_t os_virt(const dma_addr_t* dma_addr){
+static inline eth_paddr_t os_virt(const dma_addr_t* dma_addr){
     return dma_addr->virt;
 }
 
@@ -36,11 +36,11 @@ static inline int os_dma_valid(const dma_addr_t* dma){
     return os_phys(dma) && os_virt(dma);
 }
 
-static inline void os_clean(vaddr_t addr, int range){
+static inline void os_clean(eth_vaddr_t addr, int range){
     _os_iface.clean(_os_iface.cookie, addr, range);
 }
 
-static inline void os_invalidate(vaddr_t addr, int range){
+static inline void os_invalidate(eth_vaddr_t addr, int range){
     _os_iface.invalidate(_os_iface.cookie, addr, range);
 }
 

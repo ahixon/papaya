@@ -1,14 +1,20 @@
+#include <sel4/sel4.h>
+#include <sos.h>
+
+#include <stdio.h>
 #include <assert.h>
 #include <stddef.h>
 #include <string.h>
 
 #include <cspace/cspace.h>
-#include <sys/panic.h>
+//#include <sys/panic.h>
 
-#include <clock/clock.h>
-#include <sys/debug.h>
+//#include <clock/clock.h>
+//#include <sys/debug.h>
 
-#include "mapping.h"
+#include <syscalls.h>
+
+#include "clock.h"
 #include "clock_gpt.h"
 
 #define verbose 0
@@ -225,7 +231,11 @@ handle_timer(void)
     // and ack the interrupt
     int err;
     err = seL4_IRQHandler_Ack(handler);
-    conditional_panic(err, "Failure to acknowledge pending interrupts");
+    //conditional_panic(err, "Failure to acknowledge pending interrupts");
+    if (err) {
+        printf ("Failed to ack pending interrupts\n");
+        return;
+    }
 
     // now actually process it using our saved status
     if (status & SR_ROV) {
@@ -253,49 +263,9 @@ handle_timer(void)
 
     // check OC3 for weird 100ms tick
     if (status & SR_OF3) {
-        //printf ("** 100ms tick, timestamp = %lld\n", time_stamp());
+        printf ("** 100ms tick, timestamp = %lld\n", time_stamp());
         regs->ocr[2] = regs->ocr[2] + TICK_100MS;
     }
-}
-
-int
-start_timer(seL4_CPtr interrupt_ep)
-{
-    int err;
-
-    if (regs && regs->control & CR_EN) {
-        err = stop_timer();
-        if (err != CLOCK_R_OK) {
-            return err;
-        }
-    }
-
-    if (!handler) {
-        handler = cspace_irq_control_get_cap(cur_cspace, seL4_CapIRQControl, IRQ_GPT);
-
-        err = seL4_IRQHandler_SetEndpoint(handler, interrupt_ep);
-        conditional_panic(err, "Failed to set interrupt endpoint");
-
-        err = seL4_IRQHandler_Ack(handler);
-        conditional_panic(err, "Failure to acknowledge pending interrupts");
-
-        regs = map_device ((void*)GPT_MEMMAP_BASE, GPT_MEMMAP_SIZE);
-        conditional_panic(!regs, "Could not map GPT device");
-    }
-
-    gpt_reset();
-    gpt_select_clock (CLOCK_PERIPHERAL);
-
-    regs->control |= CR_OM1 (OUTPUT_SET) | CR_OM2(OUTPUT_SET) | CR_OM3(OUTPUT_SET) | CR_FRR;
-    regs->interrupt |= IR_ROLLOVER/* XXX: don't need 100ms | IR_OC3*/;
-
-    regs->ocr[2] = TICK_100MS;
-    gpt_set_prescale (66);
-
-    regs->control |= CR_EN;
-    //printf ("timer started\n");
-
-    return CLOCK_R_OK;
 }
 
 int
@@ -356,4 +326,105 @@ time_stamp(void)
 
     int64_t tt = ((uint64_t)(local_overflows) << 32) | (counter);
     return tt;
+}
+
+
+int main(void) {
+    int err;
+
+    /* first, register for an interrupt from the root server
+     * FIXME: in the future, maybe register a device struct? */
+    seL4_MessageInfo_t msg = seL4_MessageInfo_new(0, 0, 0, 2);
+    
+    /* and setup a place to receive our service cap */
+    handler = SYSCALL_SERVICE_SLOT;    /* FIXME: this is hacky mcgee - need a way to root server for more slots from our cspace - MAYBE could put cap to our own cspace inside?? but probably can't call seL4_Retype?? */
+    seL4_SetCapReceivePath (4, handler, CSPACE_DEPTH);
+
+    seL4_SetMR(0, SYSCALL_REGISTER_IRQ);
+    seL4_SetMR(1, IRQ_GPT);
+
+    printf ("timer: calling to register IRQ\n");
+    seL4_MessageInfo_t reply = seL4_Call (SYSCALL_ENDPOINT_SLOT, msg);
+    printf ("Cool, got back ep 0x%x and caps unwrapped = 0x%x and extra caps = 0x%x\n", handler, seL4_MessageInfo_get_capsUnwrapped (reply), seL4_MessageInfo_get_extraCaps (reply));
+    assert (seL4_MessageInfo_get_label (reply) == seL4_NoError);
+    assert (seL4_MessageInfo_get_extraCaps (reply) == 1);
+
+    seL4_CPtr async_ep = 5;             /* FIXME: also hacky mcgee */
+    seL4_CPtr tcb_cap = 6;              /* FIXME: ^^^^^^^^^^^^^^^^ */
+
+    /* now bind our async EP to our regular message EP (so we can receive msgs/signals) */
+    printf ("timer: binding async endpoint to TCB\n");
+    err = seL4_TCB_BindAEP (tcb_cap, async_ep);
+
+    /* awesome, now setup to receive interrupts on our async endpoint */
+    printf ("timer: setting endpoint for IRQ\n");
+    err = seL4_IRQHandler_SetEndpoint(handler, async_ep);
+    //conditional_panic(err, "Failed to set interrupt endpoint");
+    if (err) {
+        printf ("Failed to set interrupt EP\n");
+        return 1;
+    }
+
+    /* ack for safety just in case some interrupts already arrived while setting up */
+    printf ("timer: acking IRQ\n");
+    err = seL4_IRQHandler_Ack(handler);
+    //conditional_panic(err, "Failure to acknowledge pending interrupts");
+    if (err) {
+        printf ("Failed to ack pending interrupts\n");
+        return 1;
+    }
+
+    /* map the GPT registers into memory */
+    msg = seL4_MessageInfo_new (0, 0, 0, 3);
+    seL4_SetMR(0, SYSCALL_MAP_DEVICE);
+    seL4_SetMR(1, GPT_MEMMAP_BASE);
+    seL4_SetMR(2, GPT_MEMMAP_SIZE);
+    printf ("timer: mapping registers into memory\n");
+    reply = seL4_Call (SYSCALL_ENDPOINT_SLOT, msg);
+    assert (seL4_MessageInfo_get_label (msg) == seL4_NoError);
+
+    regs = (void*)seL4_GetMR(0);
+    //conditional_panic(!regs, "Could not map GPT device");
+    if (!regs) {
+        printf ("Could not map GPT device\n");
+        return 1;
+    }
+
+    /* reset the device */
+    gpt_reset();
+    gpt_select_clock (CLOCK_PERIPHERAL);
+
+    /* enable output compare */
+    regs->control |= CR_OM1 (OUTPUT_SET) | CR_OM2(OUTPUT_SET) | CR_OM3(OUTPUT_SET) | CR_FRR;
+
+    /* and setup overflow interrupt */
+    regs->interrupt |= IR_ROLLOVER | IR_OC3;
+
+    regs->ocr[2] = TICK_100MS;
+
+    /* set prescaler so that the counter register increments every 1us */
+    gpt_set_prescale (66);
+
+    /* and turn on the timer! */
+    regs->control |= CR_EN;
+    printf ("timer: started\n");
+
+    /* now just wait on the interrupt EP and dish out messages */
+    seL4_Word sender_badge;
+    //seL4_MessageInfo_t msg;
+    while (1) {           /* FIXME: also hacky mcgee */
+        msg = seL4_Wait ((SYSCALL_SERVICE_SLOT + 1), &sender_badge);
+        seL4_Word label = seL4_MessageInfo_get_label(msg);
+
+        if (label == seL4_Interrupt) {
+            handle_timer();
+        } else if (label == seL4_NoFault) {
+            //if (seL4_GetMR (0) == SVC_TIMER_REGISTER) {
+                /*seL4_CPtr reply_cap = seL4_CNode_SaveCaller(4, slot, CSPACE_DEPTH);
+                register_timer ((seL4_GetMR (1) >> 32) | seL4_GetMR (2), reply_cap);*/
+            //}
+        } else {
+            printf ("timer: unknown message label 0x%x, ignoring.\n", label);
+        }
+    }
 }

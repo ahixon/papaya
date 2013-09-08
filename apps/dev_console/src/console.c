@@ -8,6 +8,7 @@
 #include <cspace/cspace.h>
 
 #include <syscalls.h>
+#include <network.h>
 #include <sos.h>
 
 int main(void) {
@@ -16,53 +17,32 @@ int main(void) {
 
     /* ask the root server for network driver deets */
     /* we should get back a cap that we can communicate directly with it */
-    printf ("** console device: trying to find service..\n");
     char* service = "sys.net.services";
     seL4_MessageInfo_t msg = seL4_MessageInfo_new(0, 0, 0, 3);
     //seL4_SetTag (msg);  /* set IPC? */
 
-    printf ("** console device: setting receive path\n");
+    //printf ("** console device: setting receive path\n");
     /* and setup a place to receive our service cap */
     seL4_CPtr net_ep = SYSCALL_SERVICE_SLOT;    /* FIXME: this is hacky mcgee - need a way to root server for more slots from our cspace - MAYBE could put cap to our own cspace inside?? but probably can't call seL4_Retype?? */
-    int i = 0;
-    while (1) {
-        //printf ("using %d\n", i);
-        seL4_SetCapReceivePath (4, net_ep, CSPACE_DEPTH);      /* else it would be rootCNode, net_ep, CNODE_DEPTH */
+    
+    seL4_SetCapReceivePath (4, net_ep, CSPACE_DEPTH);      /* else it would be rootCNode, net_ep, CNODE_DEPTH */
 
-        seL4_SetMR(0, SYSCALL_FIND_SERVICE);
-        seL4_SetMR(1, (seL4_Word)service);
-        seL4_SetMR(2, strlen (service));
+    seL4_SetMR(0, SYSCALL_FIND_SERVICE);
+    seL4_SetMR(1, (seL4_Word)service);
+    seL4_SetMR(2, strlen (service));
 
-#if 0
-    for (int i = 0; i < 3; i++) {
-        printf ("** console device: sending EP %d\n", i);
-        seL4_Send (i, msg); /* requires Grant */
-    }
-#endif
-        seL4_MessageInfo_t reply = seL4_Call (SYSCALL_ENDPOINT_SLOT, msg);
+    seL4_MessageInfo_t reply = seL4_Call (SYSCALL_ENDPOINT_SLOT, msg);
 
-        // check for errors better (ie svcman might return SERVICE_NOT_FOUND, SERVICE_DENIED, etc).
-        assert (seL4_GetMR (0) == 0);
-
-        //msg = seL4_GetTag();
-
-        if (seL4_MessageInfo_get_extraCaps (reply) != 0) {
-            printf ("USED i = %d\n", i);
-            printf ("Cool, got back ep 0x%x and caps unwrapped = 0x%x and extra caps = 0x%x\n", net_ep, seL4_MessageInfo_get_capsUnwrapped (reply), seL4_MessageInfo_get_extraCaps (reply));
-            break;
-        }
-
-        break;
-
-        i++;
-    }
+    // check for errors better (ie svcman might return SERVICE_NOT_FOUND, SERVICE_DENIED, etc).
+    assert (seL4_GetMR (0) == 0);
+    printf ("Cool, got back ep 0x%x and caps unwrapped = 0x%x and extra caps = 0x%x\n", net_ep, seL4_MessageInfo_get_capsUnwrapped (reply), seL4_MessageInfo_get_extraCaps (reply));
 
     /* ask it to register us on UDP port 26706 with OUR provided mbox frame */
     /* what about mbox circular buffers - would be nice otherwise we have to copy out into our buffer
         - depends how common a use case this is - if it is common, then implement it in the API layer so we get zerocopy */
 
     msg = seL4_MessageInfo_new (0, 0, /*XXX: 1*/0, 2);
-    //seL4_SetMR (0, NETSVC_SERVICE_REGISTER | NETSVC_PROTOCOL_UDP);
+    seL4_SetMR (0, NETSVC_SERVICE_REGISTER | NETSVC_PROTOCOL_UDP);
     seL4_SetMR (0, 20);
     seL4_SetMR (1, 26706);
 
@@ -80,6 +60,8 @@ int main(void) {
 
     // make sure no errors
     assert (seL4_GetMR (0) == 0);
+
+    printf ("You are awesome.\n");
 
 #if 0
     seL4_Word sender_badge;

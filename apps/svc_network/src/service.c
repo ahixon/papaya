@@ -21,5 +21,9 @@ int main(void) {
 
         uint32_t label = seL4_MessageInfo_get_label(message);
         printf ("** SVC_NET ** received message from %x with label %d and length %d\n", badge, label, seL4_MessageInfo_get_length (message));
+
+        seL4_MessageInfo_t newmsg = seL4_MessageInfo_new (0, 0, 0, 1);
+        seL4_SetMR (0, 0);
+        seL4_Reply (newmsg);
     }
 }

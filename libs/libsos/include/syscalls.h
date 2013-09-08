@@ -13,5 +13,7 @@
 #define SYSCALL_NETWRITE        (1)
 #define SYSCALL_SBRK	        (2)
 #define SYSCALL_FIND_SERVICE    (3)
+#define SYSCALL_REGISTER_IRQ	(4)
+#define SYSCALL_MAP_DEVICE		(5)
 
 #endif
