@@ -192,6 +192,7 @@ void handle_syscall(thread_t thread, int num_args) {
             // probably OK
             char* service_name = uspace_map (thread->as, (vaddr_t)seL4_GetMR(1));
             int found = false;
+            thread_t found_thread = NULL;
 
             //printf ("asked for service name %s\n", service_name);
 
@@ -200,28 +201,43 @@ void handle_syscall(thread_t thread, int num_args) {
                 while (thread) {
                     //printf ("comparing %s to svc_network\n", thread->name);
                     if (strcmp (thread->name, "svc_network") == 0) {
+                        found_thread = thread;
                         found = true;
                         break;
                     }
 
                     thread = thread->next;
                 }
+            }
 
-                if (found) {
-                    //printf ("Found service!\n");
-                    seL4_SetMR (0, SVC_OK);
+            if (strcmp (service_name, "sys.vfs") == 0) {
+                thread_t thread = threadlist_first();
+                while (thread) {
+                    //printf ("comparing %s to svc_network\n", thread->name);
+                    if (strcmp (thread->name, "svc_vfs") == 0) {
+                        found_thread = thread;
+                        found = true;
+                        break;
+                    }
 
-                    //seL4_MessageInfo_set_extraCaps (reply, thread->reply_cap);
-                    //seL4_MessageInfo_set_capsUnwrapped (reply, 1);
-                    seL4_SetCap (0, thread->reply_cap);
-
-                    seL4_SetTag (reply);
-
-                    printf ("returning cap 0x%x in slot 0\n", thread->reply_cap);
-
-                    uspace_unmap (service_name);
-                    goto sendServiceReply;
+                    thread = thread->next;
                 }
+            }
+
+            if (found) {
+                printf ("Found service on thread %s!\n", found_thread->name);
+                seL4_SetMR (0, SVC_OK);
+
+                //seL4_MessageInfo_set_extraCaps (reply, thread->reply_cap);
+                //seL4_MessageInfo_set_capsUnwrapped (reply, 1);
+                seL4_SetCap (0, found_thread->reply_cap);
+
+                seL4_SetTag (reply);
+
+                printf ("returning cap 0x%x in slot 0\n", found_thread->reply_cap);
+
+                uspace_unmap (service_name);
+                goto sendServiceReply;
             }
 
             printf ("Service not found!\n");
@@ -468,6 +484,7 @@ int main(void) {
     conditional_panic(!ser_device, "Failed to initialise serial device\n"); 
 
     /* Start all applications linked in the archive */
+    printf ("Starting apps...\n");
     for (int i = 0;; i++) {
         unsigned long size;
         char *name;
@@ -475,7 +492,7 @@ int main(void) {
 
         data = cpio_get_entry (_cpio_archive, i, &name, &size);
         if (data != NULL) {
-            if (strcmp (name, "dev_timer") == 0) {
+            if (strcmp (name, "sosh") == 0 || strcmp (name, "svc_vfs") == 0) {
                 printf ("trying to start %s...\n", name);
                 pid_t pid = thread_create (name, _sos_ipc_ep_cap);
                 printf ("started with PID %d\n", pid);
@@ -485,7 +502,8 @@ int main(void) {
         }
     }
 
-    seL4_TCB_Resume (threadlist_lookup(0)->tcb_cap);
+
+    //seL4_TCB_Resume (threadlist_lookup(0)->tcb_cap);
 
     /* Wait on synchronous endpoint for IPC */
     dprintf(0, "\nSOS entering syscall loop\n");

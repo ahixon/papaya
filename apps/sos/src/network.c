@@ -68,7 +68,7 @@ sos_malloc(void* cookie, uint32_t size){
 }
 
 static void * 
-sos_map_device(void* cookie, paddr_t addr, int size){
+sos_map_device(void* cookie, eth_paddr_t addr, int size){
     (void)cookie;
     return map_device(addr, size);
 }

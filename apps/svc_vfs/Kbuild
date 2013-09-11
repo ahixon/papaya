@@ -1,4 +1,4 @@
 components-$(CONFIG_APP_SVC_VFS) += svc_vfs
 
-svc_vfs: $(libc) libsel4 libsos
+svc_vfs: $(libc) libsel4 libsos libsel4cspace
 

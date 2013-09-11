@@ -21,6 +21,7 @@ source "$SEL4_LIBS_PATH/libcpio/Kconfig"
 source "$SEL4_LIBS_PATH/libethdrivers/Kconfig"
 
 source "$SEL4_LIBS_PATH/libsos/Kconfig"
+source "$SEL4_LIBS_PATH/libpawpaw/Kconfig"
 
 
 

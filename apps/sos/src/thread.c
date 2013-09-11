@@ -118,6 +118,9 @@ pid_t thread_create (char* path, seL4_CPtr reply_cap) {
         goto cleanupAS;
     }
 
+    /* XXX: map in mbox area */
+    as_define_region (thread->as, PROCESS_IPC_BUFFER + PAGE_SIZE, PAGE_SIZE * 3, seL4_AllRights, REGION_GENERIC);
+
     seL4_CPtr ipc_cap = as_get_page_cap (thread->as, PROCESS_IPC_BUFFER);
     if (!ipc_cap) {
     	goto cleanupAS;
@@ -145,6 +148,14 @@ pid_t thread_create (char* path, seL4_CPtr reply_cap) {
     seL4_CPtr tcb_copy = cspace_copy_cap (thread->croot, cur_cspace, thread->tcb_cap, seL4_AllRights);
     printf ("and tcb copy is %d\n", tcb_copy);
 
+    seL4_CPtr pd_copy = cspace_copy_cap (thread->croot, cur_cspace, thread->as->pagedir_cap, seL4_AllRights);
+    printf ("and pd copy is %d\n", pd_copy);
+
+    vaddr_t mbox_addr = PROCESS_IPC_BUFFER + (2*PAGE_SIZE);
+    as_map_page (thread->as, mbox_addr);
+    seL4_CPtr mbox_copy = cspace_copy_cap (thread->croot, cur_cspace, as_get_page_cap (thread->as, mbox_addr), seL4_AllRights);
+    printf ("and mbox copy is %d\n", mbox_copy);
+
     err = seL4_TCB_Configure(thread->tcb_cap, user_ep_cap, DEFAULT_PRIORITY,
                              thread->croot->root_cnode, seL4_NilData,
                              thread->as->pagedir_cap, seL4_NilData, PROCESS_IPC_BUFFER,
@@ -171,6 +182,9 @@ pid_t thread_create (char* path, seL4_CPtr reply_cap) {
     vaddr_t stack_top = stack->vbase + stack->size;
     /*printf ("stack top = 0x%x\n", stack_top);
     printf ("stack base = 0x%x\n", stack->vbase);*/
+
+    printf ("Thread's address space looks like:\n");
+    addrspace_print_regions (thread->as);
 
     /* install into threadlist before we start */
     thread->reply_cap = service_cap;

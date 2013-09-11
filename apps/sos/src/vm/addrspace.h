@@ -72,4 +72,7 @@ as_create_stack_heap (addrspace_t as, struct as_region** stack, struct as_region
 vaddr_t
 as_resize_heap (addrspace_t as, size_t amount);
 
+void
+addrspace_print_regions (addrspace_t as);
+
 #endif

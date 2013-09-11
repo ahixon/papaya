@@ -398,9 +398,8 @@ int main(void) {
     regs->control |= CR_OM1 (OUTPUT_SET) | CR_OM2(OUTPUT_SET) | CR_OM3(OUTPUT_SET) | CR_FRR;
 
     /* and setup overflow interrupt */
-    regs->interrupt |= IR_ROLLOVER | IR_OC3;
-
-    regs->ocr[2] = TICK_100MS;
+    regs->interrupt |= IR_ROLLOVER/* | IR_OC3*/;
+    //regs->ocr[2] = TICK_100MS;
 
     /* set prescaler so that the counter register increments every 1us */
     gpt_set_prescale (66);

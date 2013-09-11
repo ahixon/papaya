@@ -29,7 +29,7 @@
 #include <sel4/types.h>
 #include <stdlib.h>
 
-/* #define CSPACE_DEBUG */
+//#define CSPACE_DEBUG
 
 
 /* some constants for cspace levels */

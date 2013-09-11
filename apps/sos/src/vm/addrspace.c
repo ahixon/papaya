@@ -26,7 +26,7 @@
 
 #define STACK_SIZE   (1 * 1024 * PAGE_SIZE)      /* 1 MB */
 
-static void
+/*static*/ void
 addrspace_print_regions (addrspace_t as) {
     char* types[5] = {"STACK", "HEAP ", "IPC  ", "  -  "};
 

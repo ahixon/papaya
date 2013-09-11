@@ -1,0 +1,3 @@
+libs-$(CONFIG_LIB_PAWPAW) += libpawpaw
+
+libpawpaw: common

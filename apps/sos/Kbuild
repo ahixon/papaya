@@ -6,7 +6,11 @@ sos-components-$(CONFIG_APP_SOS_TEST) += sos_test
 
 sos-components-$(CONFIG_APP_DEV_CONSOLE) += dev_console
 sos-components-$(CONFIG_APP_DEV_TIMER) += dev_timer
+
 sos-components-$(CONFIG_APP_SVC_NETWORK) += svc_network
+sos-components-$(CONFIG_APP_SVC_VFS) += svc_vfs
+
+sos-components-$(CONFIG_APP_FS_DEV) += fs_dev
 
 sos-components=$(addprefix $(STAGE_BASE)/bin/, $(sos-components-y))
 

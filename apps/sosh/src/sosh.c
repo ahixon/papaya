@@ -210,7 +210,7 @@ int main(void) {
     int i, r, done, found, new, argc;
     char *bp, *p;
 
-    in = open("console", FM_READ);
+    in = open("/dev/console", FM_READ);
     assert(in >= 0);
 
     bp = buf;
