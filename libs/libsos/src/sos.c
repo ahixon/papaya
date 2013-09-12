@@ -5,40 +5,22 @@
 #include <sel4/sel4.h>
 #include <syscalls.h>
 
-#include <cspace/cspace.h>
-
 #include <sos.h>
+#include <pawpaw.h>
 
 /* FIXME: should be using libpawpaw for mbox stuff */
 seL4_CNode mbox_cap = 8;
 char* mbox = (char*)0xa0002000;
 
-int vfs_setup = false;
-seL4_CNode vfs_ep = SYSCALL_SERVICE_SLOT;
-
-int
-pawpaw_service_lookup (char* name, seL4_CNode cap) {
-    seL4_MessageInfo_t msg = seL4_MessageInfo_new(0, 0, 0, 3);
-    
-    seL4_SetCapReceivePath (4, cap, CSPACE_DEPTH);      /* FIXME: SHOULD NOT BE 4 - SHOULD BE ROOT CSPACE NODE */
-
-    seL4_SetMR(0, SYSCALL_FIND_SERVICE);
-    seL4_SetMR(1, (seL4_Word)name);
-    seL4_SetMR(2, strlen (name));
-
-    printf ("Looking up service and placing into %d\n", cap);
-    seL4_MessageInfo_t reply = seL4_Call (SYSCALL_ENDPOINT_SLOT, msg);
-    printf ("Got %d caps\n", seL4_MessageInfo_get_extraCaps (reply));
-    return seL4_MessageInfo_get_extraCaps (reply) > 0;
-}
+seL4_CNode vfs_ep = 0;
 
 fildes_t open(const char *path, fmode_t mode) {
-	if (!vfs_setup) {
+	if (!vfs_ep) {
 		/* lookup VFS service first */
-		vfs_setup = pawpaw_service_lookup ("sys.vfs", vfs_ep);
+		vfs_ep = pawpaw_service_lookup ("sys.vfs");
 
 		/* VFS service still down? */
-		if (!vfs_setup) {
+		if (!vfs_ep) {
 			printf ("Welp, VFS lookup failed\n");
 			return -1;
 		}
@@ -47,18 +29,14 @@ fildes_t open(const char *path, fmode_t mode) {
 	seL4_MessageInfo_t tag = seL4_MessageInfo_new(0, 0, 1, 4);
 
 	seL4_SetCap (0, mbox_cap);
-	printf ("OK, copying %s to mbox\n", path);
 	strcpy (mbox, path);
 
-	printf ("OK, setting up MRs\n");
     seL4_SetMR (0, VFS_OPEN);
     seL4_SetMR (1, (seL4_Word)mbox);
     seL4_SetMR (2, strlen(mbox));
     seL4_SetMR (3, mode);
 
-    printf ("Calling on %d with mbox cap %d\n", vfs_ep, mbox_cap);
     seL4_Call (vfs_ep, tag);
-    printf ("** call done\n");
 
     return seL4_GetMR(0);
 }

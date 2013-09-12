@@ -26,7 +26,6 @@ size_t sos_read(void *vData, long int position, size_t count, void *handle) {
 
 void abort(void) {
     sos_debug_print(ABORT_MSG, 0, strlen(ABORT_MSG), 0);
-    seL4_DebugHalt();
     while (1)
         ; /* We don't return after this */
 }

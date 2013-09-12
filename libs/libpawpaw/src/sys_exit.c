@@ -1,18 +1,8 @@
-/* @LICENSE(NICTA_CORE) */
+#include <pawpaw.h>
 
-/*
- Author: Philip Derrin
- Created: Wed Jan 25 2006
- */
+void _Exit (int status) {
+    pawpaw_suicide ();
 
-#include <stdio.h>
-#include <sel4/sel4.h>
-
-#include "ttyout.h"
-
-void _Exit(int status) {
-    abort();
-    /* we shouldn't come back */
-    while (1)
-        ;
+    /* ensure this never returns */
+    for (;;) { }
 }

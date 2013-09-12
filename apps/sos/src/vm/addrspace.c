@@ -225,9 +225,10 @@ as_define_region (addrspace_t as, vaddr_t vbase, size_t size, seL4_CapRights per
     reg->permissions = permissions;
     reg->type = type;
     reg->attributes = seL4_ARM_Default_VMAttributes;
+    reg->next = NULL;
 
     if (as_region_overlaps (as, reg)) {
-        printf ("as_create_region: region overlaps\n");
+        printf ("as_create_region: requested region 0x%x -> 0x%x overlaps:\n", vbase, vbase + size);
         addrspace_print_regions(as);
         free (reg);
         return NULL;
@@ -411,7 +412,6 @@ as_create_stack_heap (addrspace_t as, struct as_region** stack, struct as_region
 /*struct as_region**/
 vaddr_t
 as_resize_heap (addrspace_t as, size_t amount) {
-    size_t old_amount = amount;
     amount = (amount + PAGE_SIZE - 1) & PAGE_MASK;
     //printf ("asked for 0x%x, rounded to 0x%x\n", old_amount, amount);
 

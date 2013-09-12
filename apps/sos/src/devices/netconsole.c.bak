@@ -63,6 +63,11 @@ void con_buffer (struct* serial s, char c) {
 
 
 int con_read () {
+	if (bufextent == 0) {
+		if (mode & NON_BLOCK) {
+			// return failure
+		}
+	}
 	readpos++;
 	bufextent--;
 

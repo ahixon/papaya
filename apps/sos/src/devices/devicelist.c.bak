@@ -45,6 +45,8 @@ void devicelist_init (void) {
 int device_register (struct device* dev) {
 	/* add to device list */
 
+	/* now create vnode for device - AND PLUG IT WHERE?! */
+
 }
 
 struct device* device_lookup_by_id (devidx_t id) {

@@ -1,4 +1,4 @@
 components-$(CONFIG_APP_SOSH) += sosh
 
-sosh: $(libc) libsel4 libsos
+sosh: $(libc) libsel4 libsos libpawpaw
 

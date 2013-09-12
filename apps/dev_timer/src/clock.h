@@ -11,6 +11,11 @@
 #define CLOCK_R_CNCL (-2)       /* operation cancelled (driver stopped) */
 #define CLOCK_R_FAIL (-3)       /* operation failed for other reason */
 
+#define TIMER_SUCCESS	CLOCK_R_OK
+#define TIMER_FAILURE	CLOCK_R_FAIL
+
+#define SVC_TIMER_REGISTER		(69)
+
 typedef int64_t timestamp_t;
 
 /*

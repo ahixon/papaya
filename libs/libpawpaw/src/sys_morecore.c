@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 #include <sel4/sel4.h>
-#include <syscalls.h>
+#include <pawpaw.h>
 
 #include "k_r_malloc.h"
 
@@ -48,12 +48,22 @@ morecore (unsigned int new_units) {
 }
 
 void *sbrk(intptr_t increment) {
-	seL4_MessageInfo_t tag = seL4_MessageInfo_new(0, 0, 0, 2);
+    /* backup registers since this might be used between syscalls without someone knowing/thinking */
+    seL4_Word old_0 = seL4_GetMR (0);
+    seL4_Word old_1 = seL4_GetMR (1);
 
-    seL4_SetTag(tag);
-    seL4_SetMR(0, SYSCALL_SBRK);
-    seL4_SetMR(1, increment);
-    seL4_Call(SYSCALL_ENDPOINT_SLOT, tag);
+    /* do the syscall */
+    seL4_MessageInfo_t tag = seL4_MessageInfo_new(0, 0, 0, 2);
+    seL4_SetMR (0, SYSCALL_SBRK);
+    seL4_SetMR (1, increment);
 
-    return (void*)seL4_GetMR(0);
+    seL4_Call (PAPAYA_SYSCALL_SLOT, tag);
+
+    void* addr = (void*)seL4_GetMR(0);
+
+    /* set back old values */
+    seL4_SetMR (0, old_0);
+    seL4_SetMR (1, old_1);
+
+    return addr;
 }

@@ -21,7 +21,7 @@ struct thread {
     addrspace_t as;
     cspace_t *croot;
 
-    seL4_CPtr reply_cap;
+    seL4_CPtr service_cap;
 
     thread_t next;
 };
@@ -31,5 +31,10 @@ void threadlist_add (pid_t pid, thread_t thread);
 thread_t threadlist_lookup (pid_t pid);
 
 thread_t threadlist_first (void);
+
+int thread_cspace_new_cnodes (thread_t t, int num, seL4_CPtr* cnode);
+
+seL4_CPtr thread_cspace_new_ep (thread_t thread);
+seL4_CPtr thread_cspace_new_async_ep (thread_t thread);
 
 #endif

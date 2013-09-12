@@ -10,6 +10,7 @@
 #include <serial/serial.h>
 #include <clock/clock.h>
 #include <syscalls.h>
+#include <pawpaw.h>
 
 #include "network.h"
 
@@ -88,6 +89,8 @@ void handle_syscall(thread_t thread, int num_args) {
     seL4_CPtr reply_cap;
     seL4_MessageInfo_t reply;
 
+    seL4_CPtr our_cap;
+
 
     syscall_number = seL4_GetMR(0);
 
@@ -133,7 +136,7 @@ void handle_syscall(thread_t thread, int num_args) {
             break;
         }
 
-        printf ("syscall: asked for sbrk\n");
+        //printf ("syscall: asked for sbrk\n");
         vaddr_t new_addr = as_resize_heap (thread->as, seL4_GetMR (1));
 
         reply = seL4_MessageInfo_new(0, 0, 0, 1);
@@ -150,14 +153,18 @@ void handle_syscall(thread_t thread, int num_args) {
         }
 
         printf ("syscall: %s asked to register IRQ %d\n", thread->name, seL4_GetMR(1));
+        /* FIXME: probably want to copy instead, so that we can revoke later if needed */
         seL4_CPtr irq_cap = cspace_irq_control_get_cap(cur_cspace, seL4_CapIRQControl, seL4_GetMR(1));
         conditional_panic (!irq_cap, "NO IRQ CAP??");
 
         printf ("IRQ cap now = %d\n", irq_cap);
 
-        reply = seL4_MessageInfo_new(0, 0, 1, 1);
-        seL4_SetMR (0, 0);      // OK
-        seL4_SetCap(0, irq_cap);
+        seL4_CPtr their_cap = cspace_copy_cap (thread->croot, cur_cspace, irq_cap, seL4_AllRights);
+        printf ("their IRQ = %d\n", their_cap);
+
+        reply = seL4_MessageInfo_new(0, 0, 0, 1);
+        seL4_SetMR (0, their_cap);      // OK
+        //seL4_SetCap(0, their_cap);
         seL4_Send(reply_cap, reply);
 
         cspace_free_slot(cur_cspace, reply_cap);
@@ -174,7 +181,78 @@ void handle_syscall(thread_t thread, int num_args) {
         cspace_free_slot(cur_cspace, reply_cap);
         break;        
 
+    case SYSCALL_ALLOC_CNODES:
+        if (num_args != 1) {
+            break;
+        }
 
+        reply = seL4_MessageInfo_new(0, 0, 0, 2);
+        seL4_CPtr root_cptr;
+
+        seL4_SetMR (1, thread_cspace_new_cnodes (thread, seL4_GetMR (1), &root_cptr));
+        seL4_SetMR (0, root_cptr);
+
+        seL4_Send (reply_cap, reply);
+        cspace_free_slot(cur_cspace, reply_cap);
+        break;
+
+    case SYSCALL_CREATE_EP_SYNC:
+        reply = seL4_MessageInfo_new (0, 0, 0, 1);
+        seL4_SetMR (0, thread_cspace_new_ep (thread));
+
+        seL4_Send (reply_cap, reply);
+        cspace_free_slot(cur_cspace, reply_cap);
+        break;
+
+    case SYSCALL_CREATE_EP_ASYNC:
+        reply = seL4_MessageInfo_new (0, 0, 0, 1);
+        seL4_SetMR (0, thread_cspace_new_async_ep (thread));
+
+        seL4_Send (reply_cap, reply);
+        cspace_free_slot(cur_cspace, reply_cap);
+        break;
+
+    case SYSCALL_BIND_AEP_TCB:
+        if (num_args != 1) {
+            break;
+        }
+
+        reply = seL4_MessageInfo_new (0, 0, 0, 1);
+
+        our_cap = cspace_copy_cap (cur_cspace, thread->croot, seL4_GetMR (1), seL4_AllRights);;
+        assert (our_cap);
+
+        printf ("want to bind 0x%x (from 0x%x) and 0x%x\n", our_cap, seL4_GetMR(1), thread->tcb_cap);
+
+        seL4_SetMR (0, seL4_TCB_BindAEP (thread->tcb_cap, our_cap));
+
+        seL4_Send (reply_cap, reply);
+        cspace_free_slot(cur_cspace, reply_cap);
+        break;
+
+    case SYSCALL_SUICIDE:
+        /* FIXME: should actually destroy thread + resources instead of not returning */
+        printf ("\n!!! thread %s wanted to die - R U OK? !!!\n", thread->name);
+        break;
+
+    case SYSCALL_REGISTER_SERVICE:
+        if (num_args != 1) {
+            break;
+        }
+
+        reply = seL4_MessageInfo_new (0, 0, 0, 1);
+
+        our_cap = cspace_copy_cap (cur_cspace, thread->croot, seL4_GetMR (1), seL4_AllRights);
+
+        if (our_cap) {
+            thread->service_cap = our_cap;
+        }
+
+        seL4_SetMR (0, our_cap ? 0: 1);
+        seL4_Send (reply_cap, reply);
+
+        cspace_free_slot(cur_cspace, reply_cap);
+        break;
 
     case SYSCALL_FIND_SERVICE:
         if (num_args != 2) {
@@ -224,17 +302,31 @@ void handle_syscall(thread_t thread, int num_args) {
                 }
             }
 
+            if (strcmp (service_name, "dev.timer") == 0) {
+                thread_t thread = threadlist_first();
+                while (thread) {
+                    //printf ("comparing %s to svc_network\n", thread->name);
+                    if (strcmp (thread->name, "dev_timer") == 0) {
+                        found_thread = thread;
+                        found = true;
+                        break;
+                    }
+
+                    thread = thread->next;
+                }
+            }
+
             if (found) {
                 printf ("Found service on thread %s!\n", found_thread->name);
                 seL4_SetMR (0, SVC_OK);
 
                 //seL4_MessageInfo_set_extraCaps (reply, thread->reply_cap);
                 //seL4_MessageInfo_set_capsUnwrapped (reply, 1);
-                seL4_SetCap (0, found_thread->reply_cap);
+                seL4_SetCap (0, found_thread->service_cap);
 
                 seL4_SetTag (reply);
 
-                printf ("returning cap 0x%x in slot 0\n", found_thread->reply_cap);
+                printf ("returning cap 0x%x in slot 0\n", found_thread->service_cap);
 
                 uspace_unmap (service_name);
                 goto sendServiceReply;
@@ -264,7 +356,7 @@ void syscall_loop(seL4_CPtr ep) {
         seL4_Word interrupts_fired;
         seL4_MessageInfo_t message;
 
-        printf ("Waiting on EP 0x%x\n", ep);
+        //printf ("Waiting on EP 0x%x\n", ep);
         message = seL4_Wait(ep, &badge);
 
         thread_t thread;
@@ -277,7 +369,7 @@ void syscall_loop(seL4_CPtr ep) {
                 break;
             }
 
-            printf ("had syscall from %s\n", thread->name);
+            //printf ("had syscall %d from %s\n", seL4_GetMR(0), thread->name);
             handle_syscall(thread, seL4_MessageInfo_get_length(message) - 1);
             break;
 
@@ -288,13 +380,10 @@ void syscall_loop(seL4_CPtr ep) {
                 break;
             }
 
-            printf ("had VM fault from %s\n", thread->name);
-
             if (!seL4_GetMR(2)) {
                 /* data fault; try to map in page */
                 if (as_map_page (thread->as, seL4_GetMR(1))) {
                     /* restart calling thread now we have the page set */
-                    printf ("mapped page OK, restarting thread\n");
                     seL4_Reply (message);
                     break;
                 }
@@ -492,7 +581,9 @@ int main(void) {
 
         data = cpio_get_entry (_cpio_archive, i, &name, &size);
         if (data != NULL) {
-            if (strcmp (name, "sosh") == 0 || strcmp (name, "svc_vfs") == 0) {
+            //if (strcmp (name, "sosh") == 0 || strcmp (name, "svc_vfs") == 0) {
+            if (1) {
+            //if (strcmp (name, "dev_timer") == 0) {
                 printf ("trying to start %s...\n", name);
                 pid_t pid = thread_create (name, _sos_ipc_ep_cap);
                 printf ("started with PID %d\n", pid);

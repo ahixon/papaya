@@ -8,6 +8,7 @@ CFILES   := $(patsubst $(SOURCE_DIR)/%,%,$(wildcard $(SOURCE_DIR)/src/*.c))
 ASMFILES := $(patsubst $(SOURCE_DIR)/%,%,$(wildcard $(SOURCE_DIR)/crt/arch-${ARCH}/crt0.S))
 
 # Libraries required to build the target
-LIBS := sel4c sel4 sos sel4cspace
+LIBS := sel4c sel4 sel4cspace pawpaw sos
+# FIXME: shouldn't need SOS!! at the moment only need for debug stuff
 
 include $(SEL4_COMMON)/common.mk

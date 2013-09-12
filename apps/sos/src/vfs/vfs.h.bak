@@ -27,10 +27,18 @@ struct vnode_ops {
 	// write
 	// stat
 
+	union {
+    	struct mount	*vu_mountedhere;/* v: ptr to vfs (VDIR) */
+    	struct socket	*vu_socket;	/* v: unix ipc (VSOCK) */
+    	struct specnode	*vu_specnode;	/* v: device (VCHR, VBLK) */
+    	struct fifoinfo	*vu_fifoinfo;	/* v: fifo (VFIFO) */
+    	struct uvm_ractx *vu_ractx;	/* i: read-ahead ctx (VREG) */
+    } v_un;
+
 	/* read/write etc */
 };
 
-struct mount {
+struct mountpoint {
 	// root vnode
 };
 

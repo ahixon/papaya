@@ -1,7 +1,6 @@
 
-
-
 int dev_console_create () {
+	device_register (DEV_CONSOLE, serial_console)
 	/* devname, devops, blockdev?, opts */
 
 	/* need: underlying block count

@@ -7,12 +7,8 @@
 #include <string.h>
 
 #include <cspace/cspace.h>
-//#include <sys/panic.h>
-
-//#include <clock/clock.h>
-//#include <sys/debug.h>
-
 #include <syscalls.h>
+#include <pawpaw.h>
 
 #include "clock.h"
 #include "clock_gpt.h"
@@ -35,6 +31,8 @@ struct timer_node* timers = NULL;
 uint32_t overflows = 0;
 
 seL4_CPtr handler;
+seL4_CPtr service_ep;
+
 
 static void fire_timer (void);
 
@@ -209,9 +207,13 @@ fire_timer (void) {
 
     if (t) {
         assert (t->overflows == 0);
-        printf ("** TIMER FIRED\tscheduled wakeup=%lld, owner=%p\n", t->compare, (void*)t->owner);
-        // FIXME: actually wake up the client when we have IPC
 
+        seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 1);
+        seL4_SetMR (0, TIMER_SUCCESS);
+
+        seL4_Send (t->owner, msg);
+
+        pawpaw_cspace_free_slot (t->owner);
         destroy_timer (t);
     }
 }
@@ -231,7 +233,6 @@ handle_timer(void)
     // and ack the interrupt
     int err;
     err = seL4_IRQHandler_Ack(handler);
-    //conditional_panic(err, "Failure to acknowledge pending interrupts");
     if (err) {
         printf ("Failed to ack pending interrupts\n");
         return;
@@ -328,67 +329,42 @@ time_stamp(void)
     return tt;
 }
 
-
-int main(void) {
+static void service_init (void) {
     int err;
 
-    /* first, register for an interrupt from the root server
-     * FIXME: in the future, maybe register a device struct? */
-    seL4_MessageInfo_t msg = seL4_MessageInfo_new(0, 0, 0, 2);
-    
-    /* and setup a place to receive our service cap */
-    handler = SYSCALL_SERVICE_SLOT;    /* FIXME: this is hacky mcgee - need a way to root server for more slots from our cspace - MAYBE could put cap to our own cspace inside?? but probably can't call seL4_Retype?? */
-    seL4_SetCapReceivePath (4, handler, CSPACE_DEPTH);
+    /* Try to register events on our IRQ */
+    handler = pawpaw_register_irq (IRQ_GPT);
+    assert (handler);
 
-    seL4_SetMR(0, SYSCALL_REGISTER_IRQ);
-    seL4_SetMR(1, IRQ_GPT);
+    seL4_CPtr async_ep = pawpaw_create_ep_async();
+    assert (async_ep);
 
-    printf ("timer: calling to register IRQ\n");
-    seL4_MessageInfo_t reply = seL4_Call (SYSCALL_ENDPOINT_SLOT, msg);
-    printf ("Cool, got back ep 0x%x and caps unwrapped = 0x%x and extra caps = 0x%x\n", handler, seL4_MessageInfo_get_capsUnwrapped (reply), seL4_MessageInfo_get_extraCaps (reply));
-    assert (seL4_MessageInfo_get_label (reply) == seL4_NoError);
-    assert (seL4_MessageInfo_get_extraCaps (reply) == 1);
-
-    seL4_CPtr async_ep = 5;             /* FIXME: also hacky mcgee */
-    seL4_CPtr tcb_cap = 6;              /* FIXME: ^^^^^^^^^^^^^^^^ */
+    service_ep = pawpaw_create_ep ();
+    assert (service_ep);
 
     /* now bind our async EP to our regular message EP (so we can receive msgs/signals) */
-    printf ("timer: binding async endpoint to TCB\n");
-    err = seL4_TCB_BindAEP (tcb_cap, async_ep);
+    err = seL4_TCB_BindAEP (PAPAYA_TCB_SLOT, async_ep);
+    assert (!err);
 
     /* awesome, now setup to receive interrupts on our async endpoint */
-    printf ("timer: setting endpoint for IRQ\n");
     err = seL4_IRQHandler_SetEndpoint(handler, async_ep);
-    //conditional_panic(err, "Failed to set interrupt endpoint");
-    if (err) {
-        printf ("Failed to set interrupt EP\n");
-        return 1;
-    }
-
-    /* ack for safety just in case some interrupts already arrived while setting up */
-    printf ("timer: acking IRQ\n");
-    err = seL4_IRQHandler_Ack(handler);
-    //conditional_panic(err, "Failure to acknowledge pending interrupts");
-    if (err) {
-        printf ("Failed to ack pending interrupts\n");
-        return 1;
-    }
+    assert (!err);
 
     /* map the GPT registers into memory */
-    msg = seL4_MessageInfo_new (0, 0, 0, 3);
-    seL4_SetMR(0, SYSCALL_MAP_DEVICE);
-    seL4_SetMR(1, GPT_MEMMAP_BASE);
-    seL4_SetMR(2, GPT_MEMMAP_SIZE);
-    printf ("timer: mapping registers into memory\n");
-    reply = seL4_Call (SYSCALL_ENDPOINT_SLOT, msg);
-    assert (seL4_MessageInfo_get_label (msg) == seL4_NoError);
+    regs = pawpaw_map_device (GPT_MEMMAP_BASE, GPT_MEMMAP_SIZE);
+    assert (regs);
 
-    regs = (void*)seL4_GetMR(0);
-    //conditional_panic(!regs, "Could not map GPT device");
-    if (!regs) {
-        printf ("Could not map GPT device\n");
-        return 1;
-    }
+    /* and if anyone asks for us, tell them to use our endpoint */
+    err = pawpaw_register_service (service_ep);
+    assert (err);
+
+    /* FIXME: register the device so we get /dev/timer0 !!! */
+}
+
+
+int main(void) {
+    /* setup the service */
+    service_init();
 
     /* reset the device */
     gpt_reset();
@@ -398,32 +374,58 @@ int main(void) {
     regs->control |= CR_OM1 (OUTPUT_SET) | CR_OM2(OUTPUT_SET) | CR_OM3(OUTPUT_SET) | CR_FRR;
 
     /* and setup overflow interrupt */
-    regs->interrupt |= IR_ROLLOVER/* | IR_OC3*/;
-    //regs->ocr[2] = TICK_100MS;
+    regs->interrupt |= IR_ROLLOVER/* | IR_OC3;
+    regs->ocr[2] = TICK_100MS;*/;
 
     /* set prescaler so that the counter register increments every 1us */
     gpt_set_prescale (66);
 
-    /* and turn on the timer! */
+    /* ack for safety just in case some interrupts already arrived while setting up */
+    int err = seL4_IRQHandler_Ack(handler);
+    assert (!err);
+
     regs->control |= CR_EN;
     printf ("timer: started\n");
 
     /* now just wait on the interrupt EP and dish out messages */
-    seL4_Word sender_badge;
-    //seL4_MessageInfo_t msg;
-    while (1) {           /* FIXME: also hacky mcgee */
-        msg = seL4_Wait ((SYSCALL_SERVICE_SLOT + 1), &sender_badge);
-        seL4_Word label = seL4_MessageInfo_get_label(msg);
+    seL4_Word badge;
+    seL4_MessageInfo_t msg;
 
-        if (label == seL4_Interrupt) {
-            handle_timer();
-        } else if (label == seL4_NoFault) {
-            //if (seL4_GetMR (0) == SVC_TIMER_REGISTER) {
-                /*seL4_CPtr reply_cap = seL4_CNode_SaveCaller(4, slot, CSPACE_DEPTH);
-                register_timer ((seL4_GetMR (1) >> 32) | seL4_GetMR (2), reply_cap);*/
-            //}
-        } else {
-            printf ("timer: unknown message label 0x%x, ignoring.\n", label);
+    while (1) {
+        msg = seL4_Wait (service_ep, &badge);               /* FIXME: also hacky mcgee */
+        seL4_Word label = seL4_MessageInfo_get_label (msg);
+
+        switch (label) {
+            case seL4_Interrupt:
+                handle_timer();
+                break;
+
+            case seL4_NoFault:
+                if (seL4_GetMR (0) == SVC_TIMER_REGISTER) {
+                    printf ("timer: wanted to register timer\n");
+
+                    /* NOTE: remember to use seL4_GetMR before save_reply! */
+                    uint64_t delay = (uint64_t)seL4_GetMR (1) << 32 | seL4_GetMR (2);
+                    seL4_CPtr reply_cap = pawpaw_save_reply ();
+
+                    if (!reply_cap) {
+                        /* immediately wake up the client and notify that timer failed */
+                        seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 1);
+                        seL4_SetMR (0, TIMER_FAILURE);
+                        seL4_Send (reply_cap, msg);
+                        break;
+                    }
+
+                    register_timer (delay, reply_cap);
+                } else {
+                    printf ("timer: unknown message 0x%x\n", seL4_GetMR (0));
+                }
+
+                break;
+
+            default:
+                printf ("timer: unknown message label 0x%x, ignoring.\n", label);
+                break;
         }
     }
 }
