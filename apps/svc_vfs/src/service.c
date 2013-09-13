@@ -7,7 +7,7 @@
 #include <sel4/sel4.h>
 #include <syscalls.h>
 
-#include <cspace/cspace.h>
+#include <pawpaw.h>
 
 #include <sos.h>
 
@@ -46,11 +46,6 @@ int main(void) {
     seL4_Word badge;
     seL4_MessageInfo_t message, reply;
 
-    seL4_CPtr client_page_cap = SYSCALL_SERVICE_SLOT;
-
-    seL4_CPtr pd_cap = 7;
-    seL4_SetCapReceivePath (4, client_page_cap, CSPACE_DEPTH);
-
     /* install root */
     struct filesystem* root = malloc (sizeof (struct filesystem));
     root->dirname = "";
@@ -69,10 +64,21 @@ int main(void) {
 
     root->children = dev;
 
-    printf ("VFS service started + waiting...\n");
+    /* create our EP to listen on */
+    seL4_CPtr service_cap = pawpaw_create_ep ();
+    assert (service_cap);
+
+    seL4_CPtr page_cap = pawpaw_cspace_alloc_slot ();
+    assert (page_cap);
+
+    seL4_SetCapReceivePath (PAPAYA_ROOT_CNODE_SLOT, page_cap, PAPAYA_CSPACE_DEPTH);
+
+    pawpaw_register_service (service_cap);
+    printf ("VFS service ready and waiting... ;)\n");
 
     while (1) {
-        message = seL4_Wait((SYSCALL_SERVICE_SLOT + 1), &badge);
+        /* wait for a message */
+        message = seL4_Wait(service_cap, &badge);
         uint32_t label = seL4_MessageInfo_get_label(message);
 
         printf ("** SVC_VFS ** received message from %x with label %d and length %d\n", badge, label, seL4_MessageInfo_get_length (message));
@@ -88,10 +94,11 @@ int main(void) {
                     reply = seL4_MessageInfo_new (0, 0, 0, 1);
                     seL4_SetMR (0, VFS_INVALID_CAP);
                     seL4_Reply (reply);
+                    continue;
                 }
 
                 /* cool ok have the cap, hopefully it's the right one (will find out when we map) */
-                err = seL4_ARM_Page_Map (client_page_cap, pd_cap, RX_MAP, seL4_AllRights, seL4_ARM_Default_VMAttributes);
+                err = seL4_ARM_Page_Map (page_cap, PAPAYA_PAGEDIR_SLOT, RX_MAP, seL4_AllRights, seL4_ARM_Default_VMAttributes);
                 if (err) {
                     printf ("vfs: failed to map page: %s\n", seL4_Error_Message (err));
                     break;
@@ -157,6 +164,5 @@ int main(void) {
                 free (cur);
             }
         }
-
     }
 }

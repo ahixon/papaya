@@ -9,7 +9,7 @@
 #include <pawpaw.h>
 
 /* FIXME: should be using libpawpaw for mbox stuff */
-seL4_CNode mbox_cap = 8;
+seL4_CNode mbox_cap = 0;
 char* mbox = (char*)0xa0002000;
 
 seL4_CNode vfs_ep = 0;

@@ -12,30 +12,15 @@
 #include <sos.h>
 
 int main(void) {
-    /* first register with NFS because i need those sweet, sweet ca(ns|ps) Mr Simpson nooOOoOOoOOOOooo!!
-    Dramatisation: may not have happened. */
+    /*
+     * I need those sweet, sweet caps.. Mr Simpson nooOOoOOoOOOOooo!!
+     * Dramatisation: may not have happened.
+     */
 
     /* ask the root server for network driver deets */
     /* we should get back a cap that we can communicate directly with it */
-    char* service = "sys.net.services";
-    seL4_MessageInfo_t msg = seL4_MessageInfo_new(0, 0, 0, 3);
-    //seL4_SetTag (msg);  /* set IPC? */
-
-    //printf ("** console device: setting receive path\n");
-    /* and setup a place to receive our service cap */
-    seL4_CPtr net_ep = SYSCALL_SERVICE_SLOT;    /* FIXME: this is hacky mcgee - need a way to root server for more slots from our cspace - MAYBE could put cap to our own cspace inside?? but probably can't call seL4_Retype?? */
-    
-    seL4_SetCapReceivePath (4, net_ep, CSPACE_DEPTH);      /* else it would be rootCNode, net_ep, CNODE_DEPTH */
-
-    seL4_SetMR(0, SYSCALL_FIND_SERVICE);
-    seL4_SetMR(1, (seL4_Word)service);
-    seL4_SetMR(2, strlen (service));
-
-    seL4_MessageInfo_t reply = seL4_Call (SYSCALL_ENDPOINT_SLOT, msg);
-
-    // check for errors better (ie svcman might return SERVICE_NOT_FOUND, SERVICE_DENIED, etc).
-    assert (seL4_GetMR (0) == 0);
-    printf ("Cool, got back ep 0x%x and caps unwrapped = 0x%x and extra caps = 0x%x\n", net_ep, seL4_MessageInfo_get_capsUnwrapped (reply), seL4_MessageInfo_get_extraCaps (reply));
+    seL4_CPtr net_ep = pawpaw_find_service ("sys.net.services");
+    assert (net_ep);
 
     /* ask it to register us on UDP port 26706 with OUR provided mbox frame */
     /* what about mbox circular buffers - would be nice otherwise we have to copy out into our buffer

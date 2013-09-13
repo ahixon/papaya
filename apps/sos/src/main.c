@@ -581,8 +581,8 @@ int main(void) {
 
         data = cpio_get_entry (_cpio_archive, i, &name, &size);
         if (data != NULL) {
-            //if (strcmp (name, "sosh") == 0 || strcmp (name, "svc_vfs") == 0) {
-            if (1) {
+            if (strcmp (name, "sosh") == 0 || strcmp (name, "svc_vfs") == 0) {
+            //if (1) {
             //if (strcmp (name, "dev_timer") == 0) {
                 printf ("trying to start %s...\n", name);
                 pid_t pid = thread_create (name, _sos_ipc_ep_cap);
