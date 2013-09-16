@@ -5,13 +5,21 @@
 #include <inttypes.h>
 
 #include <sel4/sel4.h>
-#include <cspace/cspace.h>
+
+#include <pawpaw.h>
 
 #include <syscalls.h>
 #include <network.h>
 #include <sos.h>
 
+#define DEV_REGISTER            21
+
 int main(void) {
+    
+    for (int i = 0; i < 350; i++) {
+        seL4_Yield();
+    }
+    //printf ("###############################\nsosh: continuing...\n");
     /*
      * I need those sweet, sweet caps.. Mr Simpson nooOOoOOoOOOOooo!!
      * Dramatisation: may not have happened.
@@ -19,8 +27,38 @@ int main(void) {
 
     /* ask the root server for network driver deets */
     /* we should get back a cap that we can communicate directly with it */
-    seL4_CPtr net_ep = pawpaw_find_service ("sys.net.services");
-    assert (net_ep);
+    /*seL4_CPtr net_ep = pawpaw_service_lookup ("sys.net.services");
+    assert (net_ep);*/
+
+    seL4_CPtr service_ep = pawpaw_create_ep ();
+    assert (service_ep);
+
+    seL4_CPtr dev_ep = 0;
+    while (!dev_ep) {
+        dev_ep = pawpaw_service_lookup ("sys.dev");
+        if (!dev_ep) {
+            seL4_Yield();
+        }
+    }
+
+    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 4);
+    seL4_SetMR (0, DEV_REGISTER);
+    
+    seL4_SetCap (0, service_ep);
+
+    seL4_SetMR (1, 0);              // type = console
+    seL4_SetMR (2, 0);              // bus = platform device
+    seL4_SetMR (3, 1337);           // product ID = 1337 lol??
+
+    /* FIXME: do we REALLY need Call? */
+    printf ("dev_console: registering device\n");
+    seL4_Call (dev_ep, msg);
+
+#if 0
+    
+    seL4_SetMR (0, NETSVC_SERVICE_REGISTER | NETSVC_PROTOCOL_UDP);
+    seL4_SetMR (0, 20);
+    seL4_SetMR (1, 26706);    
 
     /* ask it to register us on UDP port 26706 with OUR provided mbox frame */
     /* what about mbox circular buffers - would be nice otherwise we have to copy out into our buffer
@@ -47,22 +85,23 @@ int main(void) {
     assert (seL4_GetMR (0) == 0);
 
     printf ("You are awesome.\n");
+#endif
 
-#if 0
     seL4_Word sender_badge;
-    seL4_MessageInfo msg;
-    while (msg = seL4_Wait (my_ep, &sender_badge)) {
-        if (my_ep is interrupt) {
+    //seL4_MessageInfo msg;
+    while (1) {
+        msg = seL4_Wait (service_ep, &sender_badge);
+
+        /*if (my_ep is interrupt) {
             // check badge, probably from NETSVC
         } else if (my_ep is message) {
             // probably read/write message
             // read from buffer and respond straight away, or add to internal queue and wait (wake thread up on interrupt)
             // could optimise: if buffer is empty, and wants to read N bytes, could ask netsvc to load into their mbox directly? zerocopy?
             // problem here is you'd need to setup netsvc to READ ONLY N BYTES AND UNREGISTER
-        }
-        printf ("dev_console: Got message from somebody!\n");
+        }*/
+        printf ("@@@@@@@@@@@@@@@@@@@@@@\ndev_console: Got message from somebody!\n@@@@@@@@@@@@@@@@@@@@@@@@@\n");
     }
-#endif
 
     /* now we play the waiting game... */
     /* read/write will contain:

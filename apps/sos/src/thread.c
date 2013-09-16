@@ -115,7 +115,7 @@ int thread_cspace_new_cnodes (thread_t thread, int num, seL4_CPtr* cnode) {
 /* FIXME: error codes would be nicer */
 pid_t thread_create (char* path, seL4_CPtr reply_cap) {
 	int err;
-    seL4_CPtr last_cap, service_cap = 0;
+    seL4_CPtr last_cap;
     seL4_UserContext context;
 
     char* elf_base;
@@ -134,7 +134,9 @@ pid_t thread_create (char* path, seL4_CPtr reply_cap) {
 		return -1;
 	}
 
+    thread->pid = pid;
     thread->next = NULL;
+    thread->known_services = NULL;
 
 	/* FIXME: actually check that path terminates! */
 	thread->name = strdup (path);
@@ -209,19 +211,6 @@ pid_t thread_create (char* path, seL4_CPtr reply_cap) {
     /* The cap that we should return if someone asks for a service */
     thread->service_cap = NULL;
 
-    /* and do a mbox */
-    /* XXX: map in mbox area */
-    if (!as_define_region (thread->as, PROCESS_IPC_BUFFER + PAGE_SIZE, PAGE_SIZE * 3, seL4_AllRights, REGION_GENERIC)) {
-        printf ("failed to define mbox\n");
-        return 0;
-    }
-
-    vaddr_t mbox_addr = PROCESS_IPC_BUFFER + (2*PAGE_SIZE);
-    as_map_page (thread->as, mbox_addr);
-    seL4_CPtr mbox_copy = cspace_copy_cap (thread->croot, cur_cspace, as_get_page_cap (thread->as, mbox_addr), seL4_AllRights);
-    printf ("and mbox copy is %d\n", mbox_copy);
-
-
     /* Configure the TCB */
     err = seL4_TCB_Configure(thread->tcb_cap, PAPAYA_SYSCALL_SLOT, DEFAULT_PRIORITY,
                              thread->croot->root_cnode, seL4_NilData,
@@ -255,8 +244,9 @@ pid_t thread_create (char* path, seL4_CPtr reply_cap) {
     threadlist_add (pid, thread);
 
     /* and stick at end of running thread queue */
-    if (running_head) {
+    if (running_tail) {
         running_tail->next = thread;
+        running_tail = thread;
     } else {
         running_head = thread;
         running_tail = running_head;
@@ -270,6 +260,7 @@ pid_t thread_create (char* path, seL4_CPtr reply_cap) {
 
     return pid;
 
+/* FIXME: this is actually next to useless and leaky and needs to be fixed up */
 cleanupAS:
 	addrspace_destroy (thread->as);
 cleanupTCB:

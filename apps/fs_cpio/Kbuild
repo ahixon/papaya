@@ -1,0 +1,3 @@
+components-$(CONFIG_APP_FS_CPIO) += fs_cpio
+
+fs_cpio: $(libc) libsel4 libsos libpawpaw

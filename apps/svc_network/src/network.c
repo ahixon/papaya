@@ -75,6 +75,7 @@ sos_map_device(void* cookie, eth_paddr_t addr, int size){
 
 void 
 sos_usleep(int usecs) {
+    /* FIXME: use timer service */
     /* We need to spin because we do not as yet have a timer interrupt */
     while(usecs-- > 0){
         /* Assume 1 GHz clock */

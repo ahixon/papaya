@@ -11,7 +11,6 @@
 
 #include <sos.h>
 
-#define RX_MAP      0xa0003000
 
 /* some shit trie thing */
 struct filesystem {
@@ -40,8 +39,10 @@ char* get_next_path_part (char* s, char* end) {
     return NULL;
 }
 
-int main(void) {
+struct pawpaw_can* mycan;
 
+int main(void) {
+    printf ("svc_vfs: hello\n");
     int err;
     seL4_Word badge;
     seL4_MessageInfo_t message, reply;
@@ -55,56 +56,50 @@ int main(void) {
 
     fs_head = root;
 
-    /* install /dev */
-    struct filesystem* dev = malloc (sizeof (struct filesystem));
-    dev->dirname = "dev";
-    dev->fs_ep_cap = 0;
-    dev->children = NULL;
-    dev->next = NULL;
-
-    root->children = dev;
-
     /* create our EP to listen on */
+    printf ("svc_vfs: creating EP\n");
     seL4_CPtr service_cap = pawpaw_create_ep ();
     assert (service_cap);
 
+    printf ("svc_vfs: allocating slot\n");
     seL4_CPtr page_cap = pawpaw_cspace_alloc_slot ();
     assert (page_cap);
 
     seL4_SetCapReceivePath (PAPAYA_ROOT_CNODE_SLOT, page_cap, PAPAYA_CSPACE_DEPTH);
 
+    printf ("svc_vfs: registering service\n");
     pawpaw_register_service (service_cap);
-    printf ("VFS service ready and waiting... ;)\n");
+    printf ("svc_vfs: ready\n");
 
     while (1) {
         /* wait for a message */
         message = seL4_Wait(service_cap, &badge);
+        seL4_CPtr reply_cap = pawpaw_save_reply ();
         uint32_t label = seL4_MessageInfo_get_label(message);
 
         printf ("** SVC_VFS ** received message from %x with label %d and length %d\n", badge, label, seL4_MessageInfo_get_length (message));
-        printf ("   extraCaps = %d\n", seL4_MessageInfo_get_extraCaps (message));
-        printf ("   capsUnwrapped = %d\n", seL4_MessageInfo_get_capsUnwrapped (message));
+        //printf ("   extraCaps = %d\n", seL4_MessageInfo_get_extraCaps (message));
+        //printf ("   capsUnwrapped = %d\n", seL4_MessageInfo_get_capsUnwrapped (message));
 
         if (label == seL4_NoError) {
-            if (seL4_GetMR (0) == VFS_OPEN) {
-                /* check to see if we got their cap */
-                if (seL4_MessageInfo_get_extraCaps (message) != 1) {
-                    printf ("vfs: asked to open but didn't send page cap, returning failure\n");
+            if (seL4_GetMR (0) == SYSCALL_CAN_NEGOTIATE) {
+                printf ("HELLO I AM DOG: allocating for %d\n", seL4_GetMR (2));
+                struct pawpaw_can* can = pawpaw_can_allocate (seL4_GetMR (2));
 
-                    reply = seL4_MessageInfo_new (0, 0, 0, 1);
-                    seL4_SetMR (0, VFS_INVALID_CAP);
-                    seL4_Reply (reply);
-                    continue;
-                }
+                printf ("just created can %p at %d\n", can, seL4_GetMR(2));
 
-                /* cool ok have the cap, hopefully it's the right one (will find out when we map) */
-                err = seL4_ARM_Page_Map (page_cap, PAPAYA_PAGEDIR_SLOT, RX_MAP, seL4_AllRights, seL4_ARM_Default_VMAttributes);
-                if (err) {
-                    printf ("vfs: failed to map page: %s\n", seL4_Error_Message (err));
-                    break;
-                }
+                seL4_MessageInfo_t reply = seL4_MessageInfo_new (0, 0, 0, 2);
+                seL4_SetMR (0, 16);
+                seL4_SetMR (1, (seL4_Word)can);
 
-                char* s = (char*)RX_MAP;
+                seL4_Send (reply_cap, reply);
+
+            } else if (seL4_GetMR (0) == VFS_OPEN) {
+                printf ("svc_vfs: VFS OPEN from %d\n", badge);
+                struct pawpaw_can* can = pawpaw_can_fetch (badge);
+                assert (can);
+
+                char* s = pawpaw_bean_get (can, seL4_GetMR (1));
                 printf ("passed in: %s\n", s);
 
                 /* check cache for this filename
@@ -126,8 +121,8 @@ int main(void) {
                 char* part = get_next_path_part (cur, end);
 
                 while (cur && fs) {
-                    printf ("current part is: %s\n", cur);
-                    printf ("next part is %s\n", part);
+                    //printf ("current part is: %s\n", cur);
+                    //printf ("next part is %s\n", part);
                     /* keep looking on this level for a fs mounted on that dir */
                     while (fs != NULL) {
                         printf ("comparing '%s' and '%s'\n", fs->dirname, cur);
@@ -142,26 +137,74 @@ int main(void) {
                     found = fs;
 
                     /* got one, load up its children if we have more path to match */
-                    if (fs) {
+                    if (fs->children) {
                         fs = fs->children;
                         printf ("trying to load children? %p\n", fs);
                         cur = part;
-                        part = get_next_path_part (cur, end);
+                        if (cur) {
+                            part = get_next_path_part (cur, end);
+                        }
                         //break;
+                    } else {
+                        cur = part;
+                        break;
                     }
                 }
 
-                if (found != NULL) {
+                if (found != NULL && cur && fs) {
                     /* pass the buck to the FS layer to see if it knows anything about the file */
-                    printf ("still had a filesystem, cool!\n");
+                    printf ("still had a filesystem, cool! just need to lookup: %s\n", cur);
+
+                    seL4_MessageInfo_t lookup_msg = seL4_MessageInfo_new (0, 0, 0, 1);
+                    struct pawpaw_can* can = pawpaw_can_fetch (badge);
+                    if (!can) {
+                        can = pawpaw_can_set (badge, pawpaw_can_negotiate (fs->fs_ep_cap, 16));
+                    }
+
+                    strcpy (pawpaw_bean_get (can, 0), cur);
+                    seL4_SetMR (0, VFS_OPEN);
+                    seL4_SetMR (1, 0);      // slot 0
+
+                    seL4_Call (fs->fs_ep_cap, lookup_msg);
                 } else {
                     printf ("file not found\n");
                     reply = seL4_MessageInfo_new (0, 0, 0, 1);
                     seL4_SetMR (0, VFS_FILE_NOT_FOUND);
-                    seL4_Reply (reply);
+                    seL4_Send (reply_cap, reply);
                 }
 
                 free (cur);
+            } else if (seL4_GetMR (0) == VFS_MOUNT) {
+                char* path = pawpaw_bean_get (pawpaw_can_fetch (badge), seL4_GetMR (1));
+                // MR2 = number of mount arguments concat'd in options str, WE IGNORE THIS FOR NOW
+
+                if (seL4_MessageInfo_get_extraCaps (message) != 1) {
+                    printf ("got no cap to mount with\n");
+                    continue;
+                }
+
+                /* FIXME: take out the path parsing stuff and use it to install properly */
+                printf ("mounting on %s\n", path);
+
+                struct filesystem* dev = malloc (sizeof (struct filesystem));
+                dev->dirname = "dev";
+                dev->fs_ep_cap = page_cap;
+                dev->children = NULL;
+                dev->next = NULL;
+
+                page_cap = pawpaw_cspace_alloc_slot ();
+                assert (page_cap);
+
+                seL4_SetCapReceivePath (PAPAYA_ROOT_CNODE_SLOT, page_cap, PAPAYA_CSPACE_DEPTH);
+
+                fs_head->children = dev;
+
+                reply = seL4_MessageInfo_new (0, 0, 0, 1);
+                seL4_SetMR (0, 0);
+                seL4_Send (reply_cap, reply);
+
+            } else {
+                printf ("svc_vfs: UNKNOWN MESSAGE %d\n", seL4_GetMR(0));
             }
         }
     }

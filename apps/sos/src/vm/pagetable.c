@@ -129,6 +129,89 @@ _page_map (vaddr_t vaddr, frameidx_t frame, struct as_region* region, addrspace_
     return true;
 }
 
+/* Fetches the PTE from the pagetable assocated with a virtual address. 
+ * If it does not exist, it is created .
+ *
+ * Returns NULL on failure.
+ */
+struct pt_entry* 
+page_fetch_entry (addrspace_t as, seL4_ARM_VMAttributes attributes, pagetable_t pt, vaddr_t vaddr) {
+    int l1 = L1_IDX (vaddr);
+    struct pt_table* table = pt->entries[l1];
+    if (!table) {
+        seL4_Word pt_cap, pt_addr;
+
+        //printf ("page_map: mallocing new PT in page dir at idx %d\n", l1);
+        table = malloc (sizeof (struct pt_table));
+        if (!table) {
+            printf ("page_map: malloc failed\n");
+            return NULL;
+        }
+
+        memset (table, 0, sizeof (struct pt_table));
+
+        /* now create the capability */
+        pt_cap = _pagetable_map (as, attributes, vaddr, &pt_addr);
+        if (!pt_cap) {
+            printf ("pagetable map failed\n");
+            free (table);
+            return NULL;
+        }
+
+        pt->table_caps [l1] = pt_cap;
+        pt->entries    [l1] = table;
+        pt->table_addrs[l1] = pt_addr;  /* so we can free back to ut allocator */
+    }
+
+    int l2 = L2_IDX (vaddr);
+    struct pt_entry* entry = &(table->entries[l2]);
+
+    return entry;
+}
+
+/*
+ * you probably want this to do the share_vm syscall
+ */
+struct pt_entry*
+page_map_shared (addrspace_t as_src, struct as_region* reg_src, vaddr_t src,
+    addrspace_t as_dst, /*struct as_region* reg_dst, */vaddr_t dst, int cow) {
+
+    struct pt_entry* src_entry = page_fetch_entry (as_src, reg_src->attributes, as_src->pagetable, src);
+    if (!src_entry) {
+        printf ("page_map_share: no such source page\n");
+        return NULL;
+    }
+
+    if (!(src_entry->flags & PAGE_ALLOCATED)) {
+        if (!page_map (as_src, reg_src, src)) {
+            printf ("page_map_share: failed to allocate source page\n");
+            return NULL;
+        }
+    }
+
+    src_entry->flags |= PAGE_SHARED;
+    if (cow) {
+        src_entry->flags |= PAGE_COPY_ON_WRITE;
+        /* FIXME: remap page and read-only */
+    }
+
+    /* now allocate/mark an entry in dest, and set to same physical frame */
+    struct pt_entry* dst_entry = page_fetch_entry (as_dst, reg_src->attributes, as_dst->pagetable, dst);
+    if (dst_entry->flags & PAGE_ALLOCATED) {
+        printf ("page_map_share: WARNING! dest page 0x%x already allocated at idx 0x%x! freeing\n", dst, dst_entry->frame_idx);
+        frame_free (dst_entry->frame_idx);
+    }
+
+    /* FIXME: will copy the same permissions from source region to dest region page - IS THIS OK? */
+    _page_map (dst, src_entry->frame_idx, reg_src, as_dst);
+
+    /* use previous frame */
+    dst_entry->frame_idx = src_entry->frame_idx;
+    dst_entry->flags = src_entry->flags;
+
+    return dst_entry;
+}
+
 /*
  * CALLER should double check that the vaddr is in a valid region
  */
@@ -139,35 +222,10 @@ page_map (addrspace_t as, struct as_region* region, vaddr_t vaddr) {
     pagetable_t pt = as->pagetable;
     assert (pt != NULL);
 
-    int l1 = L1_IDX (vaddr);
-    struct pt_table* table = pt->entries[l1];
-    if (!table) {
-        seL4_Word pt_cap, pt_addr;
-
-        //printf ("page_map: mallocing new PT in page dir at idx %d\n", l1);
-        table = malloc (sizeof (struct pt_table));
-        if (!table) {
-            printf ("page_map: malloc failed\n");
-            return 0;
-        }
-
-        memset (table, 0, sizeof (struct pt_table));
-
-        /* now create the capability */
-        pt_cap = _pagetable_map (as, region->attributes, vaddr, &pt_addr);
-        if (!pt_cap) {
-            printf ("pagetable map failed\n");
-            free (table);
-            return 0;
-        }
-
-        pt->table_caps [l1] = pt_cap;
-        pt->entries    [l1] = table;
-        pt->table_addrs[l1] = pt_addr;  /* so we can free back to ut allocator */
+    struct pt_entry* entry = page_fetch_entry (as, region->attributes, pt, vaddr);
+    if (!entry) {
+        return 0;
     }
-
-    int l2 = L2_IDX (vaddr);
-    struct pt_entry* entry = &(table->entries[l2]);
 
     if (entry->flags & PAGE_ALLOCATED) {
         printf ("page_map: page at vaddr 0x%x already allocated!\n", vaddr);
@@ -179,10 +237,6 @@ page_map (addrspace_t as, struct as_region* region, vaddr_t vaddr) {
     if (!frame) {
         printf ("page_map: no memory left\n");
         return 0;
-    }
-
-    if (vaddr == 0x9fffe000) {
-        printf ("page_map: mapping @ vaddr 0x%x and frame idx 0x%x (L1 idx = 0x%x, L2 idx = 0x%x)\n", vaddr, frame, l1, l2);
     }
     
     if (!_page_map (vaddr, frame, region, as)) {

@@ -10,6 +10,9 @@
 #include <sos.h>
 
 int main(void) {
+    /* Initialise the network hardware */
+    network_init(_sos_interrupt_ep_cap);
+
     printf ("Network service started.");
 
     while (1) {
@@ -25,5 +28,7 @@ int main(void) {
         seL4_MessageInfo_t newmsg = seL4_MessageInfo_new (0, 0, 0, 1);
         seL4_SetMR (0, 0);
         seL4_Reply (newmsg);
+
+        network_irq(interrupts_fired);
     }
 }

@@ -1,6 +1,6 @@
 config APP_DEV_TIMER
     bool "Timer device"
-    depends on LIB_SEL4 && LIB_SEL4_C && LIB_PAWPAW && LIB_SEL4_CSPACE
+    depends on LIB_SEL4 && LIB_SEL4_C && LIB_PAWPAW
     default n
     select HAVE_SEL4_APPS
     help

@@ -28,4 +28,5 @@ ${COMPONENTS}:
 
 archive.o: ${COMPONENTS}
 	$(Q)mkdir -p $(dir $@)
+	echo "LINKING $@"
 	${COMMON_PATH}/files_to_obj.sh $@ _cpio_archive $^

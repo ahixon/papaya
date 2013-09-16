@@ -15,13 +15,16 @@ typedef struct pt_directory* pagetable_t;
 #define L1_IDX(x)   (x >> 20)
 #define L2_IDX(x)   ((x & 0xFF000) >> 12)
 
-#define PAGE_ALLOCATED  1
+#define PAGE_ALLOCATED      1
+#define PAGE_SHARED         2
+#define PAGE_COPY_ON_WRITE  4
+#define PAGE_RESERVED       8       /* if you define any more flags, you must increase flag bits in pt_entry struct */
 
 struct pt_entry {
     /* FIXME: is it better to use 4 (== 24 bits) or round up to 12 and use 32 bits
      * for cache line optimisation? */
-    frameidx_t frame_idx    : (PAGETABLE_L1_BITS + PAGETABLE_L2_BITS);
-    unsigned short flags    : 4;
+    frameidx_t frame_idx        : (PAGETABLE_L1_BITS + PAGETABLE_L2_BITS);
+    unsigned short flags        : 4;
 };
 
 struct pt_table {

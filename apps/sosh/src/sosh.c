@@ -205,6 +205,13 @@ struct command commands[] = { { "dir", dir }, { "ls", dir }, { "cat", cat }, {
         "cp", cp }, { "ps", ps }, { "exec", exec } };
 
 int main(void) {
+    /* XXX: hack until we can wait for services to start */
+    printf ("###############################\nsosh: started, but sleeping for a little...\n");
+    for (int i = 0; i < 1000; i++) {
+        seL4_Yield();
+    }
+    printf ("###############################\nsosh: continuing...\n");
+
     char buf[BUF_SIZ];
     char *argv[MAX_ARGS];
     int i, r, done, found, new, argc;

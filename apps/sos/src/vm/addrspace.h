@@ -5,13 +5,19 @@
 
 #include <vm/vm.h>
 
-#define NUM_SPECIAL_REGION_TYPES	3
+#define NUM_SPECIAL_REGION_TYPES	4
 typedef enum {
 	REGION_STACK,
 	REGION_HEAP,
 	REGION_IPC,
+	REGION_BEANS,
 	REGION_GENERIC,
 } as_region_type;
+
+typedef enum {
+	REGION_FROM_TOP,
+	REGION_FROM_BOTTOM
+} as_region_direction;
 
 struct addrspace {
 	seL4_ARM_PageDirectory pagedir_cap;
@@ -33,6 +39,10 @@ struct as_region {
 	as_region_type type;
 
 	struct as_region* next;
+
+	/* for shared regions */
+	addrspace_t owner;
+	struct as_region* linked;
 };
 
 addrspace_t

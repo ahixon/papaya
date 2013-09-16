@@ -6,6 +6,7 @@
  */
 #define SYSCALL_NETWRITE        (1)	// soon to be removed
 #define VFS_OPEN				(1)
+#define VFS_MOUNT				(75)
 
 #define VFS_SUCCESS				(0)
 #define VFS_INVALID_CAP			(1)

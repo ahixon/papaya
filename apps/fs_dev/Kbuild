@@ -1,4 +1,4 @@
 components-$(CONFIG_APP_FS_DEV) += fs_dev
 
-fs_dev: $(libc) libsel4 libsos
+fs_dev: $(libc) libsel4 libsos libpawpaw
 

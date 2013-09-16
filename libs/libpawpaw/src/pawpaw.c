@@ -34,24 +34,17 @@ seL4_CPtr pawpaw_register_irq (int irq_num) {
 }
 
 seL4_CPtr pawpaw_service_lookup (char* name) {
-	seL4_CPtr cap = pawpaw_cspace_alloc_slot ();
-	if (!cap) {
-		return 0;
-	}
-
     seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 3);
-    seL4_SetCapReceivePath (PAPAYA_ROOT_CNODE_SLOT, cap, PAPAYA_CSPACE_DEPTH);
 
     seL4_SetMR(0, SYSCALL_FIND_SERVICE);
     seL4_SetMR(1, (seL4_Word)name);
     seL4_SetMR(2, strlen (name));
 
     seL4_MessageInfo_t reply = seL4_Call (PAPAYA_SYSCALL_SLOT, msg);
-    if (seL4_MessageInfo_get_label (reply) == seL4_NoError && 
-    	seL4_MessageInfo_get_extraCaps (reply) == 1) {
-    	return cap;
+    if (seL4_MessageInfo_get_label (reply) == seL4_NoError) {
+    	return seL4_GetMR(0);
     } else {
-    	return 0;
+        return 0;
     }
 }
 

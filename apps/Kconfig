@@ -18,9 +18,11 @@ endmenu
 menu "Services"
 source "$SEL4_APPS_PATH/svc_network/Kconfig"
 source "$SEL4_APPS_PATH/svc_vfs/Kconfig"
+source "$SEL4_APPS_PATH/svc_dev/Kconfig"
 
 menu "Filesystems"
 source "$SEL4_APPS_PATH/fs_dev/Kconfig"
+source "$SEL4_APPS_PATH/fs_cpio/Kconfig"
 endmenu
 endmenu
 

@@ -8,38 +8,38 @@
 #include <sos.h>
 #include <pawpaw.h>
 
-/* FIXME: should be using libpawpaw for mbox stuff */
-seL4_CNode mbox_cap = 0;
-char* mbox = (char*)0xa0002000;
-
+struct pawpaw_can* mycan = NULL;
 seL4_CNode vfs_ep = 0;
 
 fildes_t open(const char *path, fmode_t mode) {
-	if (!vfs_ep) {
+	while (!vfs_ep) {
 		/* lookup VFS service first */
 		vfs_ep = pawpaw_service_lookup ("sys.vfs");
-
-		/* VFS service still down? */
 		if (!vfs_ep) {
-			printf ("Welp, VFS lookup failed\n");
-			return -1;
+			seL4_Yield();
+			//return -1;
 		}
 	}
 
-	seL4_MessageInfo_t tag = seL4_MessageInfo_new(0, 0, 1, 4);
+	if (!mycan) {
+		mycan = pawpaw_can_negotiate (vfs_ep, 20);
+	}
 
-	seL4_SetCap (0, mbox_cap);
-	strcpy (mbox, path);
+	printf ("awesome, got %p\n", mycan);
+
+	seL4_MessageInfo_t tag = seL4_MessageInfo_new(0, 0, 0, 4);
+	strcpy (pawpaw_bean_get (mycan, 0), path);
 
     seL4_SetMR (0, VFS_OPEN);
-    seL4_SetMR (1, (seL4_Word)mbox);
-    seL4_SetMR (2, strlen(mbox));
+    seL4_SetMR (1, 0);			// bean 0 
+    seL4_SetMR (2, strlen(path));
     seL4_SetMR (3, mode);
 
     seL4_Call (vfs_ep, tag);
 
     return seL4_GetMR(0);
 }
+
 /* Open file and return file descriptor, -1 if unsuccessful
  * (too many open files, console already open for reading).
  * A new file should be created if 'path' does not already exist.

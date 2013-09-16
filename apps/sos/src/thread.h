@@ -8,6 +8,14 @@
 
 typedef struct thread * thread_t;
 
+struct req_svc {
+    //char* svc;
+    seL4_CPtr cap;
+    struct thread* svc_thread;
+
+    struct req_svc* next;
+};
+
 struct thread {
 	char* name;
 	pid_t pid;
@@ -22,6 +30,7 @@ struct thread {
     cspace_t *croot;
 
     seL4_CPtr service_cap;
+    struct req_svc* known_services;
 
     thread_t next;
 };

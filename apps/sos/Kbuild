@@ -9,6 +9,7 @@ sos-components-$(CONFIG_APP_DEV_TIMER) += dev_timer
 
 sos-components-$(CONFIG_APP_SVC_NETWORK) += svc_network
 sos-components-$(CONFIG_APP_SVC_VFS) += svc_vfs
+sos-components-$(CONFIG_APP_SVC_DEV) += svc_dev
 
 sos-components-$(CONFIG_APP_FS_DEV) += fs_dev
 

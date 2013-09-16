@@ -1,0 +1,4 @@
+components-$(CONFIG_APP_SVC_DEV) += svc_dev
+
+svc_dev: $(libc) libsel4 libsos libpawpaw
+

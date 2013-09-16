@@ -1,4 +1,4 @@
 components-$(CONFIG_APP_DEV_TIMER) += dev_timer
 
-dev_timer: $(libc) libsel4 libpawpaw libsel4cspace
+dev_timer: $(libc) libsel4 libpawpaw
 

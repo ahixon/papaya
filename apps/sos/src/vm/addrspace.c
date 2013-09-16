@@ -28,7 +28,7 @@
 
 /*static*/ void
 addrspace_print_regions (addrspace_t as) {
-    char* types[5] = {"STACK", "HEAP ", "IPC  ", "  -  "};
+    char* types[5] = {"STACK", "HEAP ", "IPC  ", "BEANS", "  -  "};
 
     struct as_region* reg = as->regions;
     printf ("\tvbase\t\tvlimit\t\tsize\t\tperms\tattrs\n");
@@ -120,7 +120,16 @@ as_map_page (addrspace_t as, vaddr_t vaddr) {
         }
     }
 
-    return page_map (as, reg, vaddr);
+    if (reg->linked) {
+        printf ("mapping linked pages\n");
+        /* page in shared should be same offset from base (if linked, REGIONS ARE SAME SIZE) */
+        vaddr_t offset = reg->vbase - vaddr;
+
+        struct pt_entry* entry = page_map_shared (as, reg, vaddr, reg->linked->owner, reg->linked->vbase + offset, false);
+        return entry->frame_idx;
+    } else {
+        return page_map (as, reg, vaddr);
+    }
 }
 
 /* Region handling */
@@ -226,6 +235,8 @@ as_define_region (addrspace_t as, vaddr_t vbase, size_t size, seL4_CapRights per
     reg->type = type;
     reg->attributes = seL4_ARM_Default_VMAttributes;
     reg->next = NULL;
+    reg->linked = NULL;
+    reg->owner = as;
 
     if (as_region_overlaps (as, reg)) {
         printf ("as_create_region: requested region 0x%x -> 0x%x overlaps:\n", vbase, vbase + size);
@@ -244,6 +255,17 @@ as_define_region (addrspace_t as, vaddr_t vbase, size_t size, seL4_CapRights per
     }
 
     return reg;
+}
+
+int
+as_region_link (struct as_region* us, struct as_region* them) {
+    if (us->linked || them->linked) {
+        return false;
+    }
+
+    us->linked = them;
+    them->linked = us;
+    return true;
 }
 
 struct as_region*
