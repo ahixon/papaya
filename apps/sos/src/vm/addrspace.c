@@ -121,11 +121,32 @@ as_map_page (addrspace_t as, vaddr_t vaddr) {
     }
 
     if (reg->linked) {
-        printf ("mapping linked pages\n");
+        //printf ("mapping linked pages\n");
         /* page in shared should be same offset from base (if linked, REGIONS ARE SAME SIZE) */
-        vaddr_t offset = reg->vbase - vaddr;
+        vaddr_t offset = vaddr - reg->vbase;
 
+        /*printf ("src pagetable\n");
+        pagetable_dump (as->pagetable);
+
+        printf ("src regions\n");
+        addrspace_print_regions (as);
+
+        printf ("dst pagetable\n");
+        pagetable_dump (reg->linked->owner->pagetable);
+
+        printf ("dst regions\n");
+        addrspace_print_regions (reg->linked->owner);
+
+        printf ("mapping...\n");*/
         struct pt_entry* entry = page_map_shared (as, reg, vaddr, reg->linked->owner, reg->linked->vbase + offset, false);
+        /*printf ("\tmapped shared 0x%x and 0x%x (offset was %d) to underlying frame %p\n", vaddr, reg->linked->vbase + offset, offset, entry);
+
+        printf ("src pagetable\n");
+        pagetable_dump (as->pagetable);
+
+        printf ("dst pagetable\n");
+        pagetable_dump (reg->linked->owner->pagetable);*/
+
         return entry->frame_idx;
     } else {
         return page_map (as, reg, vaddr);

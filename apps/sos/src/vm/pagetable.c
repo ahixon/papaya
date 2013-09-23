@@ -43,6 +43,42 @@
 
 #include "pagetable.h"
 
+void
+pagetable_dump (pagetable_t pt) {
+    printf ("@@@@ pagetable dump @@@@\n");
+    for (int i = 0; i < PAGETABLE_L1_SIZE; i++) {
+        struct pt_table* table = pt->entries[i];
+        short printed = false;
+        if (table == NULL) {
+            //printf ("-- unallocated --\n");
+            continue;
+        }
+
+        printf ("0x%04x: ", i);
+
+        for (int j = 0; j < PAGETABLE_L2_SIZE; j++) {
+            struct pt_entry entry = table->entries[j];
+
+            if (entry.flags & PAGE_ALLOCATED) {
+                if (printed) {
+                    printf ("\t");
+                } else {
+                    printed = true;
+                }
+
+
+                printf ("\t0x%03x: frame 0x%0x %s\n", j, entry.frame_idx, entry.flags & PAGE_SHARED ? "SHARED" : "" );
+            }
+        }
+
+        if (!printed) {
+            printf ("\n");
+        }
+
+    }
+    printf ("@@@@@@@@@@@@@@@@@@@@@@@@\n\n");
+}
+
 pagetable_t
 pagetable_init (void) {
 
@@ -171,23 +207,24 @@ page_fetch_entry (addrspace_t as, seL4_ARM_VMAttributes attributes, pagetable_t 
 
 /*
  * you probably want this to do the share_vm syscall
+ * FIXME: man, massive hack
+ * basically we want to MOUNT not create two pages, so fix this please
  */
 struct pt_entry*
-page_map_shared (addrspace_t as_src, struct as_region* reg_src, vaddr_t src,
-    addrspace_t as_dst, /*struct as_region* reg_dst, */vaddr_t dst, int cow) {
+page_map_shared (addrspace_t as_dst, struct as_region* reg_dst, vaddr_t dst,
+    addrspace_t as_src, /*struct as_region* reg_src, */vaddr_t src, int cow) {
 
-    struct pt_entry* src_entry = page_fetch_entry (as_src, reg_src->attributes, as_src->pagetable, src);
-    if (!src_entry) {
-        printf ("page_map_share: no such source page\n");
-        return NULL;
-    }
+    struct pt_entry* src_entry = page_fetch_entry (as_src, reg_dst->attributes, as_src->pagetable, src);
+    struct pt_entry* dst_entry = page_fetch_entry (as_dst, reg_dst->attributes, as_dst->pagetable, dst);
 
+#if 0
     if (!(src_entry->flags & PAGE_ALLOCATED)) {
-        if (!page_map (as_src, reg_src, src)) {
-            printf ("page_map_share: failed to allocate source page\n");
-            return NULL;
-        }
+        printf ("\t* swapping src and dst since dst was allocated and src was not\n");
+        struct pt_entry* tmp = src_entry;
+        src_entry = dst_entry;
+        dst_entry = tmp;
     }
+#endif
 
     src_entry->flags |= PAGE_SHARED;
     if (cow) {
@@ -196,18 +233,23 @@ page_map_shared (addrspace_t as_src, struct as_region* reg_src, vaddr_t src,
     }
 
     /* now allocate/mark an entry in dest, and set to same physical frame */
-    struct pt_entry* dst_entry = page_fetch_entry (as_dst, reg_src->attributes, as_dst->pagetable, dst);
-    if (dst_entry->flags & PAGE_ALLOCATED) {
+    /*if (dst_entry->flags & PAGE_ALLOCATED) {
         printf ("page_map_share: WARNING! dest page 0x%x already allocated at idx 0x%x! freeing\n", dst, dst_entry->frame_idx);
-        frame_free (dst_entry->frame_idx);
-    }
+        //frame_free (dst_entry->frame_idx);
+    }*/
 
     /* FIXME: will copy the same permissions from source region to dest region page - IS THIS OK? */
-    _page_map (dst, src_entry->frame_idx, reg_src, as_dst);
+    //_page_map (dst, src_entry->frame_idx, reg_src, as_dst);
 
     /* use previous frame */
     dst_entry->frame_idx = src_entry->frame_idx;
     dst_entry->flags = src_entry->flags;
+
+    printf ("\t* allocating page + frame for 0x%x\n", src);
+    if (!_page_map (dst, dst_entry->frame_idx, reg_dst, as_dst)) {
+        printf ("page_map_share: failed to allocate source page\n");
+        return NULL;
+    }
 
     return dst_entry;
 }

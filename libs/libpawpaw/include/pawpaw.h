@@ -9,28 +9,10 @@
 #define PAPAYA_PAGEDIR_SLOT			(4)
 #define PAPAYA_INITIAL_FREE_SLOT	(5)
 
-#define SYSCALL_SBRK	        	(2)
-#define SYSCALL_FIND_SERVICE   		(3)
-#define SYSCALL_REGISTER_IRQ		(4)
-#define SYSCALL_MAP_DEVICE			(5)
-#define SYSCALL_ALLOC_CNODES		(6)
-#define SYSCALL_CREATE_EP_SYNC		(7)
-#define SYSCALL_CREATE_EP_ASYNC		(8)
-#define SYSCALL_BIND_AEP_TCB		(9)
-#define SYSCALL_SUICIDE				(10)
-#define SYSCALL_REGISTER_SERVICE	(11)
-#define SYSCALL_CAN_NEGOTIATE		(12)
-
 #define PAPAYA_CSPACE_DEPTH			32		/* ensure this stays up to date with libsel4cspace! */
 #define PAPAYA_BEAN_SIZE			(1 << seL4_PageBits)
 
-/* MAKE SURE TO KEEP THIS UP TO DATE WITH THE ROOT SERVER */
-struct pawpaw_can {
-	void* start;
-	unsigned int count;
-	unsigned int uid;		/* 0 if we were the requestor, otherwise the pid */
-	int last_bean;
-};
+typedef struct sbuf* sbuf_t;
 
 /* FIXME: in the future, maybe register a device struct? */
 seL4_CPtr pawpaw_register_irq (int irq_num);
@@ -53,9 +35,24 @@ void pawpaw_suicide (void);
 
 int pawpaw_register_service (seL4_CPtr ep);
 
-struct pawpaw_can* pawpaw_can_negotiate (seL4_CPtr other, unsigned int max_beans);
-void* pawpaw_bean_get (struct pawpaw_can* can, unsigned int bean_idx);
-struct pawpaw_can* pawpaw_can_allocate (seL4_Word id);
+//struct pawpaw_can* pawpaw_can_negotiate (seL4_CPtr other, unsigned int max_beans);
+
+sbuf_t pawpaw_sbuf_create (unsigned int size);
+sbuf_t pawpaw_sbuf_mount (seL4_CPtr cap);
+
+int pawpaw_sbuf_link (seL4_Word idx, sbuf_t sb);
+sbuf_t pawpaw_sbuf_fetch (seL4_Word idx);
+
+void* pawpaw_sbuf_slot_get (sbuf_t sb, unsigned int idx);
+int pawpaw_sbuf_slot_next (sbuf_t sb);
+
+seL4_CPtr pawpaw_sbuf_get_cap (sbuf_t sb);
+
+#if 0
 struct pawpaw_can* pawpaw_can_set (seL4_Word id, struct pawpaw_can* can);
 struct pawpaw_can* pawpaw_can_fetch (seL4_Word id);
+
+void* pawpaw_map_in_shared (seL4_CPtr cap);
+int pawpaw_map_out_shared (void);
+#endif
 #endif

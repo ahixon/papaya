@@ -57,4 +57,6 @@ page_free (pagetable_t pt, vaddr_t vaddr);
 struct pt_entry*
 page_fetch (pagetable_t pt, vaddr_t vaddr);
 
+void pagetable_dump (pagetable_t pt);
+
 #endif

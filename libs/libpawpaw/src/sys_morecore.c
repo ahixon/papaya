@@ -5,6 +5,7 @@
 
 #include <sel4/sel4.h>
 #include <pawpaw.h>
+#include <syscalls.h>
 
 #include "k_r_malloc.h"
 
@@ -33,18 +34,6 @@ morecore (unsigned int new_units) {
 	free ((void *)(up + 1));
 
 	return _kr_malloc_freep;
-
-#if 0
-    if (morecore_free + new_units
-            > (Header*) &morecore_area[MORECORE_AREA_BYTE_SIZE]) {
-        /* out of memory */
-        return NULL;
-    }
-    morecore_free->s.size = new_units;
-    free((void*) (morecore_free + 1));
-    morecore_free += new_units;
-    return _kr_malloc_freep;
-#endif
 }
 
 void *sbrk(intptr_t increment) {

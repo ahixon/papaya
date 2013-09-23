@@ -2,6 +2,7 @@
 #include <stdlib.h>
 
 #include <pawpaw.h>
+#include <syscalls.h>
 
 #define DEFAULT_SLOT_REQUEST_SIZE		(32)
 

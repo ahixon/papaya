@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include <pawpaw.h>
+#include <syscalls.h>
 
 seL4_CPtr pawpaw_register_irq (int irq_num) {
 	/* setup a place to receive our IRQHandler cap */

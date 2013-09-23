@@ -1,0 +1,19 @@
+#ifndef __SYSCALLS_H__
+#define __SYSCALLS_H__
+
+#define NUM_SYSCALLS				12
+
+#define SYSCALL_SBRK	        	(0)
+#define SYSCALL_FIND_SERVICE   		(1)
+#define SYSCALL_REGISTER_SERVICE	(2)
+#define SYSCALL_REGISTER_IRQ		(3)
+#define SYSCALL_MAP_DEVICE			(4)
+#define SYSCALL_ALLOC_CNODES		(5)
+#define SYSCALL_CREATE_EP_SYNC		(6)
+#define SYSCALL_CREATE_EP_ASYNC		(7)
+#define SYSCALL_BIND_AEP_TCB		(8)
+#define SYSCALL_SUICIDE				(9)
+#define SYSCALL_SHAREDBUF_CREATE	(10)
+#define SYSCALL_SHAREDBUF_MOUNT		(11)
+
+#endif

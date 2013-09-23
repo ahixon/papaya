@@ -1,6 +1,7 @@
 #include <sel4/sel4.h>
 #include <sos.h>
 
+#include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
 #include <stddef.h>

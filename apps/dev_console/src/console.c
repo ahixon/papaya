@@ -35,7 +35,7 @@ int main(void) {
 
     seL4_CPtr dev_ep = 0;
     while (!dev_ep) {
-        dev_ep = pawpaw_service_lookup ("sys.dev");
+        dev_ep = pawpaw_service_lookup ("svc_dev");
         if (!dev_ep) {
             seL4_Yield();
         }

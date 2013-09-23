@@ -27,8 +27,7 @@ enum device_loc {
 
 #define DEV_LISTEN_CHANGES      20
 #define DEV_REGISTER            21
-
-struct pawpaw_can* mycan;
+#define DEV_GET_INFO            25
 
 /* crappy linked-list of registered devices
  * much TODO here:
@@ -108,22 +107,7 @@ int main(void) {
         printf ("** SVC_DEV ** received message from %x with label %d and length %d\n", badge, label, seL4_MessageInfo_get_length (message));
 
         if (label == seL4_NoError) {
-            /* FIXME: really should be handled by pawpaw, or rather NOT IN CLIENTS AT ALL? */
-            if (seL4_GetMR (0) == SYSCALL_CAN_NEGOTIATE) {
-                seL4_MessageInfo_t reply = seL4_MessageInfo_new (0, 0, 0, 2);
-                if (!mycan) {
-                    seL4_SetMR (0, 16);
-                    mycan = malloc (sizeof (struct pawpaw_can));
-                    memset (mycan, 0, sizeof (struct pawpaw_can));
-
-                    seL4_SetMR (1, (seL4_Word)mycan);
-                } else {
-                    seL4_SetMR (0, 0);
-                }
-
-                //seL4_Reply (reply);
-                seL4_Send (reply_cap, reply);
-            } else if (seL4_GetMR (0) == DEV_LISTEN_CHANGES) {
+            if (seL4_GetMR (0) == DEV_LISTEN_CHANGES) {
                 if (seL4_MessageInfo_get_extraCaps (message) != 1) {
                     printf ("got no cap to send stuff to\n");
                     continue;
@@ -188,6 +172,31 @@ int main(void) {
                 seL4_SetCapReceivePath (PAPAYA_ROOT_CNODE_SLOT, msg_cap, PAPAYA_CSPACE_DEPTH);
 
                 notify_registered (dev);
+            } else if (seL4_GetMR (0) == DEV_GET_INFO) {
+                unsigned int id = seL4_GetMR (1);
+
+                struct device* dev = devlist;
+                while (dev) {
+                    if (dev->id == id) {
+                        break;
+                    }
+
+                    dev = dev->next;
+                }
+
+                if (dev) {
+                    seL4_MessageInfo_t reply = seL4_MessageInfo_new (0, 0, 1, 2);
+                    seL4_SetMR (0, dev->type);
+                    //seL4_SetMR (1, )
+
+                    // FIXME: do I need to badge this?
+                    seL4_SetCap (0, dev->msg_cap);
+
+                    seL4_Send (reply_cap, reply);
+                } else {
+                    printf ("UNKNOWN DEVICE ID 0x%x\n", dev);
+                }
+
             }
         }
     }

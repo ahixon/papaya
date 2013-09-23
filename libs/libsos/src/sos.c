@@ -3,39 +3,64 @@
 #include <string.h>
 
 #include <sel4/sel4.h>
-#include <syscalls.h>
 
 #include <sos.h>
+
 #include <pawpaw.h>
+#include <syscalls.h>
 
-struct pawpaw_can* mycan = NULL;
+#include <vfs.h>
+
 seL4_CNode vfs_ep = 0;
+sbuf_t vfs_buffer = NULL;
 
+/* FIXME: what if the VFS service dies and then restarts? endpoint will have changed */
 fildes_t open(const char *path, fmode_t mode) {
+	seL4_MessageInfo_t msg;
+
 	while (!vfs_ep) {
 		/* lookup VFS service first */
-		vfs_ep = pawpaw_service_lookup ("sys.vfs");
+		vfs_ep = pawpaw_service_lookup ("svc_vfs");
 		if (!vfs_ep) {
 			seL4_Yield();
 			//return -1;
 		}
 	}
 
-	if (!mycan) {
-		mycan = pawpaw_can_negotiate (vfs_ep, 20);
+	/* if this is our initial open, create a shared buffer between this thread
+	 * and the the VFS service to pass through filenames */
+	short created = false;
+	if (!vfs_buffer) {
+		vfs_buffer = pawpaw_sbuf_create (2);
+		created = true;
+		if (!vfs_buffer) {
+			return -1;
+		}
 	}
 
-	printf ("awesome, got %p\n", mycan);
+	msg = seL4_MessageInfo_new(0, 0, created ? 1 : 0, 3);
 
-	seL4_MessageInfo_t tag = seL4_MessageInfo_new(0, 0, 0, 4);
-	strcpy (pawpaw_bean_get (mycan, 0), path);
+	/* if it's the first open, attach our cap */
+	if (created) {
+		seL4_SetCap (0, pawpaw_sbuf_get_cap (vfs_buffer));
+	}
+
+	/* pick a slot to copy to */
+	int slot = pawpaw_sbuf_slot_next (vfs_buffer);
+	if (slot < 0) {
+		/* FIXME: ensure this doesn't happen - do pinning in root server */
+		printf ("OPEN: NO MORE SLOTS LEFT???\n");
+		return -1;
+	}
+
+	printf ("copying in %s to %p\n", path, pawpaw_sbuf_slot_get (vfs_buffer, slot));
+	strcpy (pawpaw_sbuf_slot_get (vfs_buffer, slot), path);
 
     seL4_SetMR (0, VFS_OPEN);
-    seL4_SetMR (1, 0);			// bean 0 
-    seL4_SetMR (2, strlen(path));
-    seL4_SetMR (3, mode);
+    seL4_SetMR (1, slot);
+    seL4_SetMR (2, mode);
 
-    seL4_Call (vfs_ep, tag);
+    seL4_Call (vfs_ep, msg);
 
     return seL4_GetMR(0);
 }
@@ -56,6 +81,9 @@ int close(fildes_t file) {
 
 // FIXME: needs to cheat with fd = {0, 1, 2}
 int read(fildes_t file, char *buf, size_t nbyte) {
+	if (nbyte <= (1 << 12))
+		return -1;		/* FIXME: crappy limitation */
+
 	return -1;
 }
 
