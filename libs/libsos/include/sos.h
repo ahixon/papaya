@@ -100,6 +100,8 @@ pid_t process_create(const char *path);
  * file).
  */
 
+pid_t process_create_args (const char* path, const char* argv[]);
+
 int process_delete(pid_t pid);
 /* Delete process (and close all its file descriptors).
  * Returns 0 if successful, -1 otherwise (invalid process).

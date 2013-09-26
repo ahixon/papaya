@@ -14,6 +14,7 @@ else
 endif
 
 REMOTEUSER = alex
+REMOTEPATH = /var/tftpboot/alex
 REMOTEHOST = vodka.alexhixon.com
 ifeq ($(shell hostname), coke)
 	REMOTEHOST = vodka.local
@@ -35,7 +36,7 @@ all: app-images
 ifeq ($(SERIAL_PORT),)
 reset:
 	@echo "Uploading to $(REMOTEHOST) and resetting..."
-	scp $(TFTPROOT)/bootimg.elf $(REMOTEUSER)@$(REMOTEHOST):$(TFTPROOT)/bootimg.elf
+	scp $(TFTPROOT)/bootimg.elf $(REMOTEUSER)@$(REMOTEHOST):$(REMOTEPATH)/bootimg.elf
 	ssh $(REMOTEUSER)@$(REMOTEHOST) ./aos/run.sh
 else
 reset:

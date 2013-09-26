@@ -273,17 +273,18 @@ int main (void) {
     _sos_init (&_sos_ipc_ep_cap);
 
     /* boot up core services */
-    thread_create ("svc_dev", _sos_ipc_ep_cap);
-    thread_create ("svc_vfs", _sos_ipc_ep_cap);
+    //thread_create ("svc_dev", _sos_ipc_ep_cap);
+    //thread_create ("svc_vfs", _sos_ipc_ep_cap);
     // thread_create ("svc_net", _sos_ipc_ep_cap);
     // FIXME: need to rename svc_network -> svc_net
 
     /* boot up device filesystem & mount it */
-    thread_create ("fs_dev", _sos_ipc_ep_cap);
+    //thread_create ("fs_dev", _sos_ipc_ep_cap);
     // FIXME: actually mount the thing
 
     thread_create ("test_runner", _sos_ipc_ep_cap);
 
+#if 0
     /* start any devices services inside the CPIO archive */
     dprintf (1, "Looking for device services linked into CPIO...\n");
     unsigned long size;
@@ -298,7 +299,8 @@ int main (void) {
     dprintf (1, "Starting boot application \"%s\"...\n", CONFIG_SOS_STARTUP_APP);
     pid_t pid = thread_create (CONFIG_SOS_STARTUP_APP, _sos_ipc_ep_cap);
     dprintf (1, "  started with PID %d\n", pid);
-
+#endif
+    
     /* and wait for IPC */
     dprintf (0, "SOS entering syscall loop...\n");
     syscall_loop(_sos_ipc_ep_cap);

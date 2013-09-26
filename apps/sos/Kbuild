@@ -13,6 +13,8 @@ sos-components-$(CONFIG_APP_SVC_DEV) += svc_dev
 
 sos-components-$(CONFIG_APP_FS_DEV) += fs_dev
 
+sos-components-$(CONFIG_APP_TEST_RUNNER) += test_runner
+
 sos-components=$(addprefix $(STAGE_BASE)/bin/, $(sos-components-y))
 
 sos: export COMPONENTS=${sos-components}

@@ -15,7 +15,7 @@ const struct syscall_info syscall_table[NUM_SYSCALLS] = {
     { syscall_create_ep_sync,   0,  true  },
     { syscall_create_ep_async,  0,  true  },
     { syscall_bind_async_tcb,   1,  true  },
-    { syscall_suicide,          0,  false },
     { syscall_sbuf_create,      1,  true  },
-    { syscall_sbuf_mount,       1,  true  }
+    { syscall_sbuf_mount,       1,  true  },
+    { syscall_suicide,          0,  false },
 };

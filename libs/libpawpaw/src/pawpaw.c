@@ -34,13 +34,13 @@ seL4_CPtr pawpaw_register_irq (int irq_num) {
     }
 }
 
-seL4_CPtr pawpaw_service_lookup (char* name, short wait) {
+seL4_CPtr pawpaw_service_lookup (char* name) {
     seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 4);
 
     seL4_SetMR(0, SYSCALL_FIND_SERVICE);
     seL4_SetMR(1, (seL4_Word)name);
     seL4_SetMR(2, strlen (name));
-    seL4_SetMR(3, wait);
+    seL4_SetMR(3, true);            /* FIXME: put into nonblock functino */
 
     seL4_MessageInfo_t reply = seL4_Call (PAPAYA_SYSCALL_SLOT, msg);
     if (seL4_MessageInfo_get_label (reply) == seL4_NoError) {
@@ -124,7 +124,7 @@ int pawpaw_register_service (seL4_CPtr ep) {
 
 void pawpaw_suicide (void) {
 	seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 1);
-    seL4_SetMR (0, SYSCALL_SUICIDE);
+    seL4_SetMR (0, SYSCALL_PROCESS_SUICIDE);
 
     seL4_Call (PAPAYA_SYSCALL_SLOT, msg);
 }

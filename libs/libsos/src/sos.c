@@ -10,6 +10,7 @@
 #include <syscalls.h>
 
 #include <vfs.h>
+#include <timer.h>
 
 seL4_CNode vfs_ep = 0;
 sbuf_t vfs_buffer = NULL;
@@ -19,7 +20,7 @@ fildes_t open(const char *path, fmode_t mode) {
 	seL4_MessageInfo_t msg;
 
 	if (!vfs_ep) {
-		vfs_ep = pawpaw_service_lookup ("svc_vfs", true);
+		vfs_ep = pawpaw_service_lookup ("svc_vfs");
 	}
 
 	/* if this is our initial open, create a shared buffer between this thread
@@ -96,36 +97,89 @@ int stat(const char *path, stat_t *buf) {
 	return -1;
 }
 
-/* XXX: implement me! easy */
+/*************** PROCESS SYSCALLS ***************/
+
 pid_t process_create(const char *path) {
-	return -1;
+	return process_create_args (path, NULL);
 }
 
-/* XXX: implement me! easy */
+pid_t process_create_args (const char* path, const char* argv[]) {
+	seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 3);
+    seL4_SetMR (0, SYSCALL_PROCESS_CREATE);
+    seL4_SetMR (1, (seL4_Word)path);
+    seL4_SetMR (2, (seL4_Word)argv);
+
+    seL4_Call (PAPAYA_SYSCALL_SLOT, msg);
+    return seL4_GetMR (0);
+}
+
 int process_delete(pid_t pid) {
-	return -1;
+	seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 2);
+    seL4_SetMR (0, SYSCALL_PROCESS_DESTROY);
+    seL4_SetMR (1, pid);
+
+    seL4_Call (PAPAYA_SYSCALL_SLOT, msg);
+    return seL4_GetMR (0);
 }
 
-/* XXX: implement me! easy */
 pid_t my_id(void) {
-	return 0;
+	seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 1);
+    seL4_SetMR (0, SYSCALL_PROCESS_GETPID);
+
+    seL4_Call (PAPAYA_SYSCALL_SLOT, msg);
+    return seL4_GetMR (0);
 }
 
+/* sends:
+ * vaddr in process address space of processes buffer (should do map-in-out)
+ * maximum number to place in buffer
+ */
 int process_status(process_t *processes, unsigned max) {
-	return -1;
+	seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 3);
+    seL4_SetMR (0, SYSCALL_PROCESS_SEND_STATUS);
+    seL4_SetMR (1, (seL4_Word)processes);
+    seL4_SetMR (2, max);
+
+    seL4_Call (PAPAYA_SYSCALL_SLOT, msg);
+    return seL4_GetMR (0);
 }
 
 pid_t process_wait(pid_t pid) {
-	return -1;
+	seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 2);
+    seL4_SetMR (0, SYSCALL_PROCESS_WAIT);
+    seL4_SetMR (1, pid);
+
+    seL4_Call (PAPAYA_SYSCALL_SLOT, msg);
+    return seL4_GetMR (0);
 }
 
+/*************** TIMER SYSCALLS ***************/
+
+seL4_CPtr timersvc_ep = 0;
+
 int64_t time_stamp(void) {
-	return 0;
+	if (!timersvc_ep) timersvc_ep = pawpaw_service_lookup (TIMER_SERVICE_NAME);
+
+	seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 1);
+	seL4_SetMR (0, TIMER_TIMESTAMP);
+	seL4_Call (timersvc_ep, msg);
+
+	/* fun.. the timer service returns an unsigned int64, but the API
+	 * requires a signed int64 for some reason?? */
+	return (int64_t)((uint64_t)seL4_GetMR (0) << 32 | seL4_GetMR (1));
 }
 
 void sleep(int msec) {
-	return;
+	if (!timersvc_ep) timersvc_ep = pawpaw_service_lookup (TIMER_SERVICE_NAME);
+
+    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 2);
+    seL4_SetMR (0, TIMER_REGISTER);
+    seL4_SetMR (1, msec);
+
+	seL4_Call (timersvc_ep, msg);
 }
+
+/*************** VM SYSCALLS ***************/
 
 int share_vm(void *adr, size_t size, int writable) {
 	return -1;

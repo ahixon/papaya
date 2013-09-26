@@ -9,6 +9,9 @@
 #define PAPAYA_PAGEDIR_SLOT			(4)
 #define PAPAYA_INITIAL_FREE_SLOT	(5)
 
+#define PAPAYA_IPC_PAGE				0xA0001000
+#define PAPAYA_IPC_PAGE_SIZE		0x1000
+
 #define PAPAYA_CSPACE_DEPTH			32		/* ensure this stays up to date with libsel4cspace! */
 #define PAPAYA_BEAN_SIZE			(1 << seL4_PageBits)
 
@@ -24,7 +27,8 @@ void pawpaw_cspace_free_slot (seL4_CPtr);
 
 void* pawpaw_map_device (unsigned int base, unsigned int size);
 
-seL4_CPtr pawpaw_service_lookup (char* name, short wait);
+seL4_CPtr pawpaw_service_lookup (char* name);
+//seL4_CPtr pawpaw_service_lookup_nb (char* name);
 
 seL4_CPtr pawpaw_create_ep_async (void);
 seL4_CPtr pawpaw_create_ep (void);
