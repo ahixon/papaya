@@ -282,6 +282,8 @@ int main (void) {
     thread_create ("fs_dev", _sos_ipc_ep_cap);
     // FIXME: actually mount the thing
 
+    thread_create ("test_runner", _sos_ipc_ep_cap);
+
     /* start any devices services inside the CPIO archive */
     dprintf (1, "Looking for device services linked into CPIO...\n");
     unsigned long size;

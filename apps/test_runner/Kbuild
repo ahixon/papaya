@@ -1,0 +1,4 @@
+components-$(CONFIG_APP_TEST_RUNNER) += test_runner
+
+test_runner: $(libc) libsel4 libsos libpawpaw
+
