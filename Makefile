@@ -13,6 +13,12 @@ else
 	SERIAL_PORT = $(firstword $(wildcard /dev/ttyUSB*))
 endif
 
+REMOTEUSER = alex
+REMOTEHOST = vodka.alexhixon.com
+ifeq ($(shell hostname), coke)
+	REMOTEHOST = vodka.local
+endif
+
 
 -include .config
 
@@ -28,7 +34,9 @@ all: app-images
 .PHONY: reset
 ifeq ($(SERIAL_PORT),)
 reset:
-	@echo "Warning: USB serial port not found." || true
+	@echo "Uploading to $(REMOTEHOST) and resetting..."
+	scp $(TFTPROOT)/bootimg.elf $(REMOTEUSER)@$(REMOTEHOST):$(TFTPROOT)/bootimg.elf
+	ssh $(REMOTEUSER)@$(REMOTEHOST) ./aos/run.sh
 else
 reset:
 	@echo "Resetting sabre @ $(SERIAL_PORT)"
