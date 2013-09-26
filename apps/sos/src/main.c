@@ -34,6 +34,8 @@ const seL4_BootInfo* _boot_info;
 seL4_CPtr _sos_ipc_ep_cap;
 extern seL4_CPtr _badgemap_ep;
 
+seL4_CPtr current_reply_cap;
+
 void syscall_loop (seL4_CPtr ep) {
     while (1) {
         seL4_Word badge;
@@ -76,13 +78,17 @@ void syscall_loop (seL4_CPtr ep) {
             if (sc.reply) {
                 /* Save the caller */
                 seL4_CPtr reply_cap = cspace_save_reply_cap(cur_cspace);
+                current_reply_cap = reply_cap;
 
                 /* finally, call the func pointer */
                 seL4_MessageInfo_t reply = sc.scall_func (thread);
 
                 /* and reply */
-                seL4_Send (reply_cap, reply);
-                cspace_free_slot(cur_cspace, reply_cap);
+                /* FIXME: phew, MASSIVE hack to get around the fact that some syscalls may decide to NOT reply */
+                if (syscall_id != 1) {
+                    seL4_Send (reply_cap, reply);
+                    cspace_free_slot(cur_cspace, reply_cap);
+                }
             } else {
                 sc.scall_func (thread);
             }
@@ -162,7 +168,7 @@ static void print_bootinfo(const seL4_BootInfo* info) {
     dprintf(1,"-----------------------------------------\n\n");
 
     /* Print cpio data */
-    /*dprintf(1,"Parsing cpio data:\n");
+    dprintf(1,"Parsing cpio data:\n");
     dprintf(1,"--------------------------------------------------------\n");
     dprintf(1,"| index |        name      |  address   | size (bytes) |\n");
     dprintf(1,"|------------------------------------------------------|\n");
@@ -178,7 +184,7 @@ static void print_bootinfo(const seL4_BootInfo* info) {
             break;
         }
     }
-    dprintf(1,"--------------------------------------------------------\n");*/
+    dprintf(1,"--------------------------------------------------------\n");
 }
 
 /*
@@ -273,7 +279,7 @@ int main (void) {
     // FIXME: need to rename svc_network -> svc_net
 
     /* boot up device filesystem & mount it */
-    //thread_create ("fs_dev", _sos_ipc_ep_cap);
+    thread_create ("fs_dev", _sos_ipc_ep_cap);
     // FIXME: actually mount the thing
 
     /* start any devices services inside the CPIO archive */

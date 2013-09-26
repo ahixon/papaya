@@ -238,8 +238,8 @@ pid_t thread_create (char* path, seL4_CPtr reply_cap) {
     struct as_region* stack = as_get_region_by_type (thread->as, REGION_STACK);
     vaddr_t stack_top = stack->vbase + stack->size;
 
-    printf ("Thread's address space looks like:\n");
-    addrspace_print_regions (thread->as);
+    /*printf ("Thread's address space looks like:\n");
+    addrspace_print_regions (thread->as);*/
 
     /* install into threadlist before we start */
     threadlist_add (pid, thread);

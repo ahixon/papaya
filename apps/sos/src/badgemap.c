@@ -45,9 +45,7 @@ volatile seL4_CPtr _badgemap_ep = 0;
 int mapper_main (void) {
 	while (1) {
 		seL4_Word badge;
-		printf ("badgemap: waiting on %d\n", _badgemap_ep);
 		seL4_Wait (_badgemap_ep, &badge);
-		printf ("badgemap: got message\n");
 		badgemap_found = false;
 
 		/* FIXME: yuck linear search through list */
@@ -58,6 +56,7 @@ int mapper_main (void) {
 
 				seL4_SetMR (0, m->pid);
 				seL4_SetMR (1, m->start);
+				seL4_SetMR (2, badge);
 
 				badgemap_found = true;
 				seL4_Reply (msg);

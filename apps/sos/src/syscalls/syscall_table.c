@@ -7,7 +7,7 @@
 /* THESE MUST BE KEPT IN ORDER WITH SYSCALL.H */
 const struct syscall_info syscall_table[NUM_SYSCALLS] = {
     { syscall_sbrk,             1,  true  },
-    { syscall_service_find,     2,  true  },
+    { syscall_service_find,     3,  true  },
     { syscall_service_register, 1,  true  },
     { syscall_register_irq,     1,  true  },
     { syscall_map_device,       2,  true  },

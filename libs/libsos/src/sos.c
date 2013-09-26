@@ -18,13 +18,8 @@ sbuf_t vfs_buffer = NULL;
 fildes_t open(const char *path, fmode_t mode) {
 	seL4_MessageInfo_t msg;
 
-	while (!vfs_ep) {
-		/* lookup VFS service first */
-		vfs_ep = pawpaw_service_lookup ("svc_vfs");
-		if (!vfs_ep) {
-			seL4_Yield();
-			//return -1;
-		}
+	if (!vfs_ep) {
+		vfs_ep = pawpaw_service_lookup ("svc_vfs", true);
 	}
 
 	/* if this is our initial open, create a shared buffer between this thread
@@ -38,7 +33,7 @@ fildes_t open(const char *path, fmode_t mode) {
 		}
 	}
 
-	msg = seL4_MessageInfo_new(0, 0, created ? 1 : 0, 3);
+	msg = seL4_MessageInfo_new(0, 0, created ? 1 : 0, 4);
 
 	/* if it's the first open, attach our cap */
 	if (created) {
@@ -53,12 +48,13 @@ fildes_t open(const char *path, fmode_t mode) {
 		return -1;
 	}
 
-	printf ("copying in %s to %p\n", path, pawpaw_sbuf_slot_get (vfs_buffer, slot));
+	//printf ("copying in %s to %p\n", path, pawpaw_sbuf_slot_get (vfs_buffer, slot));
 	strcpy (pawpaw_sbuf_slot_get (vfs_buffer, slot), path);
 
     seL4_SetMR (0, VFS_OPEN);
-    seL4_SetMR (1, slot);
-    seL4_SetMR (2, mode);
+    seL4_SetMR (1, pawpaw_sbuf_get_id (vfs_buffer));
+    seL4_SetMR (2, slot);
+    seL4_SetMR (3, mode);
 
     seL4_Call (vfs_ep, msg);
 

@@ -212,19 +212,10 @@ page_fetch_entry (addrspace_t as, seL4_ARM_VMAttributes attributes, pagetable_t 
  */
 struct pt_entry*
 page_map_shared (addrspace_t as_dst, struct as_region* reg_dst, vaddr_t dst,
-    addrspace_t as_src, /*struct as_region* reg_src, */vaddr_t src, int cow) {
+    addrspace_t as_src, struct as_region* reg_src, vaddr_t src, int cow) {
 
     struct pt_entry* src_entry = page_fetch_entry (as_src, reg_dst->attributes, as_src->pagetable, src);
     struct pt_entry* dst_entry = page_fetch_entry (as_dst, reg_dst->attributes, as_dst->pagetable, dst);
-
-#if 0
-    if (!(src_entry->flags & PAGE_ALLOCATED)) {
-        printf ("\t* swapping src and dst since dst was allocated and src was not\n");
-        struct pt_entry* tmp = src_entry;
-        src_entry = dst_entry;
-        dst_entry = tmp;
-    }
-#endif
 
     src_entry->flags |= PAGE_SHARED;
     if (cow) {
@@ -242,14 +233,35 @@ page_map_shared (addrspace_t as_dst, struct as_region* reg_dst, vaddr_t dst,
     //_page_map (dst, src_entry->frame_idx, reg_src, as_dst);
 
     /* use previous frame */
+
+    printf ("\t* allocating page + frame for 0x%x\n", src);
+    if (!(src_entry->flags & PAGE_ALLOCATED)) {
+        printf ("\t* page wasn't allocated yet??\n");
+        page_map (as_src, reg_src, src);
+    }
+
     dst_entry->frame_idx = src_entry->frame_idx;
     dst_entry->flags = src_entry->flags;
 
-    printf ("\t* allocating page + frame for 0x%x\n", src);
     if (!_page_map (dst, dst_entry->frame_idx, reg_dst, as_dst)) {
         printf ("page_map_share: failed to allocate source page\n");
         return NULL;
     }
+
+    printf ("source pagetable:\n");
+    pagetable_dump (as_src->pagetable);
+
+    printf ("source addrspace:\n");
+    addrspace_print_regions (as_src);
+
+    printf ("\ndest pagetable:\n");
+    pagetable_dump (as_dst->pagetable);
+
+    printf ("dest addrspace:\n");
+    addrspace_print_regions (as_dst);
+    printf ("\n");
+
+    printf ("BY THE WAY, was linking 0x%x and 0x%x\n", src, dst);
 
     return dst_entry;
 }

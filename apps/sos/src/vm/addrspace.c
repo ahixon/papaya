@@ -138,7 +138,7 @@ as_map_page (addrspace_t as, vaddr_t vaddr) {
         addrspace_print_regions (reg->linked->owner);
 
         printf ("mapping...\n");*/
-        struct pt_entry* entry = page_map_shared (as, reg, vaddr, reg->linked->owner, reg->linked->vbase + offset, false);
+        struct pt_entry* entry = page_map_shared (as, reg, vaddr, reg->linked->owner, reg->linked, reg->linked->vbase + offset, false);
         /*printf ("\tmapped shared 0x%x and 0x%x (offset was %d) to underlying frame %p\n", vaddr, reg->linked->vbase + offset, offset, entry);
 
         printf ("src pagetable\n");
@@ -500,14 +500,14 @@ as_resize_heap (addrspace_t as, size_t amount) {
         heap = as_resize_region (as, heap, amount);
 
         if (heap) {
-            printf ("heap now 0x%x -> 0x%x\n", heap->vbase, heap->vbase + heap->size);
+            //printf ("heap now 0x%x -> 0x%x\n", heap->vbase, heap->vbase + heap->size);
         } else {
             printf ("well that failed\n");
         }
     }
 
-    printf ("==========\n");
-    addrspace_print_regions(as);
+    //printf ("==========\n");
+    //addrspace_print_regions(as);
 
     return old_heap_vaddr;
 }

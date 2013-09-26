@@ -18,13 +18,16 @@ struct filesystem {
     char* dirname;
 
     seL4_CPtr fs_ep_cap;
+    seL4_Word badge;
+    seL4_Word buf_id;
     struct filesystem* children;
 
-    struct filesystem* next;
+    struct filesystem* level_next;
+    struct filesystem* mounted_next;
 };
 
-struct filesystem* fs_head;
-struct filesystem* root;
+struct filesystem* fs_head; /* head for iterating */
+struct filesystem* root;    /* ROOT NODE for walking trie */
 
 char* get_next_path_part (char* s, char* end) {
     char* c = s;
@@ -47,7 +50,7 @@ int parse_filename (char* fname, struct filesystem* parent, struct filesystem** 
      * if we find reverse cache, tell user straight away 
      * otherwise, loop through all filesystems, asking them if they have this file
 
-     * FIXME: NEED TO DECIDE if cache works on fsid, then remaning path, or full path??
+     * FIXME: NEED TO DECIDE if cache works on fsid, then remaining path, or full path??
 
      */
 
@@ -71,7 +74,7 @@ int parse_filename (char* fname, struct filesystem* parent, struct filesystem** 
                 break;
             }
 
-            fs = fs->next;
+            fs = fs->level_next;
         }
 
         found = fs;
@@ -114,7 +117,9 @@ int main(void) {
     root->dirname = "";
     root->fs_ep_cap = 0;
     root->children = NULL;
-    root->next = NULL;
+    root->level_next = NULL;
+    root->mounted_next = NULL;
+    root->buf_id = 0;
 
     fs_head = root;
 
@@ -136,28 +141,45 @@ int main(void) {
     while (1) {
         /* wait for a message */
         message = seL4_Wait(service_cap, &badge);
-        seL4_CPtr reply_cap = pawpaw_save_reply ();
+        seL4_Word task = seL4_GetMR (0);
+        seL4_CPtr reply_cap;
+
+        if (task != VFS_LINK_CAP && task != VFS_REGISTER) {
+            reply_cap = pawpaw_save_reply ();
+        }
+
         uint32_t label = seL4_MessageInfo_get_label(message);
 
         if (label == seL4_NoError) {
-            //if (seL4_GetMR (0) == )
-            if (seL4_GetMR (0) == VFS_OPEN) {
-                printf ("svc_vfs: VFS OPEN from %d\n", badge);
-                unsigned int slot = seL4_GetMR (1);
+            unsigned int slot = seL4_GetMR (2);
 
-                sbuf_t buf;
+            sbuf_t buf;
 
+            if (task != VFS_LINK_CAP) {
                 if (seL4_MessageInfo_get_extraCaps (message) == 1) {
                     /* got a cap (should be a sbuf cap), so let's try to mount */
+                    printf ("******* trying to mount ********\n");
                     buf = pawpaw_sbuf_mount (page_cap);
-                    pawpaw_sbuf_link (badge, buf);  /* link this sbuf to this sender */
+
+                    /* reset up for next slot */
+                    page_cap = pawpaw_cspace_alloc_slot ();
+                    assert (page_cap);
+
+                    seL4_SetCapReceivePath (PAPAYA_ROOT_CNODE_SLOT, page_cap, PAPAYA_CSPACE_DEPTH);
                 } else {
-                    buf = pawpaw_sbuf_fetch (badge);
+                    printf ("******* fetching %d ********\n", seL4_GetMR(1));
+                    buf = pawpaw_sbuf_fetch (seL4_GetMR (1));
                 }
 
                 if (!buf) {
                     printf ("svc_vfs: invalid buffer\n");
+                    continue;
                 }
+            }
+
+            //if (seL4_GetMR (0) == )
+            if (task == VFS_OPEN) {
+                printf ("svc_vfs: VFS OPEN from %d\n", badge);
 
                 /* get the requested filename */
                 printf ("reading in str from %p (slot 0x%x)\n", pawpaw_sbuf_slot_get (buf, slot), slot);
@@ -169,7 +191,7 @@ int main(void) {
                 struct filesystem* fs;
                 char* remaining;
 
-                if (parse_filename (s, fs_head, &fs, &remaining)) {
+                if (parse_filename (s, root, &fs, &remaining)) {
                     /* pass the buck to the FS layer to see if it knows anything about the file */
                     #if 0
                     /* create the container + cap with a default size */
@@ -197,13 +219,29 @@ int main(void) {
                     /* and check if we found the file, caching if appropriate */
                     if (seL4_GetMR (0) == 0) {
                         printf ("AWESOME, FS REPORTS WE GOT THE FILE\n");
-                    } else {
-                        #endif
-                        printf ("had file, pretending not found FOR NOW\n");
-                        reply = seL4_MessageInfo_new (0, 0, 0, 1);
-                        seL4_SetMR (0, -1);
-                        seL4_Send (reply_cap, reply);
-                    //}
+#endif
+
+                    printf ("+++++ LOOKING UP BUF ID %d\n", fs->buf_id);
+                    sbuf_t fs_buf = pawpaw_sbuf_fetch (fs->buf_id);
+                    if (!fs_buf) {
+                        printf ("invalid buf id\n");
+                        continue;
+                    }
+
+                    int fs_slot = pawpaw_sbuf_slot_next (fs_buf);
+                    char* fs_filename = pawpaw_sbuf_slot_get (fs_buf, fs_slot);
+                    assert (fs_filename);
+
+                    /* copy it in AND GO - don't need to send cap since it was created when they did REGISTER */
+                    strcpy (fs_filename, remaining);
+                    printf ("copied %s to %p (slot %d)\n", fs_filename, fs_filename, fs_slot);
+                    seL4_MessageInfo_t lookup_msg = seL4_MessageInfo_new (0, 0, 0, 3);
+                    
+                    seL4_SetMR (0, VFS_OPEN);
+                    seL4_SetMR (1, fs->buf_id);
+                    seL4_SetMR (2, fs_slot);
+                    seL4_Call (fs->fs_ep_cap, lookup_msg);
+
                 } else {
                     printf ("file not found\n");
                     reply = seL4_MessageInfo_new (0, 0, 0, 1);
@@ -212,7 +250,48 @@ int main(void) {
                 }
 
                 free (s);
-            } else if (seL4_GetMR (0) == VFS_MOUNT) {
+            } else if (task == VFS_LINK_CAP) {
+                struct filesystem* fs = fs_head;
+                while (fs) {
+                    if (fs->badge == badge) {
+                        fs->fs_ep_cap = page_cap;
+
+                        /* ready for next */
+                        page_cap = pawpaw_cspace_alloc_slot ();
+                        assert (page_cap);
+
+                        seL4_SetCapReceivePath (PAPAYA_ROOT_CNODE_SLOT, page_cap, PAPAYA_CSPACE_DEPTH);
+                        break;
+                    }
+
+                    fs = fs->level_next;
+                }
+            } else if (task == VFS_REGISTER) {
+                printf ("done, getting slot %d\n", slot);
+                char* name = pawpaw_sbuf_slot_get (buf, slot);
+                printf ("registering filesystem called %s\n", name);
+
+                /* FIXME: should register filesytem type
+                 * in hindsight we should actually be spawning a new process */
+                if (strcmp (name, "dev") == 0) {
+                    /* FIXME: should actually mount this EXTERNALLY */
+                    printf ("should mount\n");
+
+                    struct filesystem* dev = malloc (sizeof (struct filesystem));
+                    dev->dirname = "dev";
+                    dev->fs_ep_cap = 0;
+                    printf ("+++++ WAS USING BUF IDX %d\n", pawpaw_sbuf_get_id (buf));
+                    dev->buf_id = pawpaw_sbuf_get_id (buf);
+                    dev->badge = badge;
+                    dev->children = NULL;
+                    dev->level_next = NULL;
+
+                    dev->mounted_next = fs_head;
+                    fs_head = dev;
+
+                    root->children = dev;
+                }
+            } else if (task == VFS_MOUNT) {
                 #if 0
                 char* path = pawpaw_bean_get (pawpaw_can_fetch (badge), seL4_GetMR (1));
                 // MR2 = number of mount arguments concat'd in options str, WE IGNORE THIS FOR NOW
@@ -244,7 +323,7 @@ int main(void) {
 #endif
                 printf ("svc_vfs: wanted to mount\n");
             } else {
-                printf ("svc_vfs: UNKNOWN MESSAGE %d\n", seL4_GetMR(0));
+                printf ("svc_vfs: UNKNOWN MESSAGE %d from %d\n", seL4_GetMR(0), badge);
             }
         }
     }

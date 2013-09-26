@@ -31,7 +31,7 @@ seL4_MessageInfo_t syscall_sbuf_create (thread_t thread) {
 		return failure;
 	}
 
-	seL4_MessageInfo_t reply = seL4_MessageInfo_new (0, 0, 0, 3);
+	seL4_MessageInfo_t reply = seL4_MessageInfo_new (0, 0, 0, 4);
 
 	/* try to allocate the req'd number in the requestor's addrspace */
     vaddr_t reg_start;
@@ -66,13 +66,16 @@ seL4_MessageInfo_t syscall_sbuf_create (thread_t thread) {
     seL4_SetMR (0, their_cbox_cap);
     seL4_SetMR (1, reg_start);
     seL4_SetMR (2, size);
+    seL4_SetMR (3, id);
+
+    printf ("++++ SBUF FOR %s HAS ID %d\n", thread->name, id);
 
     return reply;
 }
 
 seL4_MessageInfo_t syscall_sbuf_mount (thread_t thread) {
     seL4_MessageInfo_t failure = seL4_MessageInfo_new (0, 0, 0, 1);
-    seL4_MessageInfo_t reply = seL4_MessageInfo_new (0, 0, 0, 2);
+    seL4_MessageInfo_t reply = seL4_MessageInfo_new (0, 0, 0, 3);
 
     /* my copy - FIXME: should ahve a copy when we make it and not do this??? */
     seL4_Word ep_cpy = cspace_copy_cap (cur_cspace, thread->croot, seL4_GetMR (1), seL4_AllRights);
@@ -81,13 +84,14 @@ seL4_MessageInfo_t syscall_sbuf_mount (thread_t thread) {
     seL4_Call (ep_cpy, local_msg);
 
     if (badgemap_found) {
+        seL4_Word id = seL4_GetMR (2);
         /* FIXME: ensure thread still exists */
         thread_t src_thread = threadlist_lookup (seL4_GetMR (0));
         printf ("WANT TO SHARE MEMORY WITH %s and %s\n", thread->name, src_thread->name);
 
-        printf ("start addr was 0x%x\n", seL4_GetMR (1));
+        //printf ("start addr was 0x%x\n", seL4_GetMR (1));
         struct as_region* other_reg = as_get_region_by_addr (src_thread->as, seL4_GetMR (1));
-        printf ("had other reg %p\n", other_reg);
+        //printf ("had other reg %p\n", other_reg);
 
         /* FIXME: factorise out from above and here */
         vaddr_t reg_start;
@@ -111,14 +115,19 @@ seL4_MessageInfo_t syscall_sbuf_mount (thread_t thread) {
         reg_start = reg->vbase;
 
         /* finally link them. */
+        printf ("linking 0x%x and 0x%x (%s)\n", other_reg->vbase, reg->vbase, thread->name);
         if (!as_region_link (other_reg, reg)) {
             seL4_SetMR (0, 0);
             return failure;
         }
 
-        printf ("giving back 0x%x (size 0x%x)\n", reg_start, reg->size);
+        //printf ("giving back 0x%x (size 0x%x)\n", reg_start, reg->size);
         seL4_SetMR (0, reg_start);
         seL4_SetMR (1, reg->size);
+        seL4_SetMR (2, id);
+
+        printf ("++++ SBUF FOR %s HAS ID %d\n", thread->name, id);
+        
         return reply;
     }
 

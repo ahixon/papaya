@@ -7,7 +7,6 @@
 
 /*
  * http://www.youtube.com/watch?v=XhBSgCiaPDQ
- * Can you do the can-can?
  */
 
 struct sbuf_slot {
@@ -17,6 +16,7 @@ struct sbuf_slot {
 };
 
 struct sbuf {
+	seL4_Word id;
 	seL4_CPtr cap;
 	void* slots;
 	unsigned int size;
@@ -46,10 +46,17 @@ sbuf_t pawpaw_sbuf_create (unsigned int size) {
     	sb->cap = seL4_GetMR (0);
     	sb->slots = (void*)seL4_GetMR (1);
     	sb->size = seL4_GetMR (2);	/* since we might not always get the size we requested */
+    	sb->id = seL4_GetMR (3);
 
     	sb->pinned_slots = NULL;
     	sb->last_slot = 0;
     	sb->used = false;
+
+    	if (!pawpaw_sbuf_install (sb)) {
+    		free (sb);
+    		/* FIXME: revoke sb */
+    		return NULL;
+    	}
 
     	return sb;
     } else {
@@ -81,10 +88,17 @@ sbuf_t pawpaw_sbuf_mount (seL4_CPtr cap) {
     	sb->cap = cap;
     	sb->slots = (void*)seL4_GetMR (0);
     	sb->size = seL4_GetMR (1);
+    	sb->id = seL4_GetMR (2);
 
     	sb->pinned_slots = NULL;
     	sb->last_slot = 0;
     	sb->used = false;
+
+    	if (!pawpaw_sbuf_install (sb)) {
+    		free (sb);
+    		/* FIXME: revoke sb */
+    		return NULL;
+    	}
 
     	return sb;
     } else {
@@ -99,7 +113,13 @@ inline void* pawpaw_sbuf_slot_get (sbuf_t sb, unsigned int idx) {
 		return NULL;
 	}
 
+	sb->last_slot = idx;
+
 	return (void*)(sb->slots + (idx * PAPAYA_BEAN_SIZE));
+}
+
+inline seL4_Word pawpaw_sbuf_get_id (sbuf_t sb) {
+	return sb->id;
 }
 
 int pawpaw_sbuf_slot_next (sbuf_t sb) {
@@ -141,6 +161,9 @@ int pawpaw_sbuf_slot_next (sbuf_t sb) {
 		return -1;
 	}
 #endif
+
+	sb->last_slot = next;
+
 	return next;	/* KISS */
 }
 
@@ -149,7 +172,7 @@ seL4_CPtr pawpaw_sbuf_get_cap (sbuf_t sb) {
 }
 
 struct sbuf_info {
-	seL4_Word id;
+	//seL4_Word id;
 	sbuf_t buffer;
 
 	struct sbuf_info* next;
@@ -157,13 +180,13 @@ struct sbuf_info {
 
 struct sbuf_info* buffers;
 
-int pawpaw_sbuf_link (seL4_Word idx, sbuf_t sb) {
+int pawpaw_sbuf_install (sbuf_t sb) {
 	struct sbuf_info* sbi = malloc (sizeof (struct sbuf_info));
 	if (!sbi) {
 		return false;
 	}
 
-	sbi->id = idx;
+	//sbi->id = idx;
 	sbi->buffer = sb;
 
 	/* ahhhh, push it, push it REAAAAL GOOD */
@@ -181,7 +204,7 @@ int pawpaw_sbuf_link (seL4_Word idx, sbuf_t sb) {
 sbuf_t pawpaw_sbuf_fetch (seL4_Word idx) {
 	struct sbuf_info* sbi = buffers;
 	while (sbi) {
-		if (sbi->id == idx) {
+		if (sbi->buffer->id == idx) {
 			return sbi->buffer;
 		}
 

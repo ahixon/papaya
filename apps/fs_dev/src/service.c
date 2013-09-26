@@ -9,6 +9,7 @@
 #include <pawpaw.h>
 
 #include <sos.h>
+#include <vfs.h>
 
 //#define VFS_MOUNT               75
 #define DEV_LISTEN_CHANGES      20
@@ -25,36 +26,13 @@ struct ventry {
 
 struct ventry* entries;
 
-void hacky_mount (void) {
-    /* XXX: someone else should be doing this.. */
-    seL4_CPtr vfs_ep = pawpaw_service_lookup("sys.vfs");
-    assert (vfs_ep);    // XXX: assuming should've started by now
-    struct pawpaw_can* can = pawpaw_can_negotiate (vfs_ep, 4);
-    assert (can);
-
-    char* mount_info = pawpaw_bean_get (can, 0);
-    strcpy (mount_info, "/dev");
-
-    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 3);
-    seL4_SetCap (0, service_ep);
-
-    seL4_SetMR (0, VFS_MOUNT);
-    seL4_SetMR (1, 0);
-    seL4_SetMR (2, 0);  // num args
-    seL4_Call (vfs_ep, msg);
-}
+char* svc_names[2] = {"svc_dev", "svc_vfs"};
 
 int main(void) {
     int err;
     seL4_MessageInfo_t msg;
 
-    seL4_CPtr dev_ep = 0;
-    while (!dev_ep) {
-        dev_ep = pawpaw_service_lookup ("svc_dev");
-        if (!dev_ep) {
-            seL4_Yield();
-        }
-    }
+    seL4_CPtr dev_ep = pawpaw_service_lookup (svc_names[0], true);
 
     /*seL4_CPtr dev_ep = pawpaw_cspace_alloc_slot ();
     seL4_SetCapReceivePath (4, dev_ep, CSPACE_DEPTH);*/
@@ -84,7 +62,30 @@ int main(void) {
     seL4_SetCap (0, async_ep);
     seL4_Call (dev_ep, msg);
 
-    hacky_mount ();
+    /* and register this filesystem - requires 2x syscalls to setup and 1x context switch */
+    seL4_CPtr vfs_ep = pawpaw_service_lookup (svc_names[1], true);
+    sbuf_t vfs_buf = pawpaw_sbuf_create (2);
+
+    msg = seL4_MessageInfo_new (0, 0, 1, 3);
+
+    seL4_SetCap (0, pawpaw_sbuf_get_cap (vfs_buf));
+    int slot = pawpaw_sbuf_slot_next (vfs_buf);
+    char* fs_name = pawpaw_sbuf_slot_get (vfs_buf, slot);
+    printf ("copying into %p\n", fs_name);
+    strcpy (fs_name, "dev");    /* you can stick other stuff in here too I guess */
+    printf ("see? %s\n", fs_name);
+
+    printf ("fs_dev: calling VFS register\n");
+    seL4_SetMR (0, VFS_REGISTER);
+    seL4_SetMR (1, pawpaw_sbuf_get_id (vfs_buf));
+    seL4_SetMR (2, (unsigned int)slot);
+    seL4_Send (vfs_ep, msg);    /* FIXME: would we ever need call? otherwise this is OK :) */
+
+    printf ("fs_dev: linking cap (hopefully)\n");
+    msg = seL4_MessageInfo_new (0, 0, 1, 1);
+    seL4_SetCap (0, service_ep);
+    seL4_SetMR (0, VFS_LINK_CAP);
+    seL4_Send (vfs_ep, msg);
 
     printf ("fs_dev: setup done\n");
     while (1) {
@@ -95,6 +96,19 @@ int main(void) {
         printf ("** fs_dev ** received message from %x with label %d and length %d\n", badge, label, seL4_MessageInfo_get_length (msg));
 
         if (seL4_GetMR (0) == VFS_OPEN) {
+            unsigned int slot = seL4_GetMR(2);
+            printf ("wut\n");
+            sbuf_t fs_buf = vfs_buf;
+            //sbuf_t fs_buf = pawpaw_sbuf_fetch (seL4_GetMR (1));
+            //sbuf_t fs_buf = pawpaw_sbuf_fetch (pawpaw_sbuf_get_id (vfs_buf));
+            if (!fs_buf) {
+                printf ("invalid buf id\n");
+                continue;
+            }
+
+            char* fs_filename = pawpaw_sbuf_slot_get (fs_buf, slot);
+            printf ("HAD FILENAME %s in slot %d (vaddr %p)\n", fs_filename, slot, fs_filename);
+            #if 0
             seL4_CPtr ret = 0;
             struct ventry* entry = entries;
 
@@ -136,17 +150,8 @@ int main(void) {
             seL4_Reply (reply);
 
             pawpaw_cspace_free_slot (resp_cap);
+            #endif
 
-        } else if (seL4_GetMR (0) == SYSCALL_CAN_NEGOTIATE) {
-            printf ("FS_DEV: CREATING FOR %d\n", badge);
-            struct pawpaw_can* can = pawpaw_can_allocate (seL4_GetMR (2));
-
-            seL4_MessageInfo_t reply = seL4_MessageInfo_new (0, 0, 0, 2);
-            seL4_SetMR (0, 16);
-            seL4_SetMR (1, (seL4_Word)can);
-
-            //seL4_Send (reply_cap, reply);
-            seL4_Reply (reply);
         } else if (label == seL4_Interrupt) {
             printf ("*** NEW DEVICE ADDED\n");
             /* ask to talk to it */
@@ -192,9 +197,5 @@ int main(void) {
 
             printf ("registered inside fs dev\n");
         }
-
-        /*seL4_MessageInfo_t newmsg = seL4_MessageInfo_new (0, 0, 0, 1);
-        seL4_SetMR (0, 0);
-        seL4_Reply (newmsg);*/
     }
 }

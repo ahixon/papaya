@@ -24,7 +24,7 @@ void pawpaw_cspace_free_slot (seL4_CPtr);
 
 void* pawpaw_map_device (unsigned int base, unsigned int size);
 
-seL4_CPtr pawpaw_service_lookup (char* name);
+seL4_CPtr pawpaw_service_lookup (char* name, short wait);
 
 seL4_CPtr pawpaw_create_ep_async (void);
 seL4_CPtr pawpaw_create_ep (void);
@@ -40,13 +40,15 @@ int pawpaw_register_service (seL4_CPtr ep);
 sbuf_t pawpaw_sbuf_create (unsigned int size);
 sbuf_t pawpaw_sbuf_mount (seL4_CPtr cap);
 
-int pawpaw_sbuf_link (seL4_Word idx, sbuf_t sb);
+int pawpaw_sbuf_install (sbuf_t sb);
 sbuf_t pawpaw_sbuf_fetch (seL4_Word idx);
 
 void* pawpaw_sbuf_slot_get (sbuf_t sb, unsigned int idx);
 int pawpaw_sbuf_slot_next (sbuf_t sb);
 
+/* FIXME: just make the struct public? */
 seL4_CPtr pawpaw_sbuf_get_cap (sbuf_t sb);
+seL4_Word pawpaw_sbuf_get_id (sbuf_t sb);
 
 #if 0
 struct pawpaw_can* pawpaw_can_set (seL4_Word id, struct pawpaw_can* can);
