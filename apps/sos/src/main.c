@@ -69,6 +69,11 @@ void syscall_loop (seL4_CPtr ep) {
             struct syscall_info sc = syscall_table[syscall_id];
             argc--; /* since we don't want syscall ID as an arg to the func */
 
+            if (sc.scall_func == 0) {
+                printf ("syscall 0x%x called but not implemented yet\n", syscall_id);
+                assert (sc.scall_func != 0);
+            } 
+
             /* ensure argument count is OK */
             if (argc != sc.argcount) {
                 printf ("syscall: syscall for %u had arg count %u but required %u\n", syscall_id, argc, sc.argcount);
@@ -300,7 +305,7 @@ int main (void) {
     pid_t pid = thread_create (CONFIG_SOS_STARTUP_APP, _sos_ipc_ep_cap);
     dprintf (1, "  started with PID %d\n", pid);
 #endif
-    
+
     /* and wait for IPC */
     dprintf (0, "SOS entering syscall loop...\n");
     syscall_loop(_sos_ipc_ep_cap);
