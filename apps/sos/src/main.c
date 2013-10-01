@@ -241,33 +241,39 @@ static void rootserver_init(seL4_CPtr* ipc_ep){
     frametable_init();
 
     /* Setup address space + pagetable for root server */
+    cur_addrspace = addrspace_create (seL4_CapInitThreadPD);
+    conditional_panic (!cur_addrspace, "failed to create root server address space");
 
-    /* Initialiase other system compenents here */
+    /* and map in an IPC for internal services so that thread_create_internal works */
+    if (!as_define_region (cur_addrspace, PROCESS_IPC_BUFFER, PAGE_SIZE, seL4_AllRights, REGION_IPC)) {
+        panic ("failed to define IPC region for internal processes");
+    }
+
+    if (!as_map_page (cur_addrspace, PROCESS_IPC_BUFFER)) {
+        panic ("failed to map IPC region for internal processes");
+    }
+
+    /* Initialise PID and map ID generators */
     uid_init();
 
-    /* Finally, create an endpoint for user application IPC */
+    /* Create synchronous endpoint for process syscalls via IPC */
     seL4_Word ep_addr = ut_alloc(seL4_EndpointBits);
     conditional_panic(!ep_addr, "No memory for endpoint");
     err = cspace_ut_retype_addr(ep_addr, 
-                                seL4_EndpointObject,
-                                seL4_EndpointBits,
-                                cur_cspace,
-                                ipc_ep);
+                                seL4_EndpointObject, seL4_EndpointBits,
+                                cur_cspace, ipc_ep);
     conditional_panic(err, "Failed to allocate c-slot for IPC endpoint");
 
     /* Start internal badge map service */
-    thread_t badgemap_thread = thread_create_internal ("badgemap", mapper_main, MAPPER_STACK_SIZE, rootserver_syscall_cap);
+    thread_t badgemap_thread = thread_create_internal ("badgemap", mapper_main, MAPPER_STACK_SIZE);
     conditional_panic (!badgemap_thread, "failed to start badgemap");
 
-    /* Create EP for badge map communication */
+    /* Create specific EP for badge map communication (compared to syscall EP) */
     ep_addr = ut_alloc(seL4_EndpointBits);
     conditional_panic(!ep_addr, "No memory for endpoint");
     err = cspace_ut_retype_addr(ep_addr, 
-                                seL4_EndpointObject,
-                                seL4_EndpointBits,
-                                badgemap_thread->croot,
-                                /*cur_cspace,*/
-                                &_badgemap_ep);
+                                seL4_EndpointObject, seL4_EndpointBits,
+                                cur_cspace, &_badgemap_ep);
     conditional_panic(err, "Failed to allocate c-slot for badgemap");
 }
 
@@ -298,7 +304,7 @@ int main (void) {
     // FIXME: actually mount the thing
 
     printf ("Starting test thread...\n");
-    thread_create_from_cpio ("test_runner", rootserver_syscall_cap);
+    //thread_create_from_cpio ("test_runner", rootserver_syscall_cap);
 
 #if 0
     /* start any devices services inside the CPIO archive */

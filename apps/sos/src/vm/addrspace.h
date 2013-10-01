@@ -45,6 +45,8 @@ struct as_region {
 	struct as_region* linked;
 };
 
+extern addrspace_t cur_addrspace;
+
 addrspace_t
 addrspace_create (seL4_ARM_PageTable pd);
 

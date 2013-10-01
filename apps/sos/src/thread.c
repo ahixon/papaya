@@ -122,7 +122,7 @@ thread_alloc (void) {
     return thread;
 }
 
-thread_t thread_create (char* name) {
+thread_t thread_create (char* name, cspace_t *existing_cspace, addrspace_t existing_addrspace) {
     thread_t thread = thread_alloc ();
     if (!thread) {
         return NULL;
@@ -150,17 +150,23 @@ thread_t thread_create (char* name) {
         thread_dispose (thread);
     }
 
-    /* create address space for process */
-    thread->as = addrspace_create (0);
-    if (!thread->as) {
-        thread_dispose (thread);
-    }
+    if (!existing_addrspace) {
+        /* create address space for process */
+        thread->as = addrspace_create (0);
+        if (!thread->as) {
+            thread_dispose (thread);
+        }
 
-    /* Map in IPC first off (since we need it for TCB configuration) */
-    as_define_region (thread->as, PROCESS_IPC_BUFFER, PAGE_SIZE, seL4_AllRights, REGION_IPC);
-    if (!as_map_page (thread->as, PROCESS_IPC_BUFFER)) {
-        thread_dispose (thread);
-        return NULL;
+        /* Map in IPC first off (since we need it for TCB configuration) */
+        as_define_region (thread->as, PROCESS_IPC_BUFFER, PAGE_SIZE, seL4_AllRights, REGION_IPC);
+        if (!as_map_page (thread->as, PROCESS_IPC_BUFFER)) {
+            thread_dispose (thread);
+            return NULL;
+        }
+    } else {
+        thread->as = existing_addrspace;
+        /* assume that if we already have an address space, then IPC should already be
+         * mapped in */
     }
 
     seL4_CPtr ipc_cap = as_get_page_cap (thread->as, PROCESS_IPC_BUFFER);
@@ -169,17 +175,21 @@ thread_t thread_create (char* name) {
         return NULL;
     }
 
-    /* Create thread's CSpace (which we will manage in-kernel - although they
-     * get to manage any empty CNodes they request.
-     *
-     * Apparently, we must have a level 2 CSpace otherwise the thread can't
-     * store caps it receives from other threads via IPC. Bug in seL4? or the
-     * way libsel4cspace creates the CSpace?
-     */
-    thread->croot = cspace_create (2);
-    if (!thread->croot) {
-        thread_dispose (thread);
-        return NULL;
+    if (!existing_cspace) {
+        /* Create thread's CSpace (which we will manage in-kernel - although they
+         * get to manage any empty CNodes they request.
+         *
+         * Apparently, we must have a level 2 CSpace otherwise the thread can't
+         * store caps it receives from other threads via IPC. Bug in seL4? or the
+         * way libsel4cspace creates the CSpace?
+         */
+        thread->croot = cspace_create (2);
+        if (!thread->croot) {
+            thread_dispose (thread);
+            return NULL;
+        }
+    } else {
+        thread->croot = existing_cspace;
     }
 
     int err = seL4_TCB_Configure(thread->tcb_cap, PAPAYA_SYSCALL_SLOT, DEFAULT_PRIORITY,
@@ -252,7 +262,7 @@ thread_t thread_create_from_cpio (char* path, seL4_CPtr rootsvr_ep) {
     char* elf_base;
     unsigned long elf_size;
 
-    thread_t thread = thread_create (path);
+    thread_t thread = thread_create (path, NULL, NULL);
     if (!thread) {
         return NULL;
     }
@@ -303,8 +313,8 @@ thread_t thread_create_from_cpio (char* path, seL4_CPtr rootsvr_ep) {
 }
 
 thread_t
-thread_create_internal (char* name, void* initial_pc, unsigned int stack_size, seL4_CPtr rootsvr_ep) {
-    thread_t thread = thread_create (name);
+thread_create_internal (char* name, void* initial_pc, unsigned int stack_size) {
+    thread_t thread = thread_create (name, cur_cspace, cur_addrspace);
     if (!thread) {
         return NULL;
     }
@@ -317,7 +327,7 @@ thread_create_internal (char* name, void* initial_pc, unsigned int stack_size, s
 
     thread->static_stack = stack;
 
-    seL4_TCB_WritePCSP (thread->tcb_cap, true, (seL4_Word)initial_pc, stack[stack_size]);
+    seL4_TCB_WritePCSP (thread->tcb_cap, true, (seL4_Word)initial_pc, &stack[stack_size]);
     return thread;
 }
 

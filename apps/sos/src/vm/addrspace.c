@@ -26,6 +26,8 @@
 
 #define STACK_SIZE   (1 * 1024 * PAGE_SIZE)      /* 1 MB */
 
+addrspace_t cur_addrspace = NULL;
+
 /*static*/ void
 addrspace_print_regions (addrspace_t as) {
     char* types[5] = {"STACK", "HEAP ", "IPC  ", "BEANS", "  -  "};
@@ -58,7 +60,6 @@ addrspace_create (seL4_ARM_PageTable pd)
     as->stack_vaddr = 0;
 
     if (pd != 0) {
-        printf ("addrspace_create: using provided pagedir cap 0x%x\n", pd);
         as->pagedir_cap = pd;
     } else {
         /* create a new page directory */
