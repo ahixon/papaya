@@ -12,10 +12,36 @@
 #define PAPAYA_IPC_PAGE				0xA0001000
 #define PAPAYA_IPC_PAGE_SIZE		0x1000
 
+#define PAWPAW_EVENT_UNHANDLED		(0)
+#define PAWPAW_EVENT_HANDLED		(1)
+#define PAWPAW_EVENT_NEEDS_REPLY	(2)
+
+#define PAWPAW_EVENT_INVALID		(-2)
+
 #define PAPAYA_CSPACE_DEPTH			32		/* ensure this stays up to date with libsel4cspace! */
 #define PAPAYA_BEAN_SIZE			(1 << seL4_PageBits)
 
 typedef struct sbuf* sbuf_t;
+
+struct pawpaw_event {
+	seL4_Word badge;
+	seL4_MessageInfo_t msg;
+	seL4_CPtr reply_cap;
+	int flags;
+	seL4_MessageInfo_t reply;
+	seL4_Word *args;
+};
+
+struct pawpaw_eventhandler_info {
+    int (*func)(struct pawpaw_event* evt);
+    unsigned int argcount;
+    short requires_reply;
+};
+
+struct pawpaw_event_table {
+	unsigned int num_events;
+	struct pawpaw_eventhandler_info* handlers;	/* should be an array, don't want to be stuck to C99 */
+};
 
 /* FIXME: in the future, maybe register a device struct? */
 seL4_CPtr pawpaw_register_irq (int irq_num);
@@ -61,4 +87,10 @@ struct pawpaw_can* pawpaw_can_fetch (seL4_Word id);
 void* pawpaw_map_in_shared (seL4_CPtr cap);
 int pawpaw_map_out_shared (void);
 #endif
+
+void pawpaw_event_loop (struct pawpaw_event_table* table, seL4_CPtr ep);
+struct pawpaw_event* pawpaw_event_create (seL4_MessageInfo_t msg, seL4_Word badge);
+void pawpaw_event_dispose (struct pawpaw_event* evt);
+int pawpaw_event_process (struct pawpaw_event_table* table, struct pawpaw_event *evt, seL4_CPtr (*save_reply_func)(void));
+
 #endif

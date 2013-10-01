@@ -2,6 +2,7 @@
 #define __SYSCALL_TABLE_H__
 
 #include <thread.h>
+#include <pawpaw.h>
 
 typedef seL4_MessageInfo_t (*syscall)(thread_t thread);
 
@@ -11,10 +12,9 @@ struct syscall_info {
     short reply;
 };
 
-extern const struct syscall_info syscall_table[];
-
 /* FIXME: move these and the .c code into just a single .h ? */
-seL4_MessageInfo_t syscall_sbrk (thread_t thread);
+int syscall_sbrk (struct pawpaw_event* evt);
+
 seL4_MessageInfo_t syscall_service_find (thread_t thread);
 seL4_MessageInfo_t syscall_service_register (thread_t thread);
 seL4_MessageInfo_t syscall_register_irq (thread_t thread);

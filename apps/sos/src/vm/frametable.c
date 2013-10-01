@@ -22,6 +22,8 @@ struct frameinfo* frametable;
 seL4_Word low, high;        /* FIXME: really should be public globals rather than re-declaring what ut_manages has (_low, _high) */
 frameidx_t high_idx;
 
+static int allocated = 0;
+
 static void
 _frame_alloc_internal (vaddr_t prev) {
     int err;
@@ -39,9 +41,8 @@ _frame_alloc_internal (vaddr_t prev) {
                                  &frame_cap);
     conditional_panic (err, "could not retype frametable frame");
 
-    /* map into SOS AS A CONTIGUOUS SECTION */
+    /* map the page into SOS so we can read/write to the pagetable array */
     vaddr_t vaddr = prev + FRAME_SIZE;
-    //printf ("mapped page to vaddr 0x%x\n", vaddr);
     err = map_page(frame_cap, seL4_CapInitThreadPD,
                    vaddr, seL4_AllRights, seL4_ARM_Default_VMAttributes);
     conditional_panic (err, "could not map page");
@@ -69,15 +70,13 @@ frametable_init (void)
         _frame_alloc_internal (current_vaddr);
         current_vaddr += FRAME_SIZE;
     }
-
-    printf ("low\t = 0x%x (IDX_PHYS = %d, vaddr = %p)\n", low, IDX_PHYS(low), &frametable[IDX_PHYS(low)]);
-    printf ("high\t = 0x%x (IDX_PHYS = %d, vaddr = %p)\n\n", high, IDX_PHYS(high), &frametable[IDX_PHYS(high)]);
-    //printf ("physical\tvirtual\t\tIDX_PHYS\tIDX_VIRT\tcapability\n");
 }
 
 frameidx_t
 frame_alloc (void)
 {
+    conditional_panic (!frametable, "frametable not initialised yet");
+
     seL4_Word untyped_addr;
     seL4_CPtr frame_cap;
     int err;
@@ -105,32 +104,25 @@ frame_alloc (void)
     frameidx_t index = IDX_PHYS(untyped_addr);
     struct frameinfo* frame = &frametable[index];
 
-    frame->flags |= FRAME_MAPPED;
+    frame->flags |= FRAME_ALLOCATED;
     frame->capability = frame_cap;
     frame->paddr = untyped_addr;
 
-    //printf ("frame_alloc: allocated physical frame at 0x%x and cap = 0x%x, returning index 0x%x\n", untyped_addr, frame_cap, index);
+    allocated++;
     return index;
 }
 
 void
 frame_free (frameidx_t idx) {
+    printf ("freeing frame!\n");
     if (idx > high_idx) {
         return;
     }
 
     struct frameinfo* fi = &frametable[idx];
 
-    if (!(fi->flags & FRAME_MAPPED)) {
-        printf ("frame_free: frame already mapped!\n");
-        /* don't unmap an unmapped frame */
-        return;
-    }
-
-    /* first, unmap the frame on our window */
-    if (seL4_ARM_Page_Unmap(fi->capability)) {
-        /* FIXME: what to do if we couldn't unmap??? */
-        printf ("frame_free: unmap failed\n");
+    if (!(fi->flags & FRAME_ALLOCATED)) {
+        printf ("frame_free: frame not yet allocated!\n");
         return;
     }
 
@@ -139,8 +131,9 @@ frame_free (frameidx_t idx) {
         return;
     }
 
-    fi->flags &= ~FRAME_MAPPED;
+    fi->flags &= ~FRAME_ALLOCATED;
     ut_free (fi->paddr, seL4_PageBits);
+    allocated--;
 }
 
 /* shouldn't really be used except for debugging */
@@ -149,6 +142,11 @@ frametable_freeall (void) {
     for (int i = 0; i < high_idx; i++) {
         frame_free (i);
     }
+}
+
+void
+frametable_dump (void) {
+    printf ("Allocated frames: 0x%x\n", allocated);
 }
 
 seL4_CPtr

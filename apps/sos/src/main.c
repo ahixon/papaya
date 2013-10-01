@@ -28,13 +28,42 @@
 #include <sys/debug.h>
 #include <sys/panic.h>
 
+#define MAPPER_STACK_SIZE 1024
+
 extern char _cpio_archive[];        /* FIXME: move this out of here, one day.. */
 
 const seL4_BootInfo* _boot_info;
-seL4_CPtr _sos_ipc_ep_cap;
+seL4_CPtr rootserver_syscall_cap;
 extern seL4_CPtr _badgemap_ep;
 
-seL4_CPtr current_reply_cap;
+seL4_CPtr save_reply_cap (void) {
+    seL4_CPtr reply_cap = cspace_save_reply_cap (cur_cspace);
+    return reply_cap;
+}
+
+struct pawpaw_eventhandler_info syscalls[NUM_SYSCALLS] = {
+    { syscall_sbrk,             1,  true    },
+    /*{ syscall_service_find,     3,  true    },
+    { syscall_service_register, 1,  true    },
+    { syscall_register_irq,     1,  true    },
+    { syscall_map_device,       2,  true    },
+    { syscall_alloc_cnodes,     1,  true    },
+    { syscall_create_ep_sync,   0,  true    },
+    { syscall_create_ep_async,  0,  true    },
+    { syscall_bind_async_tcb,   1,  true    },
+    { syscall_sbuf_create,      1,  true    },
+    { syscall_sbuf_mount,       1,  true    },
+    { syscall_thread_suicide,   0,  false   },
+    { syscall_thread_create,    2,  true    },
+    { syscall_thread_destroy,   1,  true    },
+    { syscall_thread_pid,       0,  true    },
+    { NULL,                     0,  false   },      // SYSCALL_PROCESS_SEND_STATUS 
+    { syscall_thread_wait,      1,  true    }*/
+};
+
+struct pawpaw_event_table syscall_table = { NUM_SYSCALLS, syscalls };
+
+thread_t current_thread;
 
 void syscall_loop (seL4_CPtr ep) {
     while (1) {
@@ -44,59 +73,34 @@ void syscall_loop (seL4_CPtr ep) {
         message = seL4_Wait (ep, &badge);
 
         /* look for the thread associated with the syscall */
-        thread_t thread = threadlist_lookup (badge);
-        if (!thread && badge > 0) {
+        thread_t thread = thread_lookup (badge);
+        if (!thread) {
             printf ("syscall: invalid thread - had badge %d\n", badge);
             continue;
         }
 
+        current_thread = thread;
+
         switch (seL4_MessageInfo_get_label (message)) {
         case seL4_NoFault:
         {
-            unsigned int argc = seL4_MessageInfo_get_length (message);
-            if (argc < 1) {
-                printf ("syscall: thread %s provided no syscall ID, ignoring\n", thread->name);
+            struct pawpaw_event* evt = pawpaw_event_create (message, badge);
+            if (!evt) {
+                printf ("syscall: failed to create event\n");
+                pawpaw_event_dispose (evt);
                 break;
             }
 
-            /* get syscall info from our jumptable */
-            unsigned int syscall_id = seL4_GetMR (0);
-            if (syscall_id >= NUM_SYSCALLS) {
-                printf ("syscall: thread %s provided invalid syscall ID\n", thread->name);
-                break;
-            }
-
-            struct syscall_info sc = syscall_table[syscall_id];
-            argc--; /* since we don't want syscall ID as an arg to the func */
-
-            if (sc.scall_func == 0) {
-                printf ("syscall 0x%x called but not implemented yet\n", syscall_id);
-                assert (sc.scall_func != 0);
-            } 
-
-            /* ensure argument count is OK */
-            if (argc != sc.argcount) {
-                printf ("syscall: syscall for %u had arg count %u but required %u\n", syscall_id, argc, sc.argcount);
-                break;
-            }
-
-            if (sc.reply) {
-                /* Save the caller */
-                seL4_CPtr reply_cap = cspace_save_reply_cap(cur_cspace);
-                current_reply_cap = reply_cap;
-
-                /* finally, call the func pointer */
-                seL4_MessageInfo_t reply = sc.scall_func (thread);
-
-                /* and reply */
-                /* FIXME: phew, MASSIVE hack to get around the fact that some syscalls may decide to NOT reply */
-                if (syscall_id != 1) {
-                    seL4_Send (reply_cap, reply);
-                    cspace_free_slot(cur_cspace, reply_cap);
+            /* only process valid events, and ignore everything else */
+            if (pawpaw_event_process (&syscall_table, evt, save_reply_cap) == PAWPAW_EVENT_HANDLED) {
+                if (evt->flags & PAWPAW_EVENT_NEEDS_REPLY) {
+                    seL4_Send (evt->reply_cap, evt->reply);
                 }
             } else {
-                sc.scall_func (thread);
+                printf ("syscall: 0x%x failed\n", seL4_GetMR (0));
             }
+
+            pawpaw_event_dispose (evt);
             break;
         }
 
@@ -110,10 +114,11 @@ void syscall_loop (seL4_CPtr ep) {
                 }
             }
 
-            /*dprintf(0, "vm fault at 0x%08x, pc = 0x%08x, %s\n", seL4_GetMR(1),
+            dprintf (0, "vm fault at 0x%08x, pc = 0x%08x, %s\n", seL4_GetMR(1),
                     seL4_GetMR(0),
-                    seL4_GetMR(2) ? "Instruction Fault" : "Data fault");*/
-            printf ("non-recoverable VM fault; not waking thread %d (%s)...\n", thread->pid, thread->name);
+                    seL4_GetMR(2) ? "Instruction Fault" : "Data fault");
+
+            dprintf (0, "not waking thread %d (%s)...\n", thread->pid, thread->name);
             break;
 
         case seL4_CapFault:
@@ -195,7 +200,7 @@ static void print_bootinfo(const seL4_BootInfo* info) {
 /*
  * Initialisation of subsystems and resources required for Papaya.
  */
-static void _sos_init(seL4_CPtr* ipc_ep){
+static void rootserver_init(seL4_CPtr* ipc_ep){
     seL4_Word dma_addr;
     seL4_Word low, high;
     int err;
@@ -235,6 +240,8 @@ static void _sos_init(seL4_CPtr* ipc_ep){
     /* Initialise frametable */
     frametable_init();
 
+    /* Setup address space + pagetable for root server */
+
     /* Initialiase other system compenents here */
     uid_init();
 
@@ -248,24 +255,20 @@ static void _sos_init(seL4_CPtr* ipc_ep){
                                 ipc_ep);
     conditional_panic(err, "Failed to allocate c-slot for IPC endpoint");
 
-    /* create the thing thing */
-    printf ("creating badgemap...\n");
-    /*thread_t badgethread = */thread_create_at ("badgemap", mapper_main, _sos_ipc_ep_cap);
+    /* Start internal badge map service */
+    thread_t badgemap_thread = thread_create_internal ("badgemap", mapper_main, MAPPER_STACK_SIZE, rootserver_syscall_cap);
+    conditional_panic (!badgemap_thread, "failed to start badgemap");
 
-    //seL4_Word bm_ep;
+    /* Create EP for badge map communication */
     ep_addr = ut_alloc(seL4_EndpointBits);
     conditional_panic(!ep_addr, "No memory for endpoint");
     err = cspace_ut_retype_addr(ep_addr, 
                                 seL4_EndpointObject,
                                 seL4_EndpointBits,
-                                /*badgethread->croot,*/
-                                cur_cspace,
+                                badgemap_thread->croot,
+                                /*cur_cspace,*/
                                 &_badgemap_ep);
     conditional_panic(err, "Failed to allocate c-slot for badgemap");
-
-     //= cspace_copy_cap (badgethread->croot, cur_cspace, bm_ep, seL4_AllRights);
-
-    printf ("done\n");
 }
 
 /*
@@ -275,19 +278,27 @@ int main (void) {
     dprintf (0, "\nPapaya starting...\n");
 
     /* initialise root server from whatever seL4 left us */
-    _sos_init (&_sos_ipc_ep_cap);
+    rootserver_init (&rootserver_syscall_cap);
+    printf ("Root server setup.\n");
+
+    /* print memory stats */
+    frametable_dump ();
+    //pagetable_
+
 
     /* boot up core services */
-    //thread_create ("svc_dev", _sos_ipc_ep_cap);
-    //thread_create ("svc_vfs", _sos_ipc_ep_cap);
-    // thread_create ("svc_net", _sos_ipc_ep_cap);
+    printf ("Starting core services...\n");
+    //thread_create ("svc_dev", rootserver_syscall_cap);
+    //thread_create ("svc_vfs", rootserver_syscall_cap);
+    // thread_create ("svc_net", rootserver_syscall_cap);
     // FIXME: need to rename svc_network -> svc_net
 
     /* boot up device filesystem & mount it */
-    //thread_create ("fs_dev", _sos_ipc_ep_cap);
+    //thread_create ("fs_dev", rootserver_syscall_cap);
     // FIXME: actually mount the thing
 
-    thread_create ("test_runner", _sos_ipc_ep_cap);
+    printf ("Starting test thread...\n");
+    thread_create_from_cpio ("test_runner", rootserver_syscall_cap);
 
 #if 0
     /* start any devices services inside the CPIO archive */
@@ -296,19 +307,19 @@ int main (void) {
     char *name;
     for (int i = 0; cpio_get_entry (_cpio_archive, i, (const char**)&name, &size); i++) {
         if (strstr (name, "dev_") == name) {
-            thread_create (name, _sos_ipc_ep_cap);
+            thread_create (name, rootserver_syscall_cap);
         }
     }
 
     /* finally, start the boot app */
     dprintf (1, "Starting boot application \"%s\"...\n", CONFIG_SOS_STARTUP_APP);
-    pid_t pid = thread_create (CONFIG_SOS_STARTUP_APP, _sos_ipc_ep_cap);
+    pid_t pid = thread_create (CONFIG_SOS_STARTUP_APP, rootserver_syscall_cap);
     dprintf (1, "  started with PID %d\n", pid);
 #endif
 
     /* and wait for IPC */
-    dprintf (0, "SOS entering syscall loop...\n");
-    syscall_loop(_sos_ipc_ep_cap);
+    dprintf (0, "Root server starting event loop...\n");
+    syscall_loop (rootserver_syscall_cap);
 
     return 0;   /* not reached */
 }

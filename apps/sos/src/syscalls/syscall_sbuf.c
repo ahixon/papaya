@@ -86,7 +86,7 @@ seL4_MessageInfo_t syscall_sbuf_mount (thread_t thread) {
     if (badgemap_found) {
         seL4_Word id = seL4_GetMR (2);
         /* FIXME: ensure thread still exists */
-        thread_t src_thread = threadlist_lookup (seL4_GetMR (0));
+        thread_t src_thread = thread_lookup (seL4_GetMR (0));
         printf ("WANT TO SHARE MEMORY WITH %s and %s\n", thread->name, src_thread->name);
 
         //printf ("start addr was 0x%x\n", seL4_GetMR (1));

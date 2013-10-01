@@ -11,6 +11,7 @@
 
 seL4_CPtr last_cap = 0;
 seL4_CPtr last_cap_next = 0;
+seL4_CPtr current_reply_cap = 0;    /* FIXME: hack so it compiles THIS NEEDS TO GO (in evt anyway) */
 
 void* uspace_map (addrspace_t as, vaddr_t vaddr) {
     assert (!last_cap);
@@ -67,7 +68,6 @@ struct svc_wait {
 };
 
 struct svc_wait* svc_waitlist = NULL;
-extern seL4_CPtr current_reply_cap;
 
 seL4_MessageInfo_t syscall_service_register (thread_t thread) {
     seL4_MessageInfo_t reply = seL4_MessageInfo_new (0, 0, 0, 1);

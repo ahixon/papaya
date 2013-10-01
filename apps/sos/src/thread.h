@@ -32,14 +32,19 @@ struct thread {
     seL4_CPtr service_cap;
     struct req_svc* known_services;
 
+    char* static_stack;
+
     thread_t next;
 };
 
-pid_t thread_create (char* path, seL4_CPtr fault_ep);
-thread_t thread_create_at (char* name, void* start_ptr, seL4_CPtr reply_cap);
+thread_t thread_create_from_cpio (char* path, seL4_CPtr rootsvr_ep);
+thread_t thread_create_internal (char* name, void* initial_pc, unsigned int stack_size, seL4_CPtr rootsvr_ep);
+
+
+void thread_dispose (thread_t thread);
 
 void threadlist_add (pid_t pid, thread_t thread);
-thread_t threadlist_lookup (pid_t pid);
+thread_t thread_lookup (pid_t pid);
 
 thread_t threadlist_first (void);
 
