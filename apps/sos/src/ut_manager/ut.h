@@ -85,5 +85,7 @@ seL4_Word ut_alloc(int sizebits);
  */
 void ut_free(seL4_Word addr, int sizebits);
 
+void ut_stats (void);
+
 #endif /* _UT_H_ */
 

@@ -33,7 +33,7 @@ seL4_CPtr
 frametable_fetch_cap (frameidx_t frame);
 
 void
-frametable_dump (void);
+frametable_stats (void);
 
 void ft_test1(void);
 void ft_test2(void);

@@ -319,6 +319,7 @@ page_fetch (pagetable_t pt, vaddr_t vaddr) {
     return entry;
 }
 
+#if 0
 void
 page_free (pagetable_t pt, vaddr_t vaddr) {
     struct pt_entry* entry = page_fetch (pt, vaddr);
@@ -330,22 +331,38 @@ page_free (pagetable_t pt, vaddr_t vaddr) {
         return;
     }
 
+    /* FIXME: what about shared pages! needs refcount */
+
     entry->flags &= ~PAGE_ALLOCATED;
     frame_free (entry->frame_idx);
 }
+#endif
 
 void
 pagetable_free (pagetable_t pt) {
-    /* walk level 1 */
-    uint32_t l1 = 0;
-    while (l1 < PAGETABLE_L1_SIZE) {
+    for (uint32_t l1 = 0; l1 < PAGETABLE_L1_SIZE; l1++) {
         struct pt_table* table = pt->entries[l1];
         if (table) {
-            /* walk level 2 */
-            /* and revoke initial cap - will destroy our copy but not the original */
-            /* FIXME: finish this! */
-        }
+            for (uint32_t l2 = 0; l2 < PAGETABLE_L2_SIZE; l2++) {
+                struct pt_entry* entry = &(table->entries[l2]);
 
-        l1++;
+                /* FIXME: refcount the page here? */
+                if (entry->flags & PAGE_ALLOCATED) {
+                    entry->flags &= ~PAGE_ALLOCATED;
+
+                    /* FIXME: revoke initial cap instead? - will destroy our copy but not the original
+                     * WHAT DOES THIS MEAN?! */
+                    frame_free (entry->frame_idx);
+                }
+            }
+
+            /* now free the table cap + addrs */
+            cspace_delete_cap (cur_cspace, pt->table_caps [l1]);
+            ut_free (pt->table_addrs[l1], seL4_PageTableBits);
+            free (table);
+        }
     }
+
+    /* free page dir */
+    free (pt);
 }

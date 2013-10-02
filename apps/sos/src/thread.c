@@ -46,8 +46,20 @@ seL4_CPtr thread_cspace_new_ep (thread_t thread) {
                                  seL4_EndpointObject, seL4_EndpointBits,
                                  thread->croot, &service_cap);
     if (err) {
+        ut_free (service_addr, seL4_EndpointBits);
         return 0;
     }
+
+    struct thread_resource *res = malloc (sizeof (struct thread_resource));
+    if (!res) {
+        cspace_delete_cap (thread->croot, service_cap);
+        ut_free (service_addr, seL4_EndpointBits);
+        return 0;
+    }
+
+    res->addr = service_addr;
+    res->next = thread->resources;
+    thread->resources = res;
 
     return service_cap;
 }
@@ -65,8 +77,20 @@ seL4_CPtr thread_cspace_new_async_ep (thread_t thread) {
                                  seL4_AsyncEndpointObject, seL4_EndpointBits,
                                  thread->croot, &async_ep);
     if (err) {
+        ut_free (aep_addr, seL4_EndpointBits);
         return 0;
     }
+
+    struct thread_resource *res = malloc (sizeof (struct thread_resource));
+    if (!res) {
+        cspace_delete_cap (thread->croot, async_ep);
+        ut_free (aep_addr, seL4_EndpointBits);
+        return 0;
+    }
+
+    res->addr = aep_addr;
+    res->next = thread->resources;
+    thread->resources = res;
 
     return async_ep;
 }
@@ -131,36 +155,38 @@ thread_t thread_create (char* name, cspace_t *existing_cspace, addrspace_t exist
     pid_t pid = pid_next ();
     if (pid < 0) {
         /* no more process IDs left */
-        thread_dispose (thread);
+        thread_destroy (thread);
         return NULL;
     }
 
+    thread->pid = pid;
     thread->name = strdup (name);
 
     /* Create a new TCB object */
     thread->tcb_addr = ut_alloc (seL4_TCBBits);
     if (!thread->tcb_addr) {
-        thread_dispose (thread);
+        thread_destroy (thread);
         return NULL;
     }
 
     if (cspace_ut_retype_addr (thread->tcb_addr,
                                seL4_TCBObject, seL4_TCBBits,
                                cur_cspace, &thread->tcb_cap)) {
-        thread_dispose (thread);
+        thread_destroy (thread);
     }
 
     if (!existing_addrspace) {
+        printf ("Creating address space\n");
         /* create address space for process */
         thread->as = addrspace_create (0);
         if (!thread->as) {
-            thread_dispose (thread);
+            thread_destroy (thread);
         }
 
         /* Map in IPC first off (since we need it for TCB configuration) */
         as_define_region (thread->as, PROCESS_IPC_BUFFER, PAGE_SIZE, seL4_AllRights, REGION_IPC);
         if (!as_map_page (thread->as, PROCESS_IPC_BUFFER)) {
-            thread_dispose (thread);
+            thread_destroy (thread);
             return NULL;
         }
     } else {
@@ -171,11 +197,12 @@ thread_t thread_create (char* name, cspace_t *existing_cspace, addrspace_t exist
 
     seL4_CPtr ipc_cap = as_get_page_cap (thread->as, PROCESS_IPC_BUFFER);
     if (!ipc_cap) {
-        thread_dispose (thread);
+        thread_destroy (thread);
         return NULL;
     }
 
     if (!existing_cspace) {
+        printf ("Creating CSpace\n");
         /* Create thread's CSpace (which we will manage in-kernel - although they
          * get to manage any empty CNodes they request.
          *
@@ -185,7 +212,7 @@ thread_t thread_create (char* name, cspace_t *existing_cspace, addrspace_t exist
          */
         thread->croot = cspace_create (2);
         if (!thread->croot) {
-            thread_dispose (thread);
+            thread_destroy (thread);
             return NULL;
         }
     } else {
@@ -197,7 +224,7 @@ thread_t thread_create (char* name, cspace_t *existing_cspace, addrspace_t exist
                              thread->as->pagedir_cap, seL4_NilData, PROCESS_IPC_BUFFER,
                              ipc_cap);
     if (err) {
-        thread_dispose (thread);
+        thread_destroy (thread);
         return NULL;
     }
 
@@ -205,7 +232,7 @@ thread_t thread_create (char* name, cspace_t *existing_cspace, addrspace_t exist
 }
 
 void 
-thread_dispose (thread_t thread) {
+thread_destroy (thread_t thread) {
     if (thread->name) {
         free (thread->name);
     }
@@ -214,7 +241,59 @@ thread_dispose (thread_t thread) {
         free (thread->static_stack);
     }
 
-    /* FIXME: release all the resources */
+    if (thread->pid >= PID_MIN) {
+        threadlist[thread->pid] = 0;
+        pid_free (thread->pid);
+    }
+
+    if (thread->croot && thread->croot != cur_cspace) {
+        cspace_destroy (thread->croot);
+    }
+
+    if (thread->tcb_cap) {
+        cspace_delete_cap (cur_cspace, thread->tcb_cap);
+    }
+
+    if (thread->tcb_addr) {
+        ut_free (thread->tcb_addr, seL4_TCBBits);
+    }
+
+    /* free any created resources (specifically, endpoints) */
+    struct thread_resource *res = thread->resources;
+    while (res) {
+        ut_free (res->addr, res->size);
+
+        struct thread_resources *next = res->next;
+        free (res);
+        res = next;
+    }
+
+    /* lastly, free the address space ONLY if we're not rootsvr's */
+    if (thread->as && thread->as != cur_addrspace) {
+        /* will free underlying pages + frames */
+        addrspace_destroy (thread->as);
+    }
+
+    /* FIXME: free known services - MORE OVER WHY IS THAT HERE */
+    
+    /* FIXME: this takes O(n) which sucks, but we only do it on thread
+     * deletion... - maybe have a prev pointer too? */
+    thread_t prev = running_head;
+    while (prev) {
+        if (prev->next == thread) {
+            break;
+        }
+
+        prev = prev->next;
+    }
+
+    /* update next */
+    if (prev) {
+        prev->next = thread->next;
+    } else {
+        /* we must've been first */
+        running_head = thread->next;
+    }
 
     free (thread);
 }
@@ -269,7 +348,7 @@ thread_t thread_create_from_cpio (char* path, seL4_CPtr rootsvr_ep) {
 
     /* install caps that threads usually expect */
     if (!thread_setup_default_caps (thread, rootsvr_ep)) {
-        thread_dispose (thread);
+        thread_destroy (thread);
         return NULL;
     }
 
@@ -277,13 +356,13 @@ thread_t thread_create_from_cpio (char* path, seL4_CPtr rootsvr_ep) {
     dprintf (1, "Starting \"%s\"...\n", path);
     elf_base = cpio_get_file (_cpio_archive, path, &elf_size);
     if (!elf_base) {
-        thread_dispose (thread);
+        thread_destroy (thread);
         return NULL;
     }
 
     /* load the elf image */
     if (elf_load (thread->as, elf_base)) {
-        thread_dispose (thread);
+        thread_destroy (thread);
         return NULL;
     }
 
@@ -321,13 +400,13 @@ thread_create_internal (char* name, void* initial_pc, unsigned int stack_size) {
 
     char* stack = malloc (stack_size);
     if (!stack) {
-        thread_dispose (thread);
+        thread_destroy (thread);
         return NULL;
     }
 
     thread->static_stack = stack;
 
-    seL4_TCB_WritePCSP (thread->tcb_cap, true, (seL4_Word)initial_pc, &stack[stack_size]);
+    seL4_TCB_WritePCSP (thread->tcb_cap, true, (seL4_Word)initial_pc, (seL4_Word)&stack[stack_size]);
     return thread;
 }
 

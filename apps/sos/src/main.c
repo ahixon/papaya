@@ -41,6 +41,16 @@ seL4_CPtr save_reply_cap (void) {
     return reply_cap;
 }
 
+void print_resource_stats (void) {
+    printf ("************ resource allocation ************\n");
+    frametable_stats ();
+    printf ("Memory allocations: 0x%x\n", malloc_leak_check ());
+    printf ("Root CNode free slots: 0x%x\n", cur_cspace->num_free_slots);
+    ut_stats ();
+    printf ("*********************************************\n");
+
+}
+
 struct pawpaw_eventhandler_info syscalls[NUM_SYSCALLS] = {
     { syscall_sbrk,             1,  true    },
     /*{ syscall_service_find,     3,  true    },
@@ -80,6 +90,7 @@ void syscall_loop (seL4_CPtr ep) {
         }
 
         current_thread = thread;
+        short print_stats = false;
 
         switch (seL4_MessageInfo_get_label (message)) {
         case seL4_NoFault:
@@ -97,10 +108,17 @@ void syscall_loop (seL4_CPtr ep) {
                     seL4_Send (evt->reply_cap, evt->reply);
                 }
             } else {
-                printf ("syscall: 0x%x failed\n", seL4_GetMR (0));
+                printf ("syscall: 0x%x failed, killing thread %s\n", seL4_GetMR (0), thread->name);
+                thread_destroy (thread);
+                print_stats = true;
             }
 
             pawpaw_event_dispose (evt);
+
+            if (print_stats) {
+                print_resource_stats ();
+            }
+
             break;
         }
 
@@ -118,7 +136,10 @@ void syscall_loop (seL4_CPtr ep) {
                     seL4_GetMR(0),
                     seL4_GetMR(2) ? "Instruction Fault" : "Data fault");
 
-            dprintf (0, "not waking thread %d (%s)...\n", thread->pid, thread->name);
+            dprintf (0, "killing thread %d (%s)...\n", thread->pid, thread->name);
+            thread_destroy (thread);
+            print_resource_stats ();
+
             break;
 
         case seL4_CapFault:
@@ -286,9 +307,9 @@ int main (void) {
     /* initialise root server from whatever seL4 left us */
     rootserver_init (&rootserver_syscall_cap);
     printf ("Root server setup.\n");
+    print_resource_stats ();
 
     /* print memory stats */
-    frametable_dump ();
     //pagetable_
 
 
@@ -304,7 +325,8 @@ int main (void) {
     // FIXME: actually mount the thing
 
     printf ("Starting test thread...\n");
-    //thread_create_from_cpio ("test_runner", rootserver_syscall_cap);
+    thread_create_from_cpio ("test_runner", rootserver_syscall_cap);
+    print_resource_stats ();
 
 #if 0
     /* start any devices services inside the CPIO archive */
@@ -316,12 +338,14 @@ int main (void) {
             thread_create (name, rootserver_syscall_cap);
         }
     }
+#endif
 
     /* finally, start the boot app */
     dprintf (1, "Starting boot application \"%s\"...\n", CONFIG_SOS_STARTUP_APP);
-    pid_t pid = thread_create (CONFIG_SOS_STARTUP_APP, rootserver_syscall_cap);
-    dprintf (1, "  started with PID %d\n", pid);
-#endif
+    thread_t boot_thread = thread_create_from_cpio (CONFIG_SOS_STARTUP_APP, rootserver_syscall_cap);
+    dprintf (1, "  started with PID %d\n", boot_thread->pid);
+    print_resource_stats ();
+
 
     /* and wait for IPC */
     dprintf (0, "Root server starting event loop...\n");

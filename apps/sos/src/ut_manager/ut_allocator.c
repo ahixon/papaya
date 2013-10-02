@@ -364,6 +364,14 @@ void ut_allocator_init(seL4_Word low, seL4_Word high){
     _initialised = 1;
 }
 
+static seL4_Word nallocated = 0;
+static seL4_Word allocated = 0;
+
+void ut_stats (void) {
+    printf ("Untyped allocated count: 0x%x\n", nallocated);
+    printf ("Untyped allocated size: 0x%x bytes\n", allocated);
+}
+
 seL4_Word ut_alloc(int sizebits){
     seL4_Word addr;
 
@@ -388,6 +396,9 @@ seL4_Word ut_alloc(int sizebits){
         return 0;
     }
 
+    nallocated++;
+    allocated += (1 << sizebits);
+
     return addr;
 }
 
@@ -409,6 +420,9 @@ void ut_free(seL4_Word addr, int sizebits){
     default:
         assert(!"ut_free received invalid size");
     }
+
+    nallocated--;
+    allocated -= (1 << sizebits);
 }
 
 

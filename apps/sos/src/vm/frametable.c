@@ -145,7 +145,7 @@ frametable_freeall (void) {
 }
 
 void
-frametable_dump (void) {
+frametable_stats (void) {
     printf ("Allocated frames: 0x%x\n", allocated);
 }
 

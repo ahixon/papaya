@@ -57,7 +57,6 @@ addrspace_create (seL4_ARM_PageTable pd)
     }
 
     as->regions = NULL;
-    as->stack_vaddr = 0;
 
     if (pd != 0) {
         as->pagedir_cap = pd;
@@ -91,11 +90,23 @@ addrspace_create (seL4_ARM_PageTable pd)
 
 void
 addrspace_destroy (addrspace_t as) {
+    struct as_region* reg = as->regions;
+    while (reg) {
+        struct as_region* next = reg->next;
+        as_region_destroy (reg);
+
+        reg = next;
+    }
+
     pagetable_free (as->pagetable);
     as->pagetable = NULL;
 
-    /* FIXME: free regions list */
-    /* FIXME: free page directory - doesn't matter if root since we never destroy it! */
+    if (as->pagedir_cap != seL4_CapInitThreadPD) {
+        cspace_delete_cap (cur_cspace, as->pagedir_cap);
+        ut_free (as->pagedir_addr, seL4_PageDirBits);
+    }
+
+    free (as);
 }
 
 frameidx_t
@@ -126,28 +137,8 @@ as_map_page (addrspace_t as, vaddr_t vaddr) {
         /* page in shared should be same offset from base (if linked, REGIONS ARE SAME SIZE) */
         vaddr_t offset = vaddr - reg->vbase;
 
-        /*printf ("src pagetable\n");
-        pagetable_dump (as->pagetable);
-
-        printf ("src regions\n");
-        addrspace_print_regions (as);
-
-        printf ("dst pagetable\n");
-        pagetable_dump (reg->linked->owner->pagetable);
-
-        printf ("dst regions\n");
-        addrspace_print_regions (reg->linked->owner);
-
-        printf ("mapping...\n");*/
         struct pt_entry* entry = page_map_shared (as, reg, vaddr, reg->linked->owner, reg->linked, reg->linked->vbase + offset, false);
-        /*printf ("\tmapped shared 0x%x and 0x%x (offset was %d) to underlying frame %p\n", vaddr, reg->linked->vbase + offset, offset, entry);
-
-        printf ("src pagetable\n");
-        pagetable_dump (as->pagetable);
-
-        printf ("dst pagetable\n");
-        pagetable_dump (reg->linked->owner->pagetable);*/
-
+        /*printf ("\tmapped shared 0x%x and 0x%x (offset was %d) to underlying frame %p\n", vaddr, reg->linked->vbase + offset, offset, entry);*/
         return entry->frame_idx;
     } else {
         return page_map (as, reg, vaddr);
@@ -277,6 +268,13 @@ as_define_region (addrspace_t as, vaddr_t vbase, size_t size, seL4_CapRights per
     }
 
     return reg;
+}
+
+void
+as_region_destroy (struct as_region* as) {
+    /* FIXME: WHAT ABOUT SHARED REGIONS - NEEDS REFCOUNT */
+
+    free (as);
 }
 
 int

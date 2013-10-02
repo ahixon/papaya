@@ -16,6 +16,12 @@ struct req_svc {
     struct req_svc* next;
 };
 
+struct thread_resource {
+    seL4_Word addr;
+    int size;
+    struct thread_resource *next;
+};
+
 struct thread {
 	char* name;
 	pid_t pid;
@@ -23,11 +29,9 @@ struct thread {
     seL4_Word tcb_addr;
     seL4_TCB tcb_cap;
 
-    seL4_Word ipc_buffer_addr;
-    seL4_CPtr ipc_buffer_cap;
-
     addrspace_t as;
     cspace_t *croot;
+    struct thread_resource* resources;
 
     seL4_CPtr service_cap;
     struct req_svc* known_services;
@@ -41,7 +45,7 @@ thread_t thread_create_from_cpio (char* path, seL4_CPtr rootsvr_ep);
 thread_t thread_create_internal (char* name, void* initial_pc, unsigned int stack_size);
 
 
-void thread_dispose (thread_t thread);
+void thread_destroy (thread_t thread);
 
 void threadlist_add (pid_t pid, thread_t thread);
 thread_t thread_lookup (pid_t pid);

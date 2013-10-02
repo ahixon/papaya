@@ -27,7 +27,7 @@ struct addrspace {
 	struct as_region* special_regions[NUM_SPECIAL_REGION_TYPES];
 	pagetable_t pagetable;
 
-	vaddr_t stack_vaddr;
+	vaddr_t stack_vaddr;	/* where we've used our stack up to */
 };
 
 struct as_region {
@@ -58,6 +58,9 @@ as_map_page (addrspace_t as, vaddr_t vaddr);
 
 struct as_region*
 as_resize_region (addrspace_t as, struct as_region* reg, size_t amount);
+
+void
+as_region_destroy (struct as_region* as);
 
 struct as_region*
 as_define_region (addrspace_t as, vaddr_t vbase, size_t size, seL4_CapRights permissions, as_region_type type);
