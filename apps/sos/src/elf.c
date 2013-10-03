@@ -63,7 +63,7 @@ static int load_segment_into_vspace(addrspace_t dest_as,
     /* We work a page at a time in the destination vspace. */
     pos = 0;
     while(pos < segment_size) {
-        seL4_CPtr sos_cap;
+        seL4_CPtr sos_cap, frame_cap;
         seL4_Word vpage, kvpage;
 
         unsigned long kdst;
@@ -81,12 +81,19 @@ static int load_segment_into_vspace(addrspace_t dest_as,
         }
 
         /* Map the frame into SOS as well so we can copy into it */
-        /* FIXME: do we want to use a different function or is this OK */
+        /* FIXME: WOULD BE MUCH NICER(!) if we just used cur_addrspace - 
+         * you will need to create a region in main's init function */
         sos_cap = frametable_fetch_cap (frame);
         conditional_panic (!sos_cap, "could not fetch cap from frametable");
+
+        frame_cap = cspace_copy_cap (cur_cspace, cur_cspace, sos_cap, seL4_AllRights);
+        if (!frame_cap) {
+            printf ("%s: failed to copy cap\n", __FUNCTION__);
+            return 1;
+        }
         
-        err = map_page(sos_cap, seL4_CapInitThreadPD, kvpage, seL4_AllRights, seL4_ARM_Default_VMAttributes);
-        conditional_panic(err, "could not map into SOS");
+        err = map_page (frame_cap, seL4_CapInitThreadPD, kvpage, seL4_AllRights, seL4_ARM_Default_VMAttributes);
+        conditional_panic (err, "could not map into SOS");
 
         /* Now copy our data into the destination vspace */
         nbytes = PAGESIZE - (dst & PAGEMASK);
@@ -95,16 +102,19 @@ static int load_segment_into_vspace(addrspace_t dest_as,
         }
 
         /* Not observable to I-cache yet so flush the frame */
-        seL4_ARM_Page_FlushCaches(sos_cap);
+        seL4_ARM_Page_FlushCaches(frame_cap);
 
-        /* unmap the cap */
-        err = seL4_ARM_Page_Unmap (sos_cap);     
+        /* unmap page + delete cap copy */
+        err = seL4_ARM_Page_Unmap (frame_cap);     
         conditional_panic(err, "could not unmap from SOS");
+
+        cspace_delete_cap (cur_cspace, frame_cap);
 
         pos += nbytes;
         dst += nbytes;
         src += nbytes;
     }
+
     return 0;
 }
 

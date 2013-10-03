@@ -72,6 +72,8 @@ int mapper_main (void) {
 
 /* FIXME: hashmap would be MUCH better! */
 void maps_append (seL4_Word idx, pid_t pid, vaddr_t start) {
+	printf ("!!!!!!! %s: adding to badgemap !!!!!!!!! WE ARE LEAKING JIM\n", __FUNCTION__);
+	/* FIXME: needs a free! */
 	struct map *mm = malloc (sizeof (struct map));
 	mm->idx = idx;
 	mm->pid = pid;

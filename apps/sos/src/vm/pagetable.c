@@ -146,12 +146,9 @@ _page_map (vaddr_t vaddr, frameidx_t frame, struct as_region* region, addrspace_
     frame_cap = frametable_fetch_cap (frame);
     assert (frame_cap);
 
-    /* copy the cap (should we badge?) - FIXME: ALSO WHICH CSPACE DO WE WANT */
-    dest_cap = cspace_copy_cap(cur_cspace, cur_cspace, frame_cap, seL4_AllRights);
-    if (!dest_cap) {
-        printf ("_page_map: failed to copy cap\n");
-        return false;
-    }
+    /* FIXME: if you wish to map across multiple processes, YOU NEED TO COPY THE CAP
+     * AND STORE IT SOMEWHERE IN THE PAGE ENTRY AND UPDATE THE FREE FUNCTION! */
+    dest_cap = frame_cap;
 
     //printf ("_page_map: mapping cap (originally 0x%x, copy is 0x%x) to vaddr 0x%x\n", frame_cap, dest_cap, vaddr);
     //printf ("           perms = %d, attrib = %d, pagedir cap = 0x%x\n", region->permissions, region->attributes, as->pagedir_cap);
@@ -283,7 +280,7 @@ page_map (addrspace_t as, struct as_region* region, vaddr_t vaddr) {
 
     if (entry->flags & PAGE_ALLOCATED) {
         printf ("page_map: page at vaddr 0x%x already allocated!\n", vaddr);
-        return 0;
+        return entry->frame_idx;
     }
 
     /* ok now try to map in addrspace */

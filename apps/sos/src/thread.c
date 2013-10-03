@@ -176,7 +176,6 @@ thread_t thread_create (char* name, cspace_t *existing_cspace, addrspace_t exist
     }
 
     if (!existing_addrspace) {
-        printf ("Creating address space\n");
         /* create address space for process */
         thread->as = addrspace_create (0);
         if (!thread->as) {
@@ -202,7 +201,6 @@ thread_t thread_create (char* name, cspace_t *existing_cspace, addrspace_t exist
     }
 
     if (!existing_cspace) {
-        printf ("Creating CSpace\n");
         /* Create thread's CSpace (which we will manage in-kernel - although they
          * get to manage any empty CNodes they request.
          *

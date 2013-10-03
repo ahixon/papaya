@@ -114,7 +114,6 @@ frame_alloc (void)
 
 void
 frame_free (frameidx_t idx) {
-    printf ("freeing frame!\n");
     if (idx > high_idx) {
         return;
     }
@@ -126,13 +125,18 @@ frame_free (frameidx_t idx) {
         return;
     }
 
-    if (cspace_delete_cap (cur_cspace, fi->capability)) {
-        printf ("frame_free: could not delete cap\n");
-        return;
+    if (cspace_revoke_cap (cur_cspace, fi->capability)) {
+        printf ("frame_free: failed to revoke cap\n");
     }
 
-    fi->flags &= ~FRAME_ALLOCATED;
+    if (cspace_delete_cap (cur_cspace, fi->capability)) {
+        printf ("frame_free: could not delete cap\n");
+        //return;
+    }
+
     ut_free (fi->paddr, seL4_PageBits);
+
+    fi->flags &= ~FRAME_ALLOCATED;
     allocated--;
 }
 

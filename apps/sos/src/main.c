@@ -42,12 +42,12 @@ seL4_CPtr save_reply_cap (void) {
 }
 
 void print_resource_stats (void) {
-    printf ("************ resource allocation ************\n");
+    printf ("\n************ resource allocation ************\n");
     frametable_stats ();
     printf ("Memory allocations: 0x%x\n", malloc_leak_check ());
     printf ("Root CNode free slots: 0x%x\n", cur_cspace->num_free_slots);
     ut_stats ();
-    printf ("*********************************************\n");
+    printf ("*********************************************\n\n");
 
 }
 
@@ -326,7 +326,6 @@ int main (void) {
 
     printf ("Starting test thread...\n");
     thread_create_from_cpio ("test_runner", rootserver_syscall_cap);
-    print_resource_stats ();
 
 #if 0
     /* start any devices services inside the CPIO archive */
@@ -344,11 +343,11 @@ int main (void) {
     dprintf (1, "Starting boot application \"%s\"...\n", CONFIG_SOS_STARTUP_APP);
     thread_t boot_thread = thread_create_from_cpio (CONFIG_SOS_STARTUP_APP, rootserver_syscall_cap);
     dprintf (1, "  started with PID %d\n", boot_thread->pid);
-    print_resource_stats ();
-
 
     /* and wait for IPC */
     dprintf (0, "Root server starting event loop...\n");
+    print_resource_stats ();
+
     syscall_loop (rootserver_syscall_cap);
 
     return 0;   /* not reached */
