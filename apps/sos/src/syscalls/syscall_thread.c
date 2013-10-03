@@ -1,12 +1,47 @@
+#include <pawpaw.h>
 #include <sel4/sel4.h>
 #include <thread.h>
-#include <cspace/cspace.h>
 #include <stdio.h>
 
-seL4_MessageInfo_t syscall_suicide (thread_t thread) {
-    /* FIXME: should actually destroy thread + resources instead of not returning */
-    printf ("\n!!! thread %s wanted to die - R U OK? !!!\n", thread->name);
+extern thread_t current_thread;
 
-    /* FIXME: yuck */
-    return seL4_MessageInfo_new (0, 0, 0, 0);
+int syscall_thread_suicide (struct pawpaw_event* evt) {
+	printf ("\nthread %s asked to terminate\n", current_thread->name);
+	thread_destroy (current_thread);
+
+    return PAWPAW_EVENT_HANDLED;
+}
+
+int syscall_thread_create (struct pawpaw_event* evt) {
+    return PAWPAW_EVENT_UNHANDLED;
+}
+
+int syscall_thread_destroy (struct pawpaw_event* evt) {
+	thread_t target = thread_lookup (evt->args[0]);
+
+	evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+
+	if (target) {
+		printf ("\nthread %s asked to terminate PID %d (%s)\n",
+			current_thread->name, target->pid, target->name);
+
+		thread_destroy (target);
+		seL4_SetMR (0, 0);
+	} else {
+		printf ("\nthread %s asked to kill PID %d but no such thread\n",
+			current_thread->name, evt->args[0]);
+		seL4_SetMR (0, -1);
+	}
+
+    return PAWPAW_EVENT_NEEDS_REPLY;
+}
+
+int syscall_thread_pid (struct pawpaw_event* evt) {
+	evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+	seL4_SetMR (0, current_thread->pid);
+    return PAWPAW_EVENT_NEEDS_REPLY;
+}
+
+int syscall_thread_wait (struct pawpaw_event* evt) {
+    return PAWPAW_EVENT_UNHANDLED;
 }

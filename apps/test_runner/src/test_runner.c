@@ -15,7 +15,7 @@
 #define PATHBUF 1024
 
 void start_and_wait (const char* path) {
-    printf ("\tstarting %s...\n", path);
+    printf ("\tstarting '%s'...\n", path);
     pid_t pid = process_create (path);
     assert (pid > 0);   /* process 0 should be root server */
 
@@ -27,7 +27,7 @@ void start_and_wait (const char* path) {
 int main(void) {
     printf ("test_runner: hello!\n");
 
-    start_and_wait (TESTBIN_PATH "test_vm");
+    start_and_wait (TESTBIN_PATH "sos_test");
 
     printf ("test_runner: all tests passed! YOU ARE AWESOME!\n");
 }

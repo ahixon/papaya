@@ -53,22 +53,22 @@ void print_resource_stats (void) {
 
 struct pawpaw_eventhandler_info syscalls[NUM_SYSCALLS] = {
     { syscall_sbrk,             1,  true    },
-    /*{ syscall_service_find,     3,  true    },
-    { syscall_service_register, 1,  true    },
-    { syscall_register_irq,     1,  true    },
-    { syscall_map_device,       2,  true    },
-    { syscall_alloc_cnodes,     1,  true    },
-    { syscall_create_ep_sync,   0,  true    },
-    { syscall_create_ep_async,  0,  true    },
-    { syscall_bind_async_tcb,   1,  true    },
-    { syscall_sbuf_create,      1,  true    },
-    { syscall_sbuf_mount,       1,  true    },
+    { NULL, 0, true },/*{ syscall_service_find,     3,  true    },*/
+    { NULL, 0, true },/*{ syscall_service_register, 1,  true    },*/
+    { NULL, 0, true },/*{ syscall_register_irq,     1,  true    },*/
+    { NULL, 0, true },/*{ syscall_map_device,       2,  true    },*/
+    { NULL, 0, true },/*{ syscall_alloc_cnodes,     1,  true    },*/
+    { NULL, 0, true },/*{ syscall_create_ep_sync,   0,  true    },*/
+    { NULL, 0, true },/*{ syscall_create_ep_async,  0,  true    },*/
+    { NULL, 0, true },/*{ syscall_bind_async_tcb,   1,  true    },*/
+    { NULL, 0, true },/*{ syscall_sbuf_create,      1,  true    },*/
+    { NULL, 0, true },/*{ syscall_sbuf_mount,       1,  true    },*/
     { syscall_thread_suicide,   0,  false   },
     { syscall_thread_create,    2,  true    },
     { syscall_thread_destroy,   1,  true    },
     { syscall_thread_pid,       0,  true    },
     { NULL,                     0,  false   },      // SYSCALL_PROCESS_SEND_STATUS 
-    { syscall_thread_wait,      1,  true    }*/
+    { syscall_thread_wait,      1,  true    }
 };
 
 struct pawpaw_event_table syscall_table = { NUM_SYSCALLS, syscalls };
@@ -309,12 +309,8 @@ int main (void) {
     printf ("Root server setup.\n");
     print_resource_stats ();
 
-    /* print memory stats */
-    //pagetable_
-
-
     /* boot up core services */
-    printf ("Starting core services...\n");
+    //printf ("Starting core services...\n");
     //thread_create ("svc_dev", rootserver_syscall_cap);
     //thread_create ("svc_vfs", rootserver_syscall_cap);
     // thread_create ("svc_net", rootserver_syscall_cap);
@@ -323,9 +319,6 @@ int main (void) {
     /* boot up device filesystem & mount it */
     //thread_create ("fs_dev", rootserver_syscall_cap);
     // FIXME: actually mount the thing
-
-    printf ("Starting test thread...\n");
-    thread_create_from_cpio ("test_runner", rootserver_syscall_cap);
 
 #if 0
     /* start any devices services inside the CPIO archive */
