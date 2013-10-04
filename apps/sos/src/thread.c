@@ -335,6 +335,10 @@ int thread_rename (thread_t thread, char* name) {
     return (thread->name != NULL);
 }
 
+thread_t thread_create_from_fs (char* path, seL4_CPtr rootsvr_ep) {
+    return thread_create_from_cpio (path, rootsvr_ep);
+}
+
 thread_t thread_create_from_cpio (char* path, seL4_CPtr rootsvr_ep) {
     char* elf_base;
     unsigned long elf_size;

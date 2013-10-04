@@ -104,6 +104,7 @@ void syscall_loop (seL4_CPtr ep) {
 
             /* only process valid events, and ignore everything else */
             if (pawpaw_event_process (&syscall_table, evt, save_reply_cap) == PAWPAW_EVENT_HANDLED) {
+                /* FIXME: should just check to see return value, not look at flags? */
                 if (evt->flags & PAWPAW_EVENT_NEEDS_REPLY) {
                     seL4_Send (evt->reply_cap, evt->reply);
                 }

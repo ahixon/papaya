@@ -3,6 +3,8 @@
 #include <thread.h>
 #include <stdio.h>
 
+#define THREAD_PATH_SIZE_MAX	512
+
 extern thread_t current_thread;
 
 int syscall_thread_suicide (struct pawpaw_event* evt) {
@@ -13,7 +15,24 @@ int syscall_thread_suicide (struct pawpaw_event* evt) {
 }
 
 int syscall_thread_create (struct pawpaw_event* evt) {
-    return PAWPAW_EVENT_UNHANDLED;
+    char* thread_path = copyin_str (evt->args[0], evt->args[1],
+    	THREAD_PATH_SIZE_MAX);
+
+    if (!thread_path) {
+    	/* invalid request, ignore */
+    	return PAWPAW_EVENT_UNHANDLED;
+    }
+
+    evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+
+    thread_t child = thread_create_from_fs (thread_path, rootserver_syscall_cap);
+    if (!child) {
+    	seL4_SetMR (0, child->pid);
+    } else {
+    	seL4_SetMR (0, -1);
+    }
+
+    return PAWPAW_EVENT_NEEDS_REPLY;
 }
 
 int syscall_thread_destroy (struct pawpaw_event* evt) {
