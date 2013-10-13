@@ -2,10 +2,12 @@
 #include <sel4/sel4.h>
 #include <thread.h>
 #include <stdio.h>
+#include <copyinout.h>
 
 #define THREAD_PATH_SIZE_MAX	512
 
 extern thread_t current_thread;
+extern seL4_CPtr rootserver_syscall_cap;
 
 int syscall_thread_suicide (struct pawpaw_event* evt) {
 	printf ("\nthread %s asked to terminate\n", current_thread->name);
@@ -15,16 +17,15 @@ int syscall_thread_suicide (struct pawpaw_event* evt) {
 }
 
 int syscall_thread_create (struct pawpaw_event* evt) {
-    char* thread_path = copyin_str (evt->args[0], evt->args[1],
-    	THREAD_PATH_SIZE_MAX);
-
-    if (!thread_path) {
-    	/* invalid request, ignore */
-    	return PAWPAW_EVENT_UNHANDLED;
-    }
-
     evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
 
+    char thread_path[THREAD_PATH_SIZE_MAX];
+    if (!copyin (current_thread, evt->args[0], evt->args[1], thread_path, THREAD_PATH_SIZE_MAX)) {
+        /* invalid request, ignore */
+        return PAWPAW_EVENT_UNHANDLED;
+    }
+
+    printf ("\nthread %s asked to create thread with path '%s'\n", current_thread->name, thread_path);
     thread_t child = thread_create_from_fs (thread_path, rootserver_syscall_cap);
     if (!child) {
     	seL4_SetMR (0, child->pid);

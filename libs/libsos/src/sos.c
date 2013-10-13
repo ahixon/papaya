@@ -100,14 +100,30 @@ int stat(const char *path, stat_t *buf) {
 /*************** PROCESS SYSCALLS ***************/
 
 pid_t process_create(const char *path) {
-	return process_create_args (path, NULL);
+#if 0
+	return process_create_args (path, NULL, 0);
 }
 
-pid_t process_create_args (const char* path, const char* argv[]) {
+pid_t process_create_args_env (const char* path, const char* argv[], const int argc, const char* envv[], const int envc) {
 	seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 3);
     seL4_SetMR (0, SYSCALL_PROCESS_CREATE);
     seL4_SetMR (1, (seL4_Word)path);
     seL4_SetMR (2, (seL4_Word)argv);
+    char* 
+    seL4_SetMR (3, argc + envc)
+
+    seL4_Call (PAPAYA_SYSCALL_SLOT, msg);
+    return seL4_GetMR (0);
+}
+
+pid_t process_create_args (const char* path, const char* argv[]) {
+#endif
+	seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 3);
+    seL4_SetMR (0, SYSCALL_PROCESS_CREATE);
+    seL4_SetMR (1, (seL4_Word)path);
+    seL4_SetMR (2, strlen (path));
+    //seL4_SetMR (2, (seL4_Word)argv);
+    //seL4_SetMR (3, )
 
     seL4_Call (PAPAYA_SYSCALL_SLOT, msg);
     return seL4_GetMR (0);
