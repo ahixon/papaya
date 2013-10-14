@@ -57,10 +57,10 @@ struct pawpaw_eventhandler_info syscalls[NUM_SYSCALLS] = {
     { NULL, 0, true },/*{ syscall_service_register, 1,  true    },*/
     { NULL, 0, true },/*{ syscall_register_irq,     1,  true    },*/
     { NULL, 0, true },/*{ syscall_map_device,       2,  true    },*/
-    { NULL, 0, true },/*{ syscall_alloc_cnodes,     1,  true    },*/
-    { NULL, 0, true },/*{ syscall_create_ep_sync,   0,  true    },*/
-    { NULL, 0, true },/*{ syscall_create_ep_async,  0,  true    },*/
-    { NULL, 0, true },/*{ syscall_bind_async_tcb,   1,  true    },*/
+    { syscall_alloc_cnodes,     1,  true    },
+    { syscall_create_ep_sync,   0,  true    },
+    { syscall_create_ep_async,  0,  true    },
+    { syscall_bind_async_tcb,   1,  true    },
     { NULL, 0, true },/*{ syscall_sbuf_create,      1,  true    },*/
     { NULL, 0, true },/*{ syscall_sbuf_mount,       1,  true    },*/
     { syscall_thread_suicide,   0,  false   },

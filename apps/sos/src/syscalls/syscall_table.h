@@ -21,16 +21,16 @@ int syscall_thread_destroy (struct pawpaw_event* evt);
 int syscall_thread_pid (struct pawpaw_event* evt);
 int syscall_thread_wait (struct pawpaw_event* evt);
 
+int syscall_alloc_cnodes (struct pawpaw_event* evt);
+int syscall_create_ep_sync (struct pawpaw_event* evt);
+int syscall_create_ep_async (struct pawpaw_event* evt);
+
+int syscall_bind_async_tcb (struct pawpaw_event* evt);
+
 seL4_MessageInfo_t syscall_service_find (thread_t thread);
 seL4_MessageInfo_t syscall_service_register (thread_t thread);
 seL4_MessageInfo_t syscall_register_irq (thread_t thread);
 seL4_MessageInfo_t syscall_map_device (thread_t thread);
-
-seL4_MessageInfo_t syscall_alloc_cnodes (thread_t thread);
-seL4_MessageInfo_t syscall_create_ep_sync (thread_t thread);
-seL4_MessageInfo_t syscall_create_ep_async (thread_t thread);
-
-seL4_MessageInfo_t syscall_bind_async_tcb (thread_t thread);
 
 seL4_MessageInfo_t syscall_sbuf_create (thread_t thread);
 seL4_MessageInfo_t syscall_sbuf_mount (thread_t thread);
