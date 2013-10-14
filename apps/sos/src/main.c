@@ -55,8 +55,8 @@ struct pawpaw_eventhandler_info syscalls[NUM_SYSCALLS] = {
     { syscall_sbrk,             1,  true    },
     { NULL, 0, true },/*{ syscall_service_find,     3,  true    },*/
     { NULL, 0, true },/*{ syscall_service_register, 1,  true    },*/
-    { NULL, 0, true },/*{ syscall_register_irq,     1,  true    },*/
-    { NULL, 0, true },/*{ syscall_map_device,       2,  true    },*/
+    { syscall_register_irq,     1,  true    },
+    { syscall_map_device,       2,  true    },
     { syscall_alloc_cnodes,     1,  true    },
     { syscall_create_ep_sync,   0,  true    },
     { syscall_create_ep_async,  0,  true    },
@@ -329,17 +329,15 @@ int main (void) {
     //thread_create ("fs_dev", rootserver_syscall_cap);
     // FIXME: actually mount the thing
 
-#if 0
     /* start any devices services inside the CPIO archive */
     dprintf (1, "Looking for device services linked into CPIO...\n");
     unsigned long size;
     char *name;
     for (int i = 0; cpio_get_entry (_cpio_archive, i, (const char**)&name, &size); i++) {
         if (strstr (name, "dev_") == name) {
-            thread_create (name, rootserver_syscall_cap);
+            thread_create_from_cpio (name, rootserver_syscall_cap);
         }
     }
-#endif
 
     /* finally, start the boot app */
     dprintf (1, "Starting boot application \"%s\"...\n", CONFIG_SOS_STARTUP_APP);

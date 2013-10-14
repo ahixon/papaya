@@ -23,7 +23,7 @@ char* copyin_str (thread_t thread, vaddr_t ubuf, unsigned int usize, char* kbuf,
 #endif
 
 char* copyin (thread_t thread, vaddr_t ubuf, unsigned int usize, char* kbuf, unsigned int ksize) {
-	addrspace_print_regions (thread->as);
+	//addrspace_print_regions (thread->as);
 
 	assert (kbuf);
 	assert (ksize > 0);
