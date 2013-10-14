@@ -23,12 +23,18 @@ char* copyin_str (thread_t thread, vaddr_t ubuf, unsigned int usize, char* kbuf,
 #endif
 
 char* copyin (thread_t thread, vaddr_t ubuf, unsigned int usize, char* kbuf, unsigned int ksize) {
-	assert (ubuf > 0);
+	addrspace_print_regions (thread->as);
+
 	assert (kbuf);
 	assert (ksize > 0);
 	assert (usize > 0);		/* TODO: copyin_str might pass in 0 when impl */
 
 	if (ksize < usize) {
+		return NULL;
+	}
+
+	/* obvious null */
+	if (ubuf == 0) {
 		return NULL;
 	}
 
@@ -41,7 +47,7 @@ char* copyin (thread_t thread, vaddr_t ubuf, unsigned int usize, char* kbuf, uns
 	seL4_CPtr last_mapped_cap = 0;
 
 	while (done < usize) {
-		seL4_CPtr frame_cap = as_get_page_cap (thread->as, ubuf);
+		seL4_CPtr frame_cap = as_get_page_cap (thread->as, ubuf + done);
 		if (!frame_cap) {
 			printf ("copyin: failed, could not get page cap\n");
 			/* no page mapped, ABORT - and free buf? */

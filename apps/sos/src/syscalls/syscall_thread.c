@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <copyinout.h>
 
-#define THREAD_PATH_SIZE_MAX	512
+#define THREAD_PATH_SIZE_MAX	0x5000
 
 extern thread_t current_thread;
 extern seL4_CPtr rootserver_syscall_cap;
@@ -19,7 +19,7 @@ int syscall_thread_suicide (struct pawpaw_event* evt) {
 int syscall_thread_create (struct pawpaw_event* evt) {
     evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
 
-    char thread_path[THREAD_PATH_SIZE_MAX];
+    char thread_path[THREAD_PATH_SIZE_MAX] = {0};
     if (!copyin (current_thread, evt->args[0], evt->args[1], thread_path, THREAD_PATH_SIZE_MAX)) {
         /* invalid request, ignore */
         return PAWPAW_EVENT_UNHANDLED;
@@ -63,6 +63,8 @@ int syscall_thread_pid (struct pawpaw_event* evt) {
 }
 
 int syscall_thread_wait (struct pawpaw_event* evt) {
+    /* TODO: argument 0 can also be -1 to indicate any process
+     * this requires a global bequests queue. also a pretty dumb syscall */
     thread_t target = thread_lookup (evt->args[0]);
     evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
 
