@@ -15,13 +15,22 @@ void pawpaw_event_loop (struct pawpaw_event_table* table, seL4_CPtr ep) {
         }
 
         /* only process valid events, and ignore everything else */
-        if (pawpaw_event_process (table, evt, pawpaw_save_reply) == PAWPAW_EVENT_HANDLED) {
-	        if (evt->flags & PAWPAW_EVENT_NEEDS_REPLY) {
-	        	seL4_Send (evt->reply_cap, evt->reply);
-	        }
-	    }
-
-        pawpaw_event_dispose (evt);
+        int result = pawpaw_event_process (table, evt, pawpaw_save_reply);
+        switch (result) {
+            case PAWPAW_EVENT_NEEDS_REPLY:
+                seL4_Send (evt->reply_cap, evt->reply);
+                pawpaw_event_dispose (evt); 
+                break;
+            case PAWPAW_EVENT_HANDLED:
+                pawpaw_event_dispose (evt);
+                break;
+            case PAWPAW_EVENT_HANDLED_SAVED:
+                /* don't dispose event since it's still used somewhere */
+                break;
+            default:
+                /* unknown or unhandled event response */
+                break;
+        }
     }
 }
 
@@ -96,6 +105,5 @@ int pawpaw_event_process (struct pawpaw_event_table* table, struct pawpaw_event 
     }
 
     /* ok call the event */
-    evt->flags = eh.func (evt);
-    return PAWPAW_EVENT_HANDLED;
+    return eh.func (evt);
 }

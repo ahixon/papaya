@@ -17,7 +17,7 @@ REMOTEUSER = alex
 REMOTEPATH = /var/tftpboot/alex
 REMOTEHOST = vodka.alexhixon.com
 HOSTNAME = $(shell hostname)
-ifeq ($(HOSTNAME), $(filter $(HOSTNAME), coke debianvm))
+ifeq ($(HOSTNAME), $(filter $(HOSTNAME), coke))
 	REMOTEHOST = vodka.local
 endif
 

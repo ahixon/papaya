@@ -272,6 +272,21 @@ thread_destroy (thread_t thread) {
         addrspace_destroy (thread->as);
     }
 
+    /* now, notify everyone about thread's death (and their presents) */
+    struct pawpaw_saved_event* bequests = thread->bequests;
+    while (bequests) {
+        struct pawpaw_event* evt = bequests->evt;
+
+        /* FIXME: should save response args in event struct too */
+        seL4_SetMR (0, thread->pid);
+        seL4_Send (evt->reply_cap, evt->reply);
+        pawpaw_event_dispose (evt); 
+
+        struct pawpaw_saved_event* next_bequest = bequests->next;
+        free (bequests);
+        bequests = next_bequest;
+    }
+
     /* FIXME: free known services - MORE OVER WHY IS THAT HERE */
     
     /* FIXME: this takes O(n) which sucks, but we only do it on thread

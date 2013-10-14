@@ -82,7 +82,7 @@ frame_alloc (void)
     int err;
 
     /* reserve some from untyped memory */
-    untyped_addr = ut_alloc(seL4_PageBits);
+    untyped_addr = ut_alloc (seL4_PageBits);
     if (!untyped_addr) {
         /* oops, out of memory! */
         printf ("frame_alloc: out of memory\n");
@@ -91,13 +91,11 @@ frame_alloc (void)
 
     /* awesome; we have memory, now retype it so we get a vaddr */
     err =  cspace_ut_retype_addr(untyped_addr,
-                                 seL4_ARM_SmallPageObject,
-                                 seL4_PageBits,
-                                 cur_cspace,
-                                 &frame_cap);
+                                 seL4_ARM_SmallPageObject, seL4_PageBits,
+                                 cur_cspace, &frame_cap);
     if (err != seL4_NoError) {
         ut_free (untyped_addr, seL4_PageBits);
-        printf ("frame_alloc: could not retype: %s\n", seL4_Error_Message(err));
+        printf ("frame_alloc: could not retype: %s\n", seL4_Error_Message (err));
         return 0;
     }
 
@@ -107,6 +105,7 @@ frame_alloc (void)
     frame->flags |= FRAME_ALLOCATED;
     frame->capability = frame_cap;
     frame->paddr = untyped_addr;
+    frame_set_refcount (frame, 1);
 
     allocated++;
     return index;
@@ -120,8 +119,13 @@ frame_free (frameidx_t idx) {
 
     struct frameinfo* fi = &frametable[idx];
 
-    if (!(fi->flags & FRAME_ALLOCATED)) {
-        printf ("frame_free: frame not yet allocated!\n");
+    assert (fi->flags & FRAME_ALLOCATED);
+
+    int refcount = frame_get_refcount (fi);
+    assert (refcount > 0);
+    if (refcount > 1) {
+        /* just reduce refcount, don't actually free yet */
+        frame_set_refcount (fi, refcount - 1);
         return;
     }
 
@@ -131,7 +135,6 @@ frame_free (frameidx_t idx) {
 
     if (cspace_delete_cap (cur_cspace, fi->capability)) {
         printf ("frame_free: could not delete cap\n");
-        //return;
     }
 
     ut_free (fi->paddr, seL4_PageBits);
@@ -151,6 +154,11 @@ frametable_freeall (void) {
 void
 frametable_stats (void) {
     printf ("Allocated frames: 0x%x\n", allocated);
+}
+
+struct frameinfo*
+frametable_get_frame (frameidx_t frame) {
+    return &frametable[frame];
 }
 
 seL4_CPtr

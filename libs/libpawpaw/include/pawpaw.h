@@ -15,6 +15,7 @@
 #define PAWPAW_EVENT_UNHANDLED		(0)
 #define PAWPAW_EVENT_HANDLED		(1)
 #define PAWPAW_EVENT_NEEDS_REPLY	(2)
+#define PAWPAW_EVENT_HANDLED_SAVED	(3)
 
 #define PAWPAW_EVENT_INVALID		(-2)
 
@@ -30,6 +31,11 @@ struct pawpaw_event {
 	int flags;
 	seL4_MessageInfo_t reply;
 	seL4_Word *args;
+};
+
+struct pawpaw_saved_event {
+	struct pawpaw_event* evt;
+	struct pawpaw_saved_event* next;
 };
 
 struct pawpaw_eventhandler_info {

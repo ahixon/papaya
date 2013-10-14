@@ -19,7 +19,7 @@ void start_and_wait (const char* path) {
     pid_t pid = process_create (path);
     assert (pid > 0);   /* process 0 should be root server */
 
-    printf ("\tprocess started, waiting for exit\n");
+    printf ("\tprocess started with PID %d, waiting for exit\n", pid);
     pid_t died = process_wait (pid);
     assert (died == pid);   /* ensure didn't die because parent died */
 }

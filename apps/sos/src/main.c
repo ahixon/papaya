@@ -103,18 +103,26 @@ void syscall_loop (seL4_CPtr ep) {
             }
 
             /* only process valid events, and ignore everything else */
-            if (pawpaw_event_process (&syscall_table, evt, save_reply_cap) == PAWPAW_EVENT_HANDLED) {
-                /* FIXME: should just check to see return value, not look at flags? */
-                if (evt->flags & PAWPAW_EVENT_NEEDS_REPLY) {
+            int result = pawpaw_event_process (&syscall_table, evt, save_reply_cap);
+            switch (result) {
+                case PAWPAW_EVENT_NEEDS_REPLY:
                     seL4_Send (evt->reply_cap, evt->reply);
-                }
-            } else {
-                printf ("syscall: 0x%x failed, killing thread %s\n", seL4_GetMR (0), thread->name);
-                thread_destroy (thread);
-                print_stats = true;
+                    pawpaw_event_dispose (evt); 
+                    break;
+                case PAWPAW_EVENT_HANDLED:
+                    pawpaw_event_dispose (evt);
+                    break;
+                case PAWPAW_EVENT_HANDLED_SAVED:
+                    /* don't dispose event since it's still used somewhere */
+                    break;
+                case PAWPAW_EVENT_INVALID:
+                case PAWPAW_EVENT_UNHANDLED:
+                default:
+                    printf ("syscall: 0x%x failed, killing thread %s\n", seL4_GetMR (0), thread->name);
+                    thread_destroy (thread);
+                    print_stats = true;
+                    break;
             }
-
-            pawpaw_event_dispose (evt);
 
             if (print_stats) {
                 print_resource_stats ();

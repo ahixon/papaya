@@ -5,6 +5,7 @@
 #include <uid.h>
 #include <vm/addrspace.h>
 #include <cspace/cspace.h>
+#include <pawpaw.h>
 
 typedef struct thread * thread_t;
 
@@ -34,7 +35,8 @@ struct thread {
     struct thread_resource* resources;
 
     seL4_CPtr service_cap;
-    struct req_svc* known_services;
+    struct req_svc* known_services; /* FIXME: do we need this */
+    struct pawpaw_saved_event* bequests;
 
     char* static_stack;
 
