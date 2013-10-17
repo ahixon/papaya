@@ -106,33 +106,14 @@ int main(void){
     printf ("about to start pt_test (so, no big stack yet)\n");
     pt_test();
 
+    printf ("Sleeping for a bit");
+    for (int i = 0; i < 25; i++) {
+        sleep (100);
+        printf (".");
+    }
+    printf (" all done!\n");
+
     printf ("All tests passed. YOU ARE AWESOME!\n");
-
-    printf ("Finding timer service...\n");
-
-    seL4_CPtr timer = pawpaw_service_lookup ("dev.timer");
-    assert (timer);
-
-    printf ("Going to wake up in 2 seconds...\n");
-
-    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 3);
-    uint64_t delay = 5 * 1000 * 1000;
-
-    printf ("so delay is 0x%llx\n", delay);
-
-    uint32_t msb = (uint32_t)(delay >> 32);
-    uint32_t lsb = (uint32_t)delay;
-
-    printf ("lsb = 0x%x\n", lsb);
-    printf ("msb = 0x%x\n", msb);
-
-    seL4_SetMR (0, 69);
-    seL4_SetMR (1, msb);
-    seL4_SetMR (2, lsb);
-
-    seL4_Call (timer, msg);
-
-    printf ("Done!");
 
     return 0;
 }

@@ -84,7 +84,7 @@ char* copyin (thread_t thread, vaddr_t ubuf, unsigned int usize, char* kbuf, uns
 		unsigned int dist_until_page_end = PAGESIZE - ((ubuf + done) & PAGEMASK);
 		unsigned int nbytes = MIN (dist_until_page_end, usize - done);
 
-		printf ("copyin: copying 0x%x bytes from 0x%x (mapped from 0x%x) to 0x%x\n", nbytes, kvpage, ubuf + done, (kbuf + done));
+		//printf ("copyin: copying 0x%x bytes from 0x%x (mapped from 0x%x) to 0x%x\n", nbytes, kvpage, ubuf + done, (kbuf + done));
 		memcpy ((void*)(kbuf + done), kvpage + ((ubuf + done) & PAGEMASK), nbytes);
 
 		done += nbytes;

@@ -87,8 +87,6 @@ int syscall_service_find (struct pawpaw_event* evt) {
         return PAWPAW_EVENT_UNHANDLED;
     }
 
-    printf ("%s: looking for svc %s\n", __FUNCTION__, service_name);
-
     thread_t found_thread = NULL;
     thread_t check_thread = threadlist_first();
     while (check_thread) {
@@ -102,13 +100,13 @@ int syscall_service_find (struct pawpaw_event* evt) {
     }
 
     if (found_thread && found_thread->service_cap) {
-        printf ("found a thread %s with that service\n", found_thread->name);
         seL4_CPtr client_cap = cspace_mint_cap(current_thread->croot, cur_cspace, found_thread->service_cap,
             seL4_AllRights, seL4_CapData_Badge_new (current_thread->pid));
 
         seL4_SetMR (0, client_cap);
     } else if (seL4_GetMR (1) > 0) {
         /* if service asked to block, wait for it to come available */
+        printf ("%s: requested service %s not ready, %s will sleep until available\n", __FUNCTION__, service_name, current_thread->name);
         struct svc_wait* sw = malloc (sizeof (struct svc_wait));
 
         sw->name = strdup (service_name);

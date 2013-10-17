@@ -9,6 +9,7 @@
 
 #include <syscalls.h>
 #include <pawpaw.h>
+#include <timer.h>  /* libpawpaw */
 
 #include "clock.h"
 #include "clock_gpt.h"
@@ -409,18 +410,15 @@ int main(void) {
                 break;
 
             case seL4_NoFault:
-                if (seL4_GetMR (0) == SVC_TIMER_REGISTER) {
-                    printf ("timer: wanted to register timer\n");
+                if (seL4_GetMR (0) == TIMER_REGISTER) {
+                    uint64_t delay = (seL4_GetMR(1) * 1000);  /* arg is given in millsecs, need microsecs */
+                    //printf ("timer: registering timer for %llu usecs\n", delay);
 
                     /* NOTE: remember to use seL4_GetMR before save_reply! */
-                    uint64_t delay = (uint64_t)seL4_GetMR (1) << 32 | seL4_GetMR (2);
                     seL4_CPtr reply_cap = pawpaw_save_reply ();
 
                     if (!reply_cap) {
-                        /* immediately wake up the client and notify that timer failed */
-                        seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 1);
-                        seL4_SetMR (0, TIMER_FAILURE);
-                        seL4_Send (reply_cap, msg);
+                        printf ("timer: failed to get reply cap\n");
                         break;
                     }
 

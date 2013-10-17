@@ -1,5 +1,6 @@
 #include <sel4/sel4.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 #include <pawpaw.h>
 #include <syscalls.h>

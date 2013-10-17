@@ -109,6 +109,7 @@ seL4_CPtr thread_cspace_new_async_ep (thread_t thread) {
 int thread_cspace_new_cnodes (thread_t thread, int num, seL4_CPtr* cnode) {
     seL4_CPtr cap = cspace_alloc_slot (thread->croot);
     if (cap == CSPACE_NULL) {
+        printf ("%s: inital slot alloc was null\n", __FUNCTION__, cap);
         return 0;
     }
 
@@ -119,6 +120,7 @@ int thread_cspace_new_cnodes (thread_t thread, int num, seL4_CPtr* cnode) {
         seL4_CPtr cur_cap = cspace_alloc_slot (thread->croot);
         if (cur_cap == CSPACE_NULL) {
             /* no more room left */
+            printf ("%s: ran out of free slots after %d\n", __FUNCTION__, alloc);
             break;
         }
 
@@ -130,6 +132,8 @@ int thread_cspace_new_cnodes (thread_t thread, int num, seL4_CPtr* cnode) {
 
         alloc++;
     }
+
+    //printf ("%s: allocated %d contiguous slots\n", __FUNCTION__, alloc);
 
     *cnode = cap;
     return alloc;

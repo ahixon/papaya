@@ -6,10 +6,10 @@ extern thread_t current_thread;
 
 int syscall_alloc_cnodes (struct pawpaw_event* evt) {
 	evt->reply = seL4_MessageInfo_new(0, 0, 0, 2);
-    seL4_CPtr root_cptr;
+    seL4_CPtr root_cptr = 0;
 
-    seL4_SetMR (0, root_cptr);
     seL4_SetMR (1, thread_cspace_new_cnodes (current_thread, evt->args[0], &root_cptr));
+    seL4_SetMR (0, root_cptr);	/* root_cptr depends on above call, don't reorder */
 
     return PAWPAW_EVENT_NEEDS_REPLY;
 }

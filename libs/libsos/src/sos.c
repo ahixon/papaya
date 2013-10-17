@@ -190,7 +190,7 @@ void sleep(int msec) {
 
     seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 2);
     seL4_SetMR (0, TIMER_REGISTER);
-    seL4_SetMR (1, msec);
+    seL4_SetMR (1, (seL4_Word)msec);
 
 	seL4_Call (timersvc_ep, msg);
 }

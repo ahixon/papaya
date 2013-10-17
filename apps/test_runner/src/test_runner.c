@@ -29,7 +29,7 @@ int main(void) {
 
     start_and_wait (TESTBIN_PATH "sos_test");
 
-   	printf ("gonna die\n");
+   	printf ("Making syscall with invalid memory address/length\n");
     seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 3);
     seL4_SetMR (0, SYSCALL_PROCESS_CREATE);
     seL4_SetMR (1, 0x9fffffdc);
