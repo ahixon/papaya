@@ -9,6 +9,7 @@
 
 typedef struct thread * thread_t;
 
+#if 0
 struct req_svc {
     //char* svc;
     seL4_CPtr cap;
@@ -16,6 +17,7 @@ struct req_svc {
 
     struct req_svc* next;
 };
+#endif
 
 struct thread_resource {
     seL4_Word addr;
@@ -35,7 +37,6 @@ struct thread {
     struct thread_resource* resources;
 
     seL4_CPtr service_cap;
-    struct req_svc* known_services; /* FIXME: do we need this */
     struct pawpaw_saved_event* bequests;
 
     char* static_stack;

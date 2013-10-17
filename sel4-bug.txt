@@ -1,0 +1,4 @@
+seL4 failed assertion 'cap_reply_cap_get_capTCBPtr(replySlot->cap) == 0' at /fscratch/akroh/AOS/kernel/src/object/objecttype.c:175 in function finaliseCap
+
+revision 69
+probably because a race when the timer service gets an IRQ within seL4 but we've killed (freed) it's TCB already

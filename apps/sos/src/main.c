@@ -53,8 +53,8 @@ void print_resource_stats (void) {
 
 struct pawpaw_eventhandler_info syscalls[NUM_SYSCALLS] = {
     { syscall_sbrk,             1,  true    },
-    { NULL, 0, true },/*{ syscall_service_find,     3,  true    },*/
-    { NULL, 0, true },/*{ syscall_service_register, 1,  true    },*/
+    { syscall_service_find,     3,  true    },
+    { syscall_service_register, 1,  true    },
     { syscall_register_irq,     1,  true    },
     { syscall_map_device,       2,  true    },
     { syscall_alloc_cnodes,     1,  true    },

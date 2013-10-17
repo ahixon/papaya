@@ -161,6 +161,7 @@ thread_t thread_create (char* name, cspace_t *existing_cspace, addrspace_t exist
 
     thread->pid = pid;
     thread->name = strdup (name);
+    thread->next = NULL;
 
     /* Create a new TCB object */
     thread->tcb_addr = ut_alloc (seL4_TCBBits);
@@ -261,7 +262,7 @@ thread_destroy (thread_t thread) {
     while (res) {
         ut_free (res->addr, res->size);
 
-        struct thread_resources *next = res->next;
+        struct thread_resource *next = res->next;
         free (res);
         res = next;
     }

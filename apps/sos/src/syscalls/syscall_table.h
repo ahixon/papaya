@@ -29,8 +29,8 @@ int syscall_bind_async_tcb (struct pawpaw_event* evt);
 int syscall_register_irq (struct pawpaw_event* evt);
 int syscall_map_device (struct pawpaw_event* evt);
 
-seL4_MessageInfo_t syscall_service_find (thread_t thread);
-seL4_MessageInfo_t syscall_service_register (thread_t thread);
+int syscall_service_find (struct pawpaw_event* evt);
+int syscall_service_register (struct pawpaw_event* evt);
 
 seL4_MessageInfo_t syscall_sbuf_create (thread_t thread);
 seL4_MessageInfo_t syscall_sbuf_mount (thread_t thread);

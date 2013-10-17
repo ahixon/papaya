@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <copyinout.h>
 
-#define THREAD_PATH_SIZE_MAX	0x5000
+#define THREAD_PATH_SIZE_MAX	512
 
 extern thread_t current_thread;
 extern seL4_CPtr rootserver_syscall_cap;
