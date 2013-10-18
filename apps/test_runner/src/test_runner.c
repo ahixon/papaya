@@ -32,8 +32,8 @@ int main(void) {
    	printf ("Making syscall with invalid memory address/length\n");
     seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 3);
     seL4_SetMR (0, SYSCALL_PROCESS_CREATE);
-    seL4_SetMR (1, 0x9fffffdc);
-    seL4_SetMR (2, 0x2000);	/* 2 pages */
+    seL4_SetMR (1, 0x9fffffff);     /* end of stack/start of ipc buf */
+    seL4_SetMR (2, 0x2000);	        /* 2 pages (IPC buf is only 1) */
 
     seL4_Call (PAPAYA_SYSCALL_SLOT, msg);
     return seL4_GetMR (0);

@@ -106,12 +106,12 @@ int main(void){
     printf ("about to start pt_test (so, no big stack yet)\n");
     pt_test();
 
-    printf ("Sleeping for a bit");
+    /*printf ("Sleeping for a bit");
     for (int i = 0; i < 25; i++) {
         sleep (100);
         printf (".");
     }
-    printf (" all done!\n");
+    printf (" all done!\n");*/
 
     printf ("All tests passed. YOU ARE AWESOME!\n");
 
