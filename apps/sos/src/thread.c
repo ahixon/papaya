@@ -59,6 +59,7 @@ seL4_CPtr thread_cspace_new_ep (thread_t thread) {
 
     res->addr = service_addr;
     res->next = thread->resources;
+    res->size = seL4_EndpointBits;
     thread->resources = res;
 
     return service_cap;
@@ -90,6 +91,7 @@ seL4_CPtr thread_cspace_new_async_ep (thread_t thread) {
 
     res->addr = aep_addr;
     res->next = thread->resources;
+    res->size = seL4_EndpointBits;
     thread->resources = res;
 
     return async_ep;
@@ -109,7 +111,7 @@ seL4_CPtr thread_cspace_new_async_ep (thread_t thread) {
 int thread_cspace_new_cnodes (thread_t thread, int num, seL4_CPtr* cnode) {
     seL4_CPtr cap = cspace_alloc_slot (thread->croot);
     if (cap == CSPACE_NULL) {
-        printf ("%s: inital slot alloc was null\n", __FUNCTION__, cap);
+        printf ("%s: inital slot alloc was null\n", __FUNCTION__);
         return 0;
     }
 
