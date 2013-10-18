@@ -17,12 +17,13 @@ sbuf_t vfs_buffer = NULL;
 
 /* FIXME: what if the VFS service dies and then restarts? endpoint will have changed */
 fildes_t open(const char *path, fmode_t mode) {
-	seL4_MessageInfo_t msg;
+	//seL4_MessageInfo_t msg;
 
 	if (!vfs_ep) {
 		vfs_ep = pawpaw_service_lookup ("svc_vfs");
 	}
 
+#if 0
 	/* if this is our initial open, create a shared buffer between this thread
 	 * and the the VFS service to pass through filenames */
 	short created = false;
@@ -60,6 +61,8 @@ fildes_t open(const char *path, fmode_t mode) {
     seL4_Call (vfs_ep, msg);
 
     return seL4_GetMR(0);
+#endif
+    return -1;
 }
 
 /* Open file and return file descriptor, -1 if unsuccessful

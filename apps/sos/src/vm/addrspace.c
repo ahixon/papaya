@@ -30,7 +30,7 @@ addrspace_t cur_addrspace = NULL;
 
 /*static*/ void
 addrspace_print_regions (addrspace_t as) {
-    char* types[5] = {"STACK", "HEAP ", "IPC  ", "BEANS", "  -  "};
+    char* types[5] = {"STACK", "HEAP ", "IPC  ", "SHARE", "  -  "};
 
     struct as_region* reg = as->regions;
     printf ("\tvbase\t\tvlimit\t\tsize\t\tperms\tattrs\n");

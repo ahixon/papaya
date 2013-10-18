@@ -25,6 +25,7 @@ struct pt_entry {
      * for cache line optimisation? */
     frameidx_t frame_idx        : (PAGETABLE_L1_BITS + PAGETABLE_L2_BITS);
     unsigned short flags        : 4;
+    seL4_CPtr cap;
 };
 
 struct pt_table {
@@ -58,5 +59,9 @@ struct pt_entry*
 page_fetch (pagetable_t pt, vaddr_t vaddr);
 
 void pagetable_dump (pagetable_t pt);
+
+struct pt_entry*
+page_map_shared (addrspace_t as_dst, struct as_region* reg_dst, vaddr_t dst,
+    addrspace_t as_src, struct as_region* reg_src, vaddr_t src, int cow);
 
 #endif

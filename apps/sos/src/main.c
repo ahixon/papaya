@@ -61,8 +61,8 @@ struct pawpaw_eventhandler_info syscalls[NUM_SYSCALLS] = {
     { syscall_create_ep_sync,   0,  true    },
     { syscall_create_ep_async,  0,  true    },
     { syscall_bind_async_tcb,   1,  true    },
-    { NULL, 0, true },/*{ syscall_sbuf_create,      1,  true    },*/
-    { NULL, 0, true },/*{ syscall_sbuf_mount,       1,  true    },*/
+    { syscall_share_create,     0,  true    },
+    { syscall_share_mount,      1,  true    },
     { syscall_thread_suicide,   0,  false   },
     { syscall_thread_create,    2,  true    },
     { syscall_thread_destroy,   1,  true    },

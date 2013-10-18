@@ -140,7 +140,7 @@ pagetable_kernel_install_pt (addrspace_t as, seL4_ARM_VMAttributes attributes, v
  * Maps a the page already created from the PTE (use page_map) into the kernel, using the region's
  * permission and attributes.
  * 
- * Returns TRUE on success, FALSE otherwise.
+ * Returns CPtr to page capability on success, 0 otherwise.
 */
 int
 pagetable_kernel_map_page (vaddr_t vaddr, frameidx_t frame, struct as_region* region, addrspace_t as) {
@@ -150,9 +150,8 @@ pagetable_kernel_map_page (vaddr_t vaddr, frameidx_t frame, struct as_region* re
     frame_cap = frametable_fetch_cap (frame);
     assert (frame_cap);
 
-    /* FIXME: if you wish to map across multiple processes, YOU NEED TO COPY THE CAP
-     * AND STORE IT SOMEWHERE IN THE PAGE ENTRY AND UPDATE THE FREE FUNCTION! */
-    dest_cap = frame_cap;
+    dest_cap = cspace_copy_cap (cur_cspace, cur_cspace, frame_cap, seL4_AllRights);
+    assert (dest_cap);
 
     //printf ("pagetable_kernel_map_page: mapping cap (originally 0x%x, copy is 0x%x) to vaddr 0x%x\n", frame_cap, dest_cap, vaddr);
     //printf ("           perms = %d, attrib = %d, pagedir cap = 0x%x\n", region->permissions, region->attributes, as->pagedir_cap);
@@ -160,10 +159,10 @@ pagetable_kernel_map_page (vaddr_t vaddr, frameidx_t frame, struct as_region* re
 
     if (err) {
         printf ("pagetable_kernel_map_page: failed to map page: %s\n", seL4_Error_Message (err));
-        return false;
+        return 0;
     }
 
-    return true;
+    return dest_cap;
 }
 
 /* Fetches the PTE from the pagetable assocated with a virtual address. 
@@ -239,7 +238,8 @@ page_map (addrspace_t as, struct as_region* region, vaddr_t vaddr) {
         return 0;
     }
     
-    if (!pagetable_kernel_map_page (vaddr, frame, region, as)) {
+    entry->cap = pagetable_kernel_map_page (vaddr, frame, region, as);
+    if (!entry->cap) {
         printf ("actual page map failed\n");
         frame_free (frame);
         return 0;
@@ -281,6 +281,10 @@ pagetable_free (pagetable_t pt) {
 
                 if (entry->flags & PAGE_ALLOCATED) {
                     entry->flags &= ~PAGE_ALLOCATED;
+
+                    /* unmap + delete the cap to the page */
+                    // FIXME: unmap
+                    cspace_delete_cap (cur_cspace, entry->cap);
 
                     /* "free" the frame - removes from refcount and only
                      * actually releases underlying frame when it's zero. */
@@ -335,7 +339,8 @@ page_map_shared (addrspace_t as_dst, struct as_region* reg_dst, vaddr_t dst,
     frame_set_refcount (frame, frame_get_refcount (frame) + 1);
 
     /* map the dest page into the dest address space */
-    if (!pagetable_kernel_map_page (dst, dst_entry->frame_idx, reg_dst, as_dst)) {
+    dst_entry->cap = pagetable_kernel_map_page (dst, dst_entry->frame_idx, reg_dst, as_dst);
+    if (!dst_entry->cap) {
         return NULL;
     }
 

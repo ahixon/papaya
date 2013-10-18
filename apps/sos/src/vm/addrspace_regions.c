@@ -149,6 +149,57 @@ as_region_destroy (struct as_region* as) {
     free (as);
 }
 
+struct as_region*
+as_get_region_after (addrspace_t as, vaddr_t vaddr) {
+    struct as_region* region = as->regions;
+
+    /* find a region that contains the fault address */
+    while (region != NULL) {
+        if (region->vbase >= vaddr) {
+            break;
+        }
+
+        region = region->next;
+    }
+
+    return region;
+}
+
+struct as_region*
+as_define_region_within_range (addrspace_t as, vaddr_t low, vaddr_t high, size_t size, seL4_CapRights permissions, as_region_type type) {
+    /* check for gap at start */
+    struct as_region* first = as_get_region_after (as, low);
+    if (!first || first->vbase - size >= low) {
+        /* nobody after, we are first */
+        return as_define_region (as, low, size, permissions, type);
+    }
+
+    /* ok check after first before high */
+    struct as_region* current = first;
+    while (current) {
+        struct as_region* next = current->next;
+        if (next) {
+            if (current->vbase + current->size + size < current->vbase) {
+                /* went off the cliff (overflow) */
+                return NULL;
+            }
+
+            if (current->vbase + current->size + size <= next->vbase) {
+                /* internal fragmentation if using variable sizes in a range */
+                return as_define_region (as, current->vbase + current->size, size, permissions, type);
+            } 
+        } else {
+            /* nothing after */
+            return as_define_region (as, current->vbase + current->size, size, permissions, type);
+        }
+
+        current = next;
+    }
+
+    /* if we got here we ran out */
+    return NULL;
+}
+
 int
 as_region_link (struct as_region* us, struct as_region* them) {
     if (us->linked || them->linked) {

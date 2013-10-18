@@ -10,7 +10,7 @@ typedef enum {
 	REGION_STACK,
 	REGION_HEAP,
 	REGION_IPC,
-	REGION_BEANS,
+	REGION_SHARE,
 	REGION_GENERIC,
 } as_region_type;
 
@@ -89,5 +89,8 @@ as_resize_heap (addrspace_t as, size_t amount);
 
 void
 addrspace_print_regions (addrspace_t as);
+
+struct as_region*
+as_define_region_within_range (addrspace_t as, vaddr_t low, vaddr_t high, size_t size, seL4_CapRights permissions, as_region_type type);
 
 #endif

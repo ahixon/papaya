@@ -28,6 +28,7 @@ int main(void) {
     printf ("test_runner: hello!\n");
 
     start_and_wait (TESTBIN_PATH "sos_test");
+    start_and_wait (TESTBIN_PATH "test_share_a");
 
    	printf ("Making syscall with invalid memory address/length\n");
     seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 3);

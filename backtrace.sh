@@ -10,7 +10,7 @@ BACKTRACE_PC=""
 LEVEL=0
 OBJDUMP_OPTIONS="-d"
 WIDTH=4
-COMPILER_PREFIX=arm-linux-gnueabi-
+COMPILER_PREFIX=arm-none-linux-gnueabi-
 SOS_BIN_PATH="build/arm/imx6/sos/sos.bin"
 
 NM_EXE=nm
@@ -157,7 +157,7 @@ for ADDRESS in $BACKTRACE_PC
 do 
     echo "--------------------------------------------------------------------------------"
     #search the function name with a given PC
-    awk -v searchadd=$ADDRESS -v le=$LEVEL \
+    awk -v searchadd=$ADDRESS -v le=$LEVEL --non-decimal-data \
         ' BEGIN {
            target = searchadd + 0   #numeric the searchadd
            resolve = 0
@@ -192,7 +192,7 @@ do
     EXIT_STATUS=$?
     if [ $EXIT_STATUS -eq 1 ]; then
         echo ""
-        awk -v searchadd=$ADDRESS -v width=$WIDTH \
+        awk -v searchadd=$ADDRESS -v width=$WIDTH --non-decimal-data \
             ' BEGIN {
                add =  searchadd + 0     #numeric the search address
                start = add - width * 4

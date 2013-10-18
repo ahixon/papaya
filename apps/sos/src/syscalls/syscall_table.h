@@ -32,7 +32,7 @@ int syscall_map_device (struct pawpaw_event* evt);
 int syscall_service_find (struct pawpaw_event* evt);
 int syscall_service_register (struct pawpaw_event* evt);
 
-seL4_MessageInfo_t syscall_sbuf_create (thread_t thread);
-seL4_MessageInfo_t syscall_sbuf_mount (thread_t thread);
+int syscall_share_create (struct pawpaw_event* evt);
+int syscall_share_mount (struct pawpaw_event* evt);
 
 #endif

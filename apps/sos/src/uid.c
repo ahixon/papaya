@@ -1,5 +1,6 @@
 #include <sel4/sel4.h>
 #include <uid.h>
+#include <stdio.h>
 #include "ut_manager/bitfield.h"
 
 static bitfield_t* pid_bitfield = NULL;

@@ -37,7 +37,7 @@ all: app-images
 ifeq ($(SERIAL_PORT),)
 reset:
 	@echo "Uploading to $(REMOTEHOST) and resetting..."
-	scp $(TFTPROOT)/bootimg.elf $(REMOTEUSER)@$(REMOTEHOST):$(REMOTEPATH)/bootimg.elf
+	scp $(IMAGE_ROOT)/sos-image-arm-imx6 $(REMOTEUSER)@$(REMOTEHOST):$(REMOTEPATH)/bootimg.elf
 	ssh $(REMOTEUSER)@$(REMOTEHOST) ./aos/run.sh
 else
 reset:

@@ -1,0 +1,4 @@
+components-$(CONFIG_APP_TEST_SHARE_A) += test_share_a
+
+test_share_a: $(libc) libsel4 libsos libpawpaw
+

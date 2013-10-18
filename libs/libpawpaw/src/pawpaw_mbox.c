@@ -9,62 +9,67 @@
  * http://www.youtube.com/watch?v=XhBSgCiaPDQ
  */
 
-struct sbuf_slot {
-	unsigned int idx;
-
-	struct sbuf_slot* next;
-};
-
-struct sbuf {
-	seL4_Word id;
-	seL4_CPtr cap;
-	void* slots;
-	unsigned int size;
-
-	struct sbuf_slot* pinned_slots;
-	unsigned int last_slot;
-	short used;
-};
-
-sbuf_t pawpaw_sbuf_create (unsigned int size) {
-	struct sbuf* sb = malloc (sizeof (struct sbuf));
-
-	if (!sb) {
+struct pawpaw_share* pawpaw_share_new (void) {
+	struct pawpaw_share* share = malloc (sizeof (struct pawpaw_share));
+	if (!share) {
 		return NULL;
 	}
 
-	memset (sb, 0, sizeof (struct sbuf));
+	memset (share, 0, sizeof (struct pawpaw_share));
 
-	seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 2);
-    seL4_SetMR (0, SYSCALL_SHAREDBUF_CREATE);
-    seL4_SetMR (1, size);
+	seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 1);
+    seL4_SetMR (0, SYSCALL_SHARE_CREATE);
     
     seL4_MessageInfo_t reply = seL4_Call (PAPAYA_SYSCALL_SLOT, msg);
 
     /* FIXME: strictly speaking, check length as well */
     if (seL4_MessageInfo_get_label (reply) == seL4_NoError && seL4_GetMR (0) != 0) {
-    	sb->cap = seL4_GetMR (0);
-    	sb->slots = (void*)seL4_GetMR (1);
-    	sb->size = seL4_GetMR (2);	/* since we might not always get the size we requested */
-    	sb->id = seL4_GetMR (3);
+    	share->cap = seL4_GetMR (0);
+    	share->id = seL4_GetMR (1);
+    	share->buf = (void*)seL4_GetMR (2);
+    	share->loaded = true;
+    	share->sent = false;
 
-    	sb->pinned_slots = NULL;
-    	sb->last_slot = 0;
-    	sb->used = false;
-
-    	if (!pawpaw_sbuf_install (sb)) {
-    		free (sb);
-    		/* FIXME: revoke sb */
-    		return NULL;
-    	}
-
-    	return sb;
+    	/* FIXME: lookup seL4_GetMR (3) and mark as unloaded */
+    	return share;
     } else {
-    	free (sb);
+    	free (share);
     	return NULL;
     }
 }
 
+struct pawpaw_share* pawpaw_share_mount (seL4_CPtr cap) {
+	struct pawpaw_share* share = malloc (sizeof (struct pawpaw_share));
+	if (!share) {
+		return NULL;
+	}
+
+	memset (share, 0, sizeof (struct pawpaw_share));
+
+	seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 2);
+    seL4_SetMR (0, SYSCALL_SHARE_MOUNT);
+    seL4_SetMR (1, cap);
+    
+    seL4_MessageInfo_t reply = seL4_Call (PAPAYA_SYSCALL_SLOT, msg);
+
+    /* FIXME: strictly speaking, check length as well */
+    if (seL4_MessageInfo_get_label (reply) == seL4_NoError && seL4_MessageInfo_get_length (reply) == 3) {
+    	share->cap = cap;
+    	share->id = seL4_GetMR (0);
+    	share->buf = (void*)seL4_GetMR (1);
+    	share->loaded = true;
+    	share->sent = false;
+
+    	/* FIXME: lookup seL4_GetMR (2) and mark as unloaded */
+    	return share;
+    } else {
+    	free (share);
+    	return NULL;
+    }
+}
+
+
+#if 0
 sbuf_t pawpaw_sbuf_mount (seL4_CPtr cap) {
 	if (cap == 0) {
 		return NULL;
@@ -130,7 +135,7 @@ int pawpaw_sbuf_slot_next (sbuf_t sb) {
 		next = 0;
 	}
 
-#if 0
+//#if 0
 	unsigned int initial_next = next;
 	short ok = true;
 	struct sbuf_slot* pin = sb->pinned_slots;
@@ -160,7 +165,7 @@ int pawpaw_sbuf_slot_next (sbuf_t sb) {
 		/* FIXME: just make all the damn IDs signed instead of unsigned */
 		return -1;
 	}
-#endif
+//#endif
 
 	sb->last_slot = next;
 
@@ -214,7 +219,8 @@ sbuf_t pawpaw_sbuf_fetch (seL4_Word idx) {
 	return NULL;
 }
 
-#if 0
+///////////////////////
+
 
 /* FIXME: what if can negotiation fails? need to free this somehow */
 struct pawpaw_can* pawpaw_can_allocate (seL4_Word id) {

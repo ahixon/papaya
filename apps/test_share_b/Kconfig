@@ -1,0 +1,7 @@
+config APP_TEST_SHARE_B
+    bool "Shared buffer test (client B)"
+    depends on LIB_SEL4 && LIB_SEL4_C && LIB_SOS && LIB_PAWPAW
+    default n
+    select HAVE_SEL4_APPS
+    help
+        Client B that sends and receives stuff in a buffer. Started by client A.
