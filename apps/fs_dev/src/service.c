@@ -32,7 +32,7 @@ int main(void) {
     int err;
     seL4_MessageInfo_t msg;
 
-    seL4_CPtr dev_ep = pawpaw_service_lookup (svc_names[0], true);
+    //seL4_CPtr dev_ep = pawpaw_service_lookup (svc_names[0]);
 
     /*seL4_CPtr dev_ep = pawpaw_cspace_alloc_slot ();
     seL4_SetCapReceivePath (4, dev_ep, CSPACE_DEPTH);*/
@@ -54,6 +54,7 @@ int main(void) {
     seL4_SetCapReceivePath (PAPAYA_ROOT_CNODE_SLOT, resp_cap, PAPAYA_CSPACE_DEPTH);
     
     /* OK ask the device service to notify us when a device is added/removed */
+    #if 0
     printf ("fs_dev: asking device manager to tell us about all device changes\n");
     msg = seL4_MessageInfo_new(0, 0, 1, 1);
     seL4_SetMR (0, DEV_LISTEN_CHANGES);
@@ -61,26 +62,36 @@ int main(void) {
 
     seL4_SetCap (0, async_ep);
     seL4_Call (dev_ep, msg);
+    #endif
 
     /* and register this filesystem - requires 2x syscalls to setup and 1x context switch */
-    seL4_CPtr vfs_ep = pawpaw_service_lookup (svc_names[1], true);
-    sbuf_t vfs_buf = pawpaw_sbuf_create (2);
+    seL4_CPtr vfs_ep = pawpaw_service_lookup (svc_names[1]);
+    //sbuf_t vfs_buf = pawpaw_sbuf_create (2);
 
-    msg = seL4_MessageInfo_new (0, 0, 1, 3);
 
-    seL4_SetCap (0, pawpaw_sbuf_get_cap (vfs_buf));
-    int slot = pawpaw_sbuf_slot_next (vfs_buf);
-    char* fs_name = pawpaw_sbuf_slot_get (vfs_buf, slot);
-    printf ("copying into %p\n", fs_name);
-    strcpy (fs_name, "dev");    /* you can stick other stuff in here too I guess */
-    printf ("see? %s\n", fs_name);
+    msg = seL4_MessageInfo_new (0, 0, 1, 2);
+    struct pawpaw_share *newshare = pawpaw_share_new ();
+    assert (newshare);
+
+    char* fs_name = "fs_dev";
+    memcpy (newshare->buf, fs_name, strlen (fs_name));
+
+    pawpaw_share_attach (newshare);
 
     printf ("fs_dev: calling VFS register\n");
-    seL4_SetMR (0, VFS_REGISTER);
-    seL4_SetMR (1, pawpaw_sbuf_get_id (vfs_buf));
-    seL4_SetMR (2, (unsigned int)slot);
-    seL4_Send (vfs_ep, msg);    /* FIXME: would we ever need call? otherwise this is OK :) */
+    seL4_SetMR (0, VFS_REGISTER_INFO);
+    seL4_SetMR (1, newshare->id);
+    seL4_Call (vfs_ep, msg);    /* FIXME: would we ever need call? otherwise this is OK :) */
 
+    printf ("fs_dev: attaching cap\n");
+    msg = seL4_MessageInfo_new (0, 0, 1, 1);
+    seL4_SetMR (0, VFS_REGISTER_CAP);
+    seL4_SetCap (0, service_ep);
+
+    seL4_Call (vfs_ep, msg);    /* FIXME: would we ever need call? otherwise this is OK :) */
+
+    return 0;
+#if 0
     printf ("fs_dev: linking cap (hopefully)\n");
     msg = seL4_MessageInfo_new (0, 0, 1, 1);
     seL4_SetCap (0, service_ep);
@@ -108,7 +119,7 @@ int main(void) {
 
             char* fs_filename = pawpaw_sbuf_slot_get (fs_buf, slot);
             printf ("HAD FILENAME %s in slot %d (vaddr %p)\n", fs_filename, slot, fs_filename);
-            #if 0
+            //#if 0
             seL4_CPtr ret = 0;
             struct ventry* entry = entries;
 
@@ -150,7 +161,7 @@ int main(void) {
             seL4_Reply (reply);
 
             pawpaw_cspace_free_slot (resp_cap);
-            #endif
+            //#endif
 
         } else if (label == seL4_Interrupt) {
             printf ("*** NEW DEVICE ADDED\n");
@@ -198,4 +209,5 @@ int main(void) {
             printf ("registered inside fs dev\n");
         }
     }
+#endif
 }

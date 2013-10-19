@@ -19,10 +19,11 @@
 
 #define PAWPAW_EVENT_INVALID		(-2)
 
-#define PAPAYA_CSPACE_DEPTH			32		/* ensure this stays up to date with libsel4cspace! */
-#define PAPAYA_BEAN_SIZE			(1 << seL4_PageBits)
+#define HANDLER_NONE				0
+#define HANDLER_REPLY				1
+#define HANDLER_AUTOMOUNT			2
 
-typedef struct sbuf* sbuf_t;
+#define PAPAYA_CSPACE_DEPTH			32		/* ensure this stays up to date with libsel4cspace! */
 
 struct pawpaw_event {
 	seL4_Word badge;
@@ -31,6 +32,7 @@ struct pawpaw_event {
 	int flags;
 	seL4_MessageInfo_t reply;
 	seL4_Word *args;
+	struct pawpaw_share* share;
 };
 
 struct pawpaw_saved_event {
@@ -41,7 +43,7 @@ struct pawpaw_saved_event {
 struct pawpaw_eventhandler_info {
     int (*func)(struct pawpaw_event* evt);
     unsigned int argcount;
-    short requires_reply;
+    short flags;
 };
 
 struct pawpaw_event_table {
@@ -77,15 +79,19 @@ int pawpaw_bind_async_to_thread (seL4_CPtr async_ep);
 
 void pawpaw_suicide (void);
 
+void pawpaw_event_init (void);
 void pawpaw_event_loop (struct pawpaw_event_table* table, seL4_CPtr ep);
 struct pawpaw_event* pawpaw_event_create (seL4_MessageInfo_t msg, seL4_Word badge);
 void pawpaw_event_dispose (struct pawpaw_event* evt);
 int pawpaw_event_process (struct pawpaw_event_table* table, struct pawpaw_event *evt, seL4_CPtr (*save_reply_func)(void));
+seL4_CPtr pawpaw_event_get_recv_cap (void);
 
 struct pawpaw_share* pawpaw_share_new (void);
 struct pawpaw_share* pawpaw_share_mount (seL4_CPtr cap);
 int pawpaw_share_unmount (struct pawpaw_share* share);
 int pawpaw_share_attach (struct pawpaw_share* share);
 
+struct pawpaw_share* pawpaw_share_get (seL4_Word id);
+void pawpaw_share_set (struct pawpaw_share* share);
 
 #endif

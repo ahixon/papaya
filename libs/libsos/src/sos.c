@@ -13,7 +13,6 @@
 #include <timer.h>
 
 seL4_CNode vfs_ep = 0;
-sbuf_t vfs_buffer = NULL;
 
 /* FIXME: what if the VFS service dies and then restarts? endpoint will have changed */
 fildes_t open(const char *path, fmode_t mode) {

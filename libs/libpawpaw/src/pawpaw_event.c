@@ -2,6 +2,20 @@
 #include <pawpaw.h>
 #include <stdlib.h>
 
+static seL4_CPtr recv_cap = 0;
+
+void pawpaw_event_init (void) {
+    recv_cap = pawpaw_cspace_alloc_slot ();
+    seL4_SetCapReceivePath (PAPAYA_ROOT_CNODE_SLOT, recv_cap, PAPAYA_CSPACE_DEPTH);
+}
+
+seL4_CPtr pawpaw_event_get_recv_cap (void) {
+    seL4_CPtr ret = recv_cap;
+    /* FIXME: refactor */
+    pawpaw_event_init();
+    return ret;
+}
+
 void pawpaw_event_loop (struct pawpaw_event_table* table, seL4_CPtr ep) {
 	while (1) {
         seL4_Word badge = 0;
@@ -68,6 +82,7 @@ int pawpaw_event_process (struct pawpaw_event_table* table, struct pawpaw_event 
     	return PAWPAW_EVENT_INVALID;
     }
 
+    unsigned int arg_offset = 1;
 	unsigned int evt_id = seL4_GetMR (0);
 	if (evt_id >= table->num_events) {
         return PAWPAW_EVENT_INVALID;
@@ -86,22 +101,48 @@ int pawpaw_event_process (struct pawpaw_event_table* table, struct pawpaw_event 
     	return PAWPAW_EVENT_INVALID;
     }
 
+    /* see if we need to automount - thus the first arg should
+     * be a ID of a share, and if a cap provided, a share to initially
+     * mount */
+    seL4_Word share_id = 0;
+    if (eh.flags & HANDLER_AUTOMOUNT) {
+        argc--;
+        arg_offset = 2;
+        share_id = seL4_GetMR (1);
+    }
+
     /* grab arguments */
     if (argc > 0) {
 	    evt->args = malloc (argc * sizeof (seL4_Word));
-	    for (int i = 0; i < argc; i++) {
-	    	evt->args[i] = seL4_GetMR (i + 1);
+	    for (unsigned int i = 0; i < argc; i++) {
+	    	evt->args[i] = seL4_GetMR (arg_offset + i);
 	    }
 	}
 
-	/* get the reply cap
-	 * NOTE: we do this after we grab arguments since pawpaw_save_reply might call
-	 * the root server itself, thus overwriting the message registers */
-    if (eh.requires_reply) {
-    	evt->reply_cap = save_reply_func ();
-    	if (!(evt->reply_cap)) {
-    		return PAWPAW_EVENT_INVALID;
-    	}
+    /* store the reply cap
+     * NOTE: we do this and mounting shares after we grab arguments since
+     * pawpaw_save_reply might call the root server itself, thus overwriting
+     * the message registers */
+    if (eh.flags & HANDLER_REPLY) {
+        evt->reply_cap = save_reply_func ();
+        if (!(evt->reply_cap)) {
+            return PAWPAW_EVENT_INVALID;
+        }
+    }
+
+    if (eh.flags & HANDLER_AUTOMOUNT) {
+        /* provided cap always has priority */
+        /* FIXME: what if ID gets re-used? possible? */
+        if (seL4_MessageInfo_get_extraCaps (evt->msg) > 0) {
+            evt->share = pawpaw_share_mount (recv_cap);
+            pawpaw_share_set (evt->share);
+
+            recv_cap = pawpaw_cspace_alloc_slot ();
+        } else {
+            evt->share = pawpaw_share_get (share_id);
+        }
+    } else {
+        evt->share = NULL;
     }
 
     /* ok call the event */

@@ -79,6 +79,9 @@ int pawpaw_share_unmount (struct pawpaw_share* share) {
     seL4_Call (PAPAYA_SYSCALL_SLOT, msg);
 
     if (seL4_GetMR (0)) {
+    	/* root server deletes, so mark as free locally */
+    	pawpaw_cspace_free_slot (share->cap);
+
 		free (share);
 		return true;
 	} else {
@@ -97,6 +100,38 @@ int pawpaw_share_attach (struct pawpaw_share* share) {
 	}
 
 	return 0;
+}
+
+/* FIXME: binary tree or heap would be better - IDK THIS SHOULD JUST BE A HASHMAP */
+struct share_info {
+	struct pawpaw_share *share;
+	struct share_info* next;
+};
+
+struct share_info* share_head;
+
+struct pawpaw_share* pawpaw_share_get (seL4_Word id) {
+	struct share_info* share = share_head;
+	while (share) {
+		if (share->share->id == id) {
+			return share->share;
+		}
+
+		share = share->next;
+	}
+
+	return NULL;
+}
+
+void pawpaw_share_set (struct pawpaw_share* share) {
+	struct share_info* si = malloc (sizeof (struct share_info));
+	if (!si) {
+		return;
+	}
+
+	si->share = share;
+	si->next = share_head;
+	share_head = si;
 }
 
 

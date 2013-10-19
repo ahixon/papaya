@@ -12,22 +12,30 @@
 #include <sos.h>
 #include <vfs.h>
 
-
 /* some shit trie thing */
-struct filesystem {
+struct fs_node {
     char* dirname;
 
     seL4_CPtr fs_ep_cap;
     seL4_Word badge;
     seL4_Word buf_id;
-    struct filesystem* children;
+    struct fs_node* children;
 
-    struct filesystem* level_next;
-    struct filesystem* mounted_next;
+    struct fs_node* level_next;
+    struct fs_node* mounted_next;
 };
 
-struct filesystem* fs_head; /* head for iterating */
-struct filesystem* root;    /* ROOT NODE for walking trie */
+struct fs_node* node_head; /* head for iterating */
+struct fs_node* root;    /* ROOT NODE for walking trie */
+
+struct filesystem {
+    char* type;
+    seL4_Word owner_badge;
+    seL4_CPtr cap;
+    struct filesystem* next;
+};
+
+struct filesystem* fs_head = NULL;
 
 char* get_next_path_part (char* s, char* end) {
     char* c = s;
@@ -44,7 +52,7 @@ char* get_next_path_part (char* s, char* end) {
     return NULL;
 }
 
-int parse_filename (char* fname, struct filesystem* parent, struct filesystem** dest_fs, char** remaining) {
+int parse_filename (char* fname, struct fs_node* parent, struct fs_node** dest_fs, char** remaining) {
     /* check cache for this filename
      * if we find it, tell filesystem to "open file with inode" and the one they gave us when the said cache it
      * if we find reverse cache, tell user straight away 
@@ -56,16 +64,14 @@ int parse_filename (char* fname, struct filesystem* parent, struct filesystem** 
 
     /* walk mounted filesystems thing */
 
-    struct filesystem* fs = parent;
-    struct filesystem* found = NULL;
+    struct fs_node* fs = parent;
+    struct fs_node* found = NULL;
     char* cur = fname;
     char* end = cur + strlen(fname);
 
     char* part = get_next_path_part (cur, end);
 
     while (cur && fs) {
-        //printf ("current part is: %s\n", cur);
-        //printf ("next part is %s\n", part);
         /* keep looking on this level for a fs mounted on that dir */
         while (fs != NULL) {
             printf ("comparing '%s' and '%s'\n", fs->dirname, cur);
@@ -104,16 +110,72 @@ int parse_filename (char* fname, struct filesystem* parent, struct filesystem** 
     }
 }
 
-struct pawpaw_can* mycan;
+/*struct filesystem* dev = malloc (sizeof (struct filesystem));
+    dev->dirname = "dev";
+    dev->fs_ep_cap = 0;
+    dev->buf_id = pawpaw_sbuf_get_id (buf);
+    dev->badge = badge;
+    dev->children = NULL;
+    dev->level_next = NULL;
 
-int main(void) {
-    printf ("svc_vfs: hello\n");
-    //int err;
-    seL4_Word badge;
-    seL4_MessageInfo_t message, reply;
+    dev->mounted_next = fs_head;
+    fs_head = dev;
 
-    /* install root */
-    root = malloc (sizeof (struct filesystem));
+    root->children = dev;*/
+
+int fs_register_info (struct pawpaw_event* evt) {
+    for (int i = 0; i < 50; i++) {
+        seL4_Yield();
+    }
+
+    if (!evt->share) {
+        return PAWPAW_EVENT_UNHANDLED;
+    }
+
+    struct filesystem* fs = malloc (sizeof (struct filesystem));
+    fs->type = strdup ((char*)evt->share->buf);
+    fs->cap = 0;
+    fs->owner_badge = evt->badge;
+    fs->next = fs_head;
+    fs_head = fs;
+
+    evt->reply = seL4_MessageInfo_new (0, 0, 0, 0);
+    return PAWPAW_EVENT_NEEDS_REPLY;
+}
+
+int fs_register_cap (struct pawpaw_event* evt) {
+    struct filesystem* fs = fs_head;
+    while (fs) {
+        if (fs->owner_badge == evt->badge) {
+            break;
+        }
+
+        fs = fs->next;
+    }
+
+    if (!fs) {
+        printf ("vfs: failed to find matching fs\n");
+        return PAWPAW_EVENT_UNHANDLED;
+    }
+
+    fs->cap = pawpaw_event_get_recv_cap ();
+    evt->reply = seL4_MessageInfo_new (0, 0, 0, 0);
+    printf ("vfs: cool replying\n");
+    return PAWPAW_EVENT_NEEDS_REPLY;
+}
+
+struct pawpaw_eventhandler_info handlers[VFS_NUM_EVENTS] = {
+    {   fs_register_info,   1,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },
+    {   fs_register_cap,    0,  HANDLER_REPLY                       },
+    //{   fs_mount,           1,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },
+    //{   vfs_open,           1,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },
+};
+
+struct pawpaw_event_table handler_table = { VFS_NUM_EVENTS, handlers };
+
+int main (void) {
+    /* install root node */
+    root = malloc (sizeof (struct fs_node));
     root->dirname = "";
     root->fs_ep_cap = 0;
     root->children = NULL;
@@ -121,36 +183,21 @@ int main(void) {
     root->mounted_next = NULL;
     root->buf_id = 0;
 
-    fs_head = root;
+    node_head = root;
+
+    /* init event handler */
+    pawpaw_event_init ();
 
     /* create our EP to listen on */
-    printf ("svc_vfs: creating EP\n");
     seL4_CPtr service_cap = pawpaw_create_ep ();
     assert (service_cap);
 
-    printf ("svc_vfs: allocating slot\n");
-    seL4_CPtr page_cap = pawpaw_cspace_alloc_slot ();
-    assert (page_cap);
-
-    seL4_SetCapReceivePath (PAPAYA_ROOT_CNODE_SLOT, page_cap, PAPAYA_CSPACE_DEPTH);
-
-    printf ("svc_vfs: registering service\n");
+    /* register and listen */
     pawpaw_register_service (service_cap);
-    printf ("svc_vfs: ready\n");
-
+    pawpaw_event_loop (&handler_table, service_cap);
+    return 0;
+#if 0
     while (1) {
-        /* wait for a message */
-        message = seL4_Wait(service_cap, &badge);
-        seL4_Word task = seL4_GetMR (0);
-        seL4_CPtr reply_cap;
-
-        if (task != VFS_LINK_CAP && task != VFS_REGISTER) {
-            reply_cap = pawpaw_save_reply ();
-        }
-
-        uint32_t label = seL4_MessageInfo_get_label(message);
-
-        if (label == seL4_NoError) {
             unsigned int slot = seL4_GetMR (2);
 
             sbuf_t buf;
@@ -193,7 +240,7 @@ int main(void) {
 
                 if (parse_filename (s, root, &fs, &remaining)) {
                     /* pass the buck to the FS layer to see if it knows anything about the file */
-                    #if 0
+//                    #if 0
                     /* create the container + cap with a default size */
                     container_t container = pawpaw_mbox_container_allocate (16);
                     assert (container);
@@ -219,7 +266,7 @@ int main(void) {
                     /* and check if we found the file, caching if appropriate */
                     if (seL4_GetMR (0) == 0) {
                         printf ("AWESOME, FS REPORTS WE GOT THE FILE\n");
-#endif
+//#endif
 
                     printf ("+++++ LOOKING UP BUF ID %d\n", fs->buf_id);
                     sbuf_t fs_buf = pawpaw_sbuf_fetch (fs->buf_id);
@@ -250,81 +297,8 @@ int main(void) {
                 }
 
                 free (s);
-            } else if (task == VFS_LINK_CAP) {
-                struct filesystem* fs = fs_head;
-                while (fs) {
-                    if (fs->badge == badge) {
-                        fs->fs_ep_cap = page_cap;
-
-                        /* ready for next */
-                        page_cap = pawpaw_cspace_alloc_slot ();
-                        assert (page_cap);
-
-                        seL4_SetCapReceivePath (PAPAYA_ROOT_CNODE_SLOT, page_cap, PAPAYA_CSPACE_DEPTH);
-                        break;
-                    }
-
-                    fs = fs->level_next;
-                }
-            } else if (task == VFS_REGISTER) {
-                printf ("done, getting slot %d\n", slot);
-                char* name = pawpaw_sbuf_slot_get (buf, slot);
-                printf ("registering filesystem called %s\n", name);
-
-                /* FIXME: should register filesytem type
-                 * in hindsight we should actually be spawning a new process */
-                if (strcmp (name, "dev") == 0) {
-                    /* FIXME: should actually mount this EXTERNALLY */
-                    printf ("should mount\n");
-
-                    struct filesystem* dev = malloc (sizeof (struct filesystem));
-                    dev->dirname = "dev";
-                    dev->fs_ep_cap = 0;
-                    printf ("+++++ WAS USING BUF IDX %d\n", pawpaw_sbuf_get_id (buf));
-                    dev->buf_id = pawpaw_sbuf_get_id (buf);
-                    dev->badge = badge;
-                    dev->children = NULL;
-                    dev->level_next = NULL;
-
-                    dev->mounted_next = fs_head;
-                    fs_head = dev;
-
-                    root->children = dev;
-                }
-            } else if (task == VFS_MOUNT) {
-                #if 0
-                char* path = pawpaw_bean_get (pawpaw_can_fetch (badge), seL4_GetMR (1));
-                // MR2 = number of mount arguments concat'd in options str, WE IGNORE THIS FOR NOW
-
-                if (seL4_MessageInfo_get_extraCaps (message) != 1) {
-                    printf ("got no cap to mount with\n");
-                    continue;
-                }
-
-                /* FIXME: take out the path parsing stuff and use it to install properly */
-                printf ("mounting on %s\n", path);
-
-                struct filesystem* dev = malloc (sizeof (struct filesystem));
-                dev->dirname = "dev";
-                dev->fs_ep_cap = page_cap;
-                dev->children = NULL;
-                dev->next = NULL;
-
-                page_cap = pawpaw_cspace_alloc_slot ();
-                assert (page_cap);
-
-                seL4_SetCapReceivePath (PAPAYA_ROOT_CNODE_SLOT, page_cap, PAPAYA_CSPACE_DEPTH);
-
-                fs_head->children = dev;
-
-                reply = seL4_MessageInfo_new (0, 0, 0, 1);
-                seL4_SetMR (0, 0);
-                seL4_Send (reply_cap, reply);
-#endif
-                printf ("svc_vfs: wanted to mount\n");
-            } else {
-                printf ("svc_vfs: UNKNOWN MESSAGE %d from %d\n", seL4_GetMR(0), badge);
-            }
+         
         }
     }
+#endif
 }

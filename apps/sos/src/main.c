@@ -52,24 +52,24 @@ void print_resource_stats (void) {
 }
 
 struct pawpaw_eventhandler_info syscalls[NUM_SYSCALLS] = {
-    { syscall_sbrk,             1,  true    },
-    { syscall_service_find,     3,  true    },
-    { syscall_service_register, 1,  true    },
-    { syscall_register_irq,     1,  true    },
-    { syscall_map_device,       2,  true    },
-    { syscall_alloc_cnodes,     1,  true    },
-    { syscall_create_ep_sync,   0,  true    },
-    { syscall_create_ep_async,  0,  true    },
-    { syscall_bind_async_tcb,   1,  true    },
-    { syscall_share_create,     0,  true    },
-    { syscall_share_mount,      1,  true    },
-    { syscall_share_unmount,    2,  true    },
-    { syscall_thread_suicide,   0,  false   },
-    { syscall_thread_create,    2,  true    },
-    { syscall_thread_destroy,   1,  true    },
-    { syscall_thread_pid,       0,  true    },
-    { NULL,                     0,  false   },      // SYSCALL_PROCESS_SEND_STATUS 
-    { syscall_thread_wait,      1,  true    }
+    { syscall_sbrk,             1,  HANDLER_REPLY   },
+    { syscall_service_find,     3,  HANDLER_REPLY   },
+    { syscall_service_register, 1,  HANDLER_REPLY   },
+    { syscall_register_irq,     1,  HANDLER_REPLY   },
+    { syscall_map_device,       2,  HANDLER_REPLY   },
+    { syscall_alloc_cnodes,     1,  HANDLER_REPLY   },
+    { syscall_create_ep_sync,   0,  HANDLER_REPLY   },
+    { syscall_create_ep_async,  0,  HANDLER_REPLY   },
+    { syscall_bind_async_tcb,   1,  HANDLER_REPLY   },
+    { syscall_share_create,     0,  HANDLER_REPLY   },
+    { syscall_share_mount,      1,  HANDLER_REPLY   },
+    { syscall_share_unmount,    2,  HANDLER_REPLY   },
+    { syscall_thread_suicide,   0,  0               },
+    { syscall_thread_create,    2,  HANDLER_REPLY   },
+    { syscall_thread_destroy,   1,  HANDLER_REPLY   },
+    { syscall_thread_pid,       0,  HANDLER_REPLY   },
+    { NULL, 0, 0 },     // SYSCALL_PROCESS_SEND_STATUS 
+    { syscall_thread_wait,      1,  HANDLER_REPLY   },
 };
 
 struct pawpaw_event_table syscall_table = { NUM_SYSCALLS, syscalls };
@@ -314,24 +314,24 @@ int main (void) {
 
     /* boot up core services */
     //printf ("Starting core services...\n");
-    //thread_create ("svc_dev", rootserver_syscall_cap);
-    //thread_create ("svc_vfs", rootserver_syscall_cap);
+    //thread_create_from_cpio ("svc_dev", rootserver_syscall_cap);
+    //thread_create_from_cpio ("svc_vfs", rootserver_syscall_cap);
     // thread_create ("svc_net", rootserver_syscall_cap);
     // FIXME: need to rename svc_network -> svc_net
 
     /* boot up device filesystem & mount it */
-    //thread_create ("fs_dev", rootserver_syscall_cap);
+    //thread_create_from_cpio ("fs_dev", rootserver_syscall_cap);
     // FIXME: actually mount the thing
 
     /* start any devices services inside the CPIO archive */
-    dprintf (1, "Looking for device services linked into CPIO...\n");
-    unsigned long size;
-    char *name;
-    for (int i = 0; cpio_get_entry (_cpio_archive, i, (const char**)&name, &size); i++) {
-        if (strstr (name, "dev_") == name) {
-            thread_create_from_cpio (name, rootserver_syscall_cap);
-        }
-    }
+    // dprintf (1, "Looking for device services linked into CPIO...\n");
+    // unsigned long size;
+    // char *name;
+    // for (int i = 0; cpio_get_entry (_cpio_archive, i, (const char**)&name, &size); i++) {
+    //     if (strstr (name, "dev_") == name) {
+    //         thread_create_from_cpio (name, rootserver_syscall_cap);
+    //     }
+    // }
 
     /* finally, start the boot app */
     dprintf (1, "Starting boot application \"%s\"...\n", CONFIG_SOS_STARTUP_APP);
