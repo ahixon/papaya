@@ -143,10 +143,28 @@ as_define_region (addrspace_t as, vaddr_t vbase, size_t size, seL4_CapRights per
 }
 
 void
-as_region_destroy (struct as_region* as) {
-    /* FIXME: WHAT ABOUT SHARED REGIONS - NEEDS REFCOUNT */
+as_region_destroy (addrspace_t as, struct as_region* kill) {
+    struct as_region* region = as->regions;
+    struct as_region* prev = NULL;
 
-    free (as);
+    /* reorder list */
+    while (region != NULL) {
+        if (region == kill) {
+            break;
+        }
+
+        prev = region;
+        region = region->next;
+    }
+
+    if (prev) {
+        prev->next = kill->next;
+    } else {
+        as->regions = kill->next;
+    }
+
+    /* and free it */
+    free (kill);
 }
 
 struct as_region*

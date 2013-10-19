@@ -154,6 +154,13 @@ frametable_freeall (void) {
 void
 frametable_stats (void) {
     printf ("Allocated frames: 0x%x\n", allocated);
+    for (int i = 0; i <= high_idx; i++) {
+        struct frameinfo* fi = frametable_get_frame (i);
+        if (fi->flags & FRAME_ALLOCATED) {
+            printf ("\tFrame 0x%x:\tpaddr 0x%x\t0x%x ref(s)\n", i, fi->paddr, frame_get_refcount (fi));
+        }
+    }
+    printf ("\n");
 }
 
 struct frameinfo*

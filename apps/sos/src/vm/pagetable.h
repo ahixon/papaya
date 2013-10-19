@@ -52,6 +52,9 @@ pagetable_free (pagetable_t pt);
 frameidx_t
 page_map (struct addrspace * as, struct as_region * region, vaddr_t vaddr);
 
+int
+page_unmap (struct pt_entry* entry);
+
 void
 page_free (pagetable_t pt, vaddr_t vaddr);
 

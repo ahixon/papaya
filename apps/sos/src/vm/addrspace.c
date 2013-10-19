@@ -90,7 +90,9 @@ addrspace_destroy (addrspace_t as) {
     struct as_region* reg = as->regions;
     while (reg) {
         struct as_region* next = reg->next;
-        as_region_destroy (reg);
+        /* don't need to use as_region_destroy since we don't need to reorder
+         * as we're nuking everything anyway */
+        free (reg);
 
         reg = next;
     }

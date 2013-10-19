@@ -278,19 +278,7 @@ pagetable_free (pagetable_t pt) {
         if (table) {
             for (uint32_t l2 = 0; l2 < PAGETABLE_L2_SIZE; l2++) {
                 struct pt_entry* entry = &(table->entries[l2]);
-
-                if (entry->flags & PAGE_ALLOCATED) {
-                    entry->flags &= ~PAGE_ALLOCATED;
-
-                    /* unmap + delete the cap to the page */
-                    assert (entry->cap);
-                    seL4_ARM_Page_Unmap (entry->cap);   /* FIXME: do we need this? or does it break? */
-                    cspace_delete_cap (cur_cspace, entry->cap);
-
-                    /* "free" the frame - removes from refcount and only
-                     * actually releases underlying frame when it's zero. */
-                    frame_free (entry->frame_idx);
-                }
+                page_unmap (entry);
             }
 
             /* now free the table cap + addrs */
@@ -302,6 +290,25 @@ pagetable_free (pagetable_t pt) {
 
     /* free page dir */
     free (pt);
+}
+
+int
+page_unmap (struct pt_entry* entry) {
+    if (entry && entry->flags & PAGE_ALLOCATED) {
+        entry->flags &= ~PAGE_ALLOCATED;
+
+        /* unmap + delete the cap to the page */
+        assert (entry->cap);
+        seL4_ARM_Page_Unmap (entry->cap);   /* FIXME: do we need this? or does it break? */
+        cspace_delete_cap (cur_cspace, entry->cap);
+
+        /* "free" the frame - removes from refcount and only
+         * actually releases underlying frame when it's zero. */
+        frame_free (entry->frame_idx);
+        return true;
+    } else {
+        return false;
+    }
 }
 
 /*

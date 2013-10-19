@@ -63,6 +63,7 @@ struct pawpaw_eventhandler_info syscalls[NUM_SYSCALLS] = {
     { syscall_bind_async_tcb,   1,  true    },
     { syscall_share_create,     0,  true    },
     { syscall_share_mount,      1,  true    },
+    { syscall_share_unmount,    2,  true    },
     { syscall_thread_suicide,   0,  false   },
     { syscall_thread_create,    2,  true    },
     { syscall_thread_destroy,   1,  true    },
@@ -90,7 +91,6 @@ void syscall_loop (seL4_CPtr ep) {
         }
 
         current_thread = thread;
-        short print_stats = false;
 
         switch (seL4_MessageInfo_get_label (message)) {
         case seL4_NoFault:
@@ -120,12 +120,7 @@ void syscall_loop (seL4_CPtr ep) {
                 default:
                     printf ("syscall: 0x%x failed, killing thread %s\n", seL4_GetMR (0), thread->name);
                     thread_destroy (thread);
-                    print_stats = true;
                     break;
-            }
-
-            if (print_stats) {
-                print_resource_stats ();
             }
 
             break;
@@ -147,7 +142,6 @@ void syscall_loop (seL4_CPtr ep) {
 
             dprintf (0, "killing thread %d (%s)...\n", thread->pid, thread->name);
             thread_destroy (thread);
-            print_resource_stats ();
 
             break;
 

@@ -9,6 +9,8 @@
 extern thread_t current_thread;
 extern seL4_CPtr rootserver_syscall_cap;
 
+void print_resource_stats (void);
+
 int syscall_thread_suicide (struct pawpaw_event* evt) {
 	printf ("thread %s asked to terminate\n", current_thread->name);
 	thread_destroy (current_thread);
@@ -45,6 +47,7 @@ int syscall_thread_destroy (struct pawpaw_event* evt) {
 		printf ("thread %s asked to terminate PID %d (%s)\n",
 			current_thread->name, target->pid, target->name);
 
+        print_resource_stats ();
 		thread_destroy (target);
 		seL4_SetMR (0, 0);
 	} else {

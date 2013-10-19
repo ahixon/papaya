@@ -60,7 +60,7 @@ struct as_region*
 as_resize_region (addrspace_t as, struct as_region* reg, size_t amount);
 
 void
-as_region_destroy (struct as_region* as);
+as_region_destroy (addrspace_t as, struct as_region* kill);
 
 struct as_region*
 as_define_region (addrspace_t as, vaddr_t vbase, size_t size, seL4_CapRights permissions, as_region_type type);

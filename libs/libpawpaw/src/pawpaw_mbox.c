@@ -52,7 +52,6 @@ struct pawpaw_share* pawpaw_share_mount (seL4_CPtr cap) {
     
     seL4_MessageInfo_t reply = seL4_Call (PAPAYA_SYSCALL_SLOT, msg);
 
-    /* FIXME: strictly speaking, check length as well */
     if (seL4_MessageInfo_get_label (reply) == seL4_NoError && seL4_MessageInfo_get_length (reply) == 3) {
     	share->cap = cap;
     	share->id = seL4_GetMR (0);
@@ -66,6 +65,25 @@ struct pawpaw_share* pawpaw_share_mount (seL4_CPtr cap) {
     	free (share);
     	return NULL;
     }
+}
+
+int pawpaw_share_unmount (struct pawpaw_share* share) {
+	if (!share || !share->cap) {
+		return false;
+	}
+
+	seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 3);
+    seL4_SetMR (0, SYSCALL_SHARE_UNMOUNT);
+    seL4_SetMR (1, share->cap);
+    seL4_SetMR (2, (seL4_Word)share->buf);
+    seL4_Call (PAPAYA_SYSCALL_SLOT, msg);
+
+    if (seL4_GetMR (0)) {
+		free (share);
+		return true;
+	} else {
+		return false;
+	}
 }
 
 /*
@@ -83,49 +101,6 @@ int pawpaw_share_attach (struct pawpaw_share* share) {
 
 
 #if 0
-sbuf_t pawpaw_sbuf_mount (seL4_CPtr cap) {
-	if (cap == 0) {
-		return NULL;
-	}
-
-	struct sbuf* sb = malloc (sizeof (struct sbuf));
-
-	if (!sb) {
-		return NULL;
-	}
-
-	memset (sb, 0, sizeof (struct sbuf));
-
-	seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 2);
-    seL4_SetMR (0, SYSCALL_SHAREDBUF_MOUNT);
-    seL4_SetMR (1, cap);
-    
-    seL4_MessageInfo_t reply = seL4_Call (PAPAYA_SYSCALL_SLOT, msg);
-    /* FIXME: strictly speaking, check length as well */
-    if (seL4_MessageInfo_get_label (reply) == seL4_NoError && seL4_GetMR (0) != 0) {
-    	sb->cap = cap;
-    	sb->slots = (void*)seL4_GetMR (0);
-    	sb->size = seL4_GetMR (1);
-    	sb->id = seL4_GetMR (2);
-
-    	sb->pinned_slots = NULL;
-    	sb->last_slot = 0;
-    	sb->used = false;
-
-    	if (!pawpaw_sbuf_install (sb)) {
-    		free (sb);
-    		/* FIXME: revoke sb */
-    		return NULL;
-    	}
-
-    	return sb;
-    } else {
-    	free (sb);
-    	return NULL;
-    }
-
-}
-
 inline void* pawpaw_sbuf_slot_get (sbuf_t sb, unsigned int idx) {
 	if (idx >= sb->size) {
 		return NULL;

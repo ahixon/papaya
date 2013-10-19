@@ -73,12 +73,18 @@ int syscall_share_create (struct pawpaw_event* evt) {
 
 int syscall_share_mount (struct pawpaw_event* evt) {
     /* lookup provided CNode */
-    seL4_Word ep_cpy = cspace_copy_cap (cur_cspace, current_thread->croot, seL4_GetMR (1), seL4_AllRights);
+    seL4_Word ep_cpy = cspace_copy_cap (cur_cspace, current_thread->croot, evt->args[0], seL4_AllRights);
+    if (!ep_cpy) {
+        printf ("%s: failed to copy user provided EP\n", __FUNCTION__);
+        return PAWPAW_EVENT_UNHANDLED;
+    }
 
     seL4_MessageInfo_t local_msg = seL4_MessageInfo_new (0, 0, 0, 0);
     //printf ("%s: calling on given EP\n", __FUNCTION__);
     /* FIXME: this is VERY BAD - should do notify and get callback since this can be an arbitary EP and we may never get a callback */
-    seL4_Call (ep_cpy, local_msg);  
+    seL4_Call (ep_cpy, local_msg);
+
+    cspace_delete_cap (cur_cspace, ep_cpy);
 
     if (!badgemap_found) {
         printf ("%s: badgemapper returned failure\n", __FUNCTION__);
@@ -132,6 +138,39 @@ int syscall_share_mount (struct pawpaw_event* evt) {
         printf ("%s: map shared failed\n", __FUNCTION__);
         return PAWPAW_EVENT_UNHANDLED;
     }
+
+    return PAWPAW_EVENT_NEEDS_REPLY;
+}
+
+int syscall_share_unmount (struct pawpaw_event* evt) {
+    /* TODO: if refcounting share cap, use evt->args[0] */
+    cspace_delete_cap (current_thread->croot, evt->args[0]);
+    
+    struct as_region* reg = as_get_region_by_addr (current_thread->as, evt->args[1]);
+    if (!reg) {
+        printf ("%s: invalid vaddr 0x%x\n", __FUNCTION__, evt->args[1]);
+        return PAWPAW_EVENT_UNHANDLED;
+    }
+
+    evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+
+    /* unmap the associated page - FIXME: what is "abstraction" hurrr */
+    struct pt_entry* pte = page_fetch (current_thread->as->pagetable, reg->vbase);
+    if (!pte) {
+        printf ("%s: BADNESS: no page associated with region??? double free\n", __FUNCTION__);
+        return PAWPAW_EVENT_UNHANDLED;
+    }
+    
+    int success = page_unmap (pte);
+    seL4_SetMR (0, success);
+    if (!success) {
+        printf ("%s: WARNING: page unmap failed\n", __FUNCTION__);
+    }
+
+    as_region_destroy (current_thread->as, reg);
+
+    //printf ("%s: post unmount looks like:\n", __FUNCTION__);
+    //addrspace_print_regions (src_thread->as);
 
     return PAWPAW_EVENT_NEEDS_REPLY;
 }
