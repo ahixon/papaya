@@ -47,7 +47,7 @@ int syscall_thread_destroy (struct pawpaw_event* evt) {
 		printf ("thread %s asked to terminate PID %d (%s)\n",
 			current_thread->name, target->pid, target->name);
 
-        print_resource_stats ();
+        //print_resource_stats ();
 		thread_destroy (target);
 		seL4_SetMR (0, 0);
 	} else {

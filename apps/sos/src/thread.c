@@ -328,7 +328,7 @@ thread_destroy (thread_t thread) {
     free (thread);
 
     /* TODO: remove me, just for debugging */
-    print_resource_stats ();
+    //print_resource_stats ();
 }
 
 int thread_setup_default_caps (thread_t thread, seL4_CPtr rootsvr_ep) {
