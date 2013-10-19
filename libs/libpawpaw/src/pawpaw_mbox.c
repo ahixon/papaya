@@ -68,6 +68,19 @@ struct pawpaw_share* pawpaw_share_mount (seL4_CPtr cap) {
     }
 }
 
+/*
+ * attaches the share cap to the current seL4 message.
+ * returns the ID of the next index to add caps to in the message.
+ */
+int pawpaw_share_attach (struct pawpaw_share* share) {
+	if (!share->sent) {
+		seL4_SetCap (0, share->cap);
+		return 1;
+	}
+
+	return 0;
+}
+
 
 #if 0
 sbuf_t pawpaw_sbuf_mount (seL4_CPtr cap) {

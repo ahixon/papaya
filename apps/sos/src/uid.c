@@ -27,7 +27,6 @@ void pid_free (pid_t pid) {
 }
 
 seL4_Word cid_next (void) {
-	printf ("CID bitfield @ %p\n", cbox_bitfield);
 	seL4_Word next = bf_set_next_free(cbox_bitfield);
 	cbox_bitfield->next_free = next;		/* FIXME: do we actually need this? */
 

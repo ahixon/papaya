@@ -48,7 +48,7 @@ as_get_region_by_addr (addrspace_t as, vaddr_t vaddr) {
 
     /* find a region that contains the fault address */
     while (region != NULL) {
-        if (vaddr >= region->vbase && vaddr <= (region->vbase + region->size)) {
+        if (vaddr >= region->vbase && vaddr < (region->vbase + region->size)) {
             break;
         }
 
@@ -378,7 +378,6 @@ as_create_stack_heap (addrspace_t as, struct as_region** stack, struct as_region
 vaddr_t
 as_resize_heap (addrspace_t as, size_t amount) {
     amount = (amount + PAGE_SIZE - 1) & PAGE_MASK;
-    //printf ("asked for 0x%x, rounded to 0x%x\n", old_amount, amount);
 
     struct as_region* heap = as_get_region_by_type (as, REGION_HEAP);
 
@@ -387,16 +386,12 @@ as_resize_heap (addrspace_t as, size_t amount) {
     }
 
     struct as_region* stack = as_get_region_by_type (as, REGION_STACK);
-    //printf ("currently, stack vaddr = 0x%x\n", as->stack_vaddr);
-    //printf ("old heap vaddr = 0x%x\n", heap->vbase);
 
     /* would wrap around memory? */
     vaddr_t new_vaddr = heap->vbase + heap->size + amount;
     if (new_vaddr < (heap->vbase + heap->size)) {
         return 0;
     }
-
-    //printf ("new (tenative) heap vaddr = 0x%x\n", new_vaddr);
 
     /* ensure that we're not trying to move it over our guard page or last thing we hit in the stack */
     if (new_vaddr >= as->stack_vaddr) {
@@ -414,11 +409,6 @@ as_resize_heap (addrspace_t as, size_t amount) {
             return 0;
         }
 
-        //as->stack_vaddr += (amount + PAGE_SIZE);
-
-        //printf ("stack now 0x%x -> 0x%x\n", stack->vbase, stack->vbase + stack->size);
-
-        //printf ("ok, finally resizing heap by 0x%x\n", amount);
         heap = as_resize_region (as, heap, amount);
 
         if (heap) {
@@ -427,9 +417,6 @@ as_resize_heap (addrspace_t as, size_t amount) {
             printf ("well that failed\n");
         }
     }
-
-    //printf ("==========\n");
-    //addrspace_print_regions(as);
 
     return old_heap_vaddr;
 }

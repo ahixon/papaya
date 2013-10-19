@@ -24,6 +24,8 @@
 
 #define DEFAULT_PRIORITY		(0)
 
+void print_resource_stats (void);
+
 /* The linker will link this symbol to the start address  *
  * of an archive of attached applications.                */
 extern char _cpio_archive[];
@@ -160,6 +162,7 @@ thread_t thread_create (char* name, cspace_t *existing_cspace, addrspace_t exist
 
     pid_t pid = pid_next ();
     if (pid < 0) {
+        printf ("%s: no more PIDs\n", __FUNCTION__);
         /* no more process IDs left */
         thread_destroy (thread);
         return NULL;
@@ -179,6 +182,7 @@ thread_t thread_create (char* name, cspace_t *existing_cspace, addrspace_t exist
     if (cspace_ut_retype_addr (thread->tcb_addr,
                                seL4_TCBObject, seL4_TCBBits,
                                cur_cspace, &thread->tcb_cap)) {
+        printf ("%s: TCB retype failed\n", __FUNCTION__);
         thread_destroy (thread);
     }
 
@@ -186,12 +190,15 @@ thread_t thread_create (char* name, cspace_t *existing_cspace, addrspace_t exist
         /* create address space for process */
         thread->as = addrspace_create (0);
         if (!thread->as) {
+            printf ("%s: failed to create addrspace\n", __FUNCTION__);
             thread_destroy (thread);
+            return NULL;
         }
 
         /* Map in IPC first off (since we need it for TCB configuration) */
         as_define_region (thread->as, PROCESS_IPC_BUFFER, PAGE_SIZE, seL4_AllRights, REGION_IPC);
         if (!as_map_page (thread->as, PROCESS_IPC_BUFFER)) {
+            printf ("%s: failed to map IPC\n", __FUNCTION__);
             thread_destroy (thread);
             return NULL;
         }
@@ -203,6 +210,7 @@ thread_t thread_create (char* name, cspace_t *existing_cspace, addrspace_t exist
 
     seL4_CPtr ipc_cap = as_get_page_cap (thread->as, PROCESS_IPC_BUFFER);
     if (!ipc_cap) {
+        printf ("%s: failed to get IPC page cap\n", __FUNCTION__);
         thread_destroy (thread);
         return NULL;
     }
@@ -217,6 +225,7 @@ thread_t thread_create (char* name, cspace_t *existing_cspace, addrspace_t exist
          */
         thread->croot = cspace_create (2);
         if (!thread->croot) {
+            printf ("%s: failed to create cspace\n", __FUNCTION__);
             thread_destroy (thread);
             return NULL;
         }
@@ -229,6 +238,7 @@ thread_t thread_create (char* name, cspace_t *existing_cspace, addrspace_t exist
                              thread->as->pagedir_cap, seL4_NilData, PROCESS_IPC_BUFFER,
                              ipc_cap);
     if (err) {
+        printf ("%s: failed to configure TCB: 0x%x\n", __FUNCTION__, err);
         thread_destroy (thread);
         return NULL;
     }
@@ -316,6 +326,9 @@ thread_destroy (thread_t thread) {
     }
 
     free (thread);
+
+    /* TODO: remove me, just for debugging */
+    print_resource_stats ();
 }
 
 int thread_setup_default_caps (thread_t thread, seL4_CPtr rootsvr_ep) {

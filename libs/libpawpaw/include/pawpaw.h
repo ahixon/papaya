@@ -84,6 +84,7 @@ int pawpaw_event_process (struct pawpaw_event_table* table, struct pawpaw_event 
 
 struct pawpaw_share* pawpaw_share_new (void);
 struct pawpaw_share* pawpaw_share_mount (seL4_CPtr cap);
+int pawpaw_share_attach (struct pawpaw_share* share);
 
 
 #endif

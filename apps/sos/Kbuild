@@ -3,6 +3,7 @@ apps-$(CONFIG_APP_SOS) += sos
 sos-components-$(CONFIG_APP_SOSH) += sosh
 sos-components-$(CONFIG_APP_TTY_TEST) += tty_test
 sos-components-$(CONFIG_APP_SOS_TEST) += sos_test
+sos-components-$(CONFIG_APP_FORKBOMB) += forkbomb
 
 sos-components-$(CONFIG_APP_DEV_CONSOLE) += dev_console
 sos-components-$(CONFIG_APP_DEV_TIMER) += dev_timer

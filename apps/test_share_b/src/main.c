@@ -11,6 +11,7 @@
 
 #include <sos.h>
 
+#define MSG_CHANGED ("hello lol\0")
 #define MSG_PREFIX ("Hello from B #%d")
 
 int main(void) {
@@ -38,18 +39,33 @@ int main(void) {
         if (seL4_MessageInfo_get_extraCaps (ipc_msg) == 1) {
             struct pawpaw_share *share = pawpaw_share_mount (share_cap);
             assert (share);
+
+            printf ("\t\tB: mounting share from A with ID 0x%x (msg ID was 0x%x)\n", share->id, seL4_GetMR (0));
+            printf ("\t\tB: buffer pointer was %p\n", share->buf);
+
             buf = share->buf;
         }
 
         assert (buf);
-
         printf ("\t\tB: received %s\n", buf);
 
         sprintf (msg, MSG_PREFIX, i);
-        memcpy (buf, msg, strlen(msg));
+        memcpy (buf, MSG_CHANGED, strlen(MSG_CHANGED) + 1);
         i++;
 
-        seL4_Reply (ipc_msg);
+        struct pawpaw_share *newshare = pawpaw_share_new ();
+        assert (newshare);
+
+        printf ("\t\tB: created new share, ID 0x%x\n", newshare->id);
+        printf ("\t\tB: copying our message to %p\n", newshare->buf);
+
+        memcpy (newshare->buf, msg, strlen (msg));
+        seL4_MessageInfo_t reply = seL4_MessageInfo_new (0, 0, 1, 1);
+        pawpaw_share_attach (newshare);
+
+        seL4_SetMR (0, newshare->id);
+
+        seL4_Reply (reply);
     }
 
     return 0;

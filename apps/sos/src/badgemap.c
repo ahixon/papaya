@@ -33,7 +33,7 @@ struct map {
 };
 
 static struct map* maps_head = NULL;
-static struct map* maps_tail = NULL;
+//static struct map* maps_tail = NULL;
 
 short badgemap_found = false;
 
@@ -54,7 +54,7 @@ int mapper_main (void) {
 		struct map* m = maps_head;
 		while (m) {
 			if (m->idx == badge) {
-				seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 2);
+				seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 3);
 
 				seL4_SetMR (0, m->pid);
 				seL4_SetMR (1, m->start);
@@ -67,12 +67,16 @@ int mapper_main (void) {
 
 			m = m->next;
 		}
+
+		if (!m) {
+			printf ("badgemap: found no map for share idx 0x%x\n", badge);
+		}
 	}
 }
 
 /* FIXME: hashmap would be MUCH better! */
 void maps_append (seL4_Word idx, pid_t pid, vaddr_t start) {
-	printf ("!!!!!!! %s: adding to badgemap !!!!!!!!! WE ARE LEAKING JIM\n", __FUNCTION__);
+	//printf ("!!!!!!! %s: adding to badgemap !!!!!!!!! WE ARE LEAKING JIM\n", __FUNCTION__);
 	/* FIXME: needs a free! */
 	struct map *mm = malloc (sizeof (struct map));
 	mm->idx = idx;
@@ -80,10 +84,20 @@ void maps_append (seL4_Word idx, pid_t pid, vaddr_t start) {
 	mm->start = start;
 	mm->next = NULL;
 
-	if (!maps_tail) {
-		maps_tail = mm;
-		maps_head = maps_tail;
-	} else {
+	//printf ("badgemap: inserting with share idx 0x%x\n", idx);
+
+	/*if (maps_tail) {
 		maps_tail->next = mm;
 	}
+
+	if (!maps_head) {
+		maps_head = mm;
+	}
+
+	maps_tail = mm;*/
+
+	/* push onto stack - better performance since most of the time we just
+	 * map straight away */
+	mm->next = maps_head;
+	maps_head = mm;
 }

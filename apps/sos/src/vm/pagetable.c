@@ -283,7 +283,8 @@ pagetable_free (pagetable_t pt) {
                     entry->flags &= ~PAGE_ALLOCATED;
 
                     /* unmap + delete the cap to the page */
-                    // FIXME: unmap
+                    assert (entry->cap);
+                    seL4_ARM_Page_Unmap (entry->cap);   /* FIXME: do we need this? or does it break? */
                     cspace_delete_cap (cur_cspace, entry->cap);
 
                     /* "free" the frame - removes from refcount and only

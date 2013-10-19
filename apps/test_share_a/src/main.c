@@ -12,13 +12,19 @@
 #include <sos.h>
 
 #define MSG_PREFIX ("Hello from A #%d")
-#define NUM_RUNS    32
+#define NUM_RUNS    25
 
 int main(void) {
     char msg[32] = {0};
 
     printf ("\t\tA: creating service EP\n");
     seL4_CPtr service_ep = pawpaw_create_ep ();
+
+    printf ("\t\tA: allocating slot\n");
+    seL4_CPtr share_cap = pawpaw_cspace_alloc_slot ();
+    assert (share_cap);
+
+    seL4_SetCapReceivePath (PAPAYA_ROOT_CNODE_SLOT, share_cap, PAPAYA_CSPACE_DEPTH);
 
     printf ("\t\tA: registering ourselves\n");
     pawpaw_register_service (service_ep);
@@ -30,35 +36,47 @@ int main(void) {
     printf ("\t\tA: created with id %d\n", share->id);
 
     printf ("\t\tA: starting test_share_b\n");
-    assert (process_create ("test_share_b") >= 0);
+    pid_t b_pid = process_create ("test_share_b");
+    assert (b_pid >= 0);
 
     printf ("\t\tA: looking up its service\n");
     seL4_CPtr b = pawpaw_service_lookup ("test_share_b");
     assert (b);
 
     for (int i = 0; i < NUM_RUNS; i++) {
-        /*strcpy (msg, MSG_PREFIX);
-        strcat (msg, itoa (i));*/
         sprintf (msg, MSG_PREFIX, i);
 
         printf ("\t\tA: copying to buffer @ %p\n", share->buf);
         memcpy (share->buf, msg, strlen (msg));
 
         printf ("\t\tA: calling B...\n");
-        seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, !share->sent, 1);
-        //pawpaw_share_attach (share);
-        if (!share->sent) {
-            printf ("\t\tA: attaching cap\n");
-            seL4_SetCap (0, share->cap);
-            share->sent = true;
-        };
+        seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, pawpaw_share_attach (share), 1);
         
         seL4_SetMR (0, share->id);
-        seL4_Call (b, msg);
+        seL4_MessageInfo_t reply = seL4_Call (b, msg);
 
-        printf ("\t\tA: received %s\n", share->buf);
+        printf ("\t\tA: received in its buffer %s\n", share->buf);
+        if (seL4_MessageInfo_get_extraCaps (reply) == 1) {
+            seL4_Word msgid = seL4_GetMR (0);
+            printf ("\t\tA: recevied cap from B, mounting\n");
+            printf ("\t\tA: msg reported share ID 0x%x\n", msgid);
+            struct pawpaw_share *share = pawpaw_share_mount (share_cap);
+            assert (share);
+            printf ("\t\tA: mounted reported ID 0x%x\n", share->id);
+
+            assert (share->id == msgid);
+
+            printf ("\t\tA: content mounted to vaddr %p was: %s\n", share->buf, share->buf);
+
+            share_cap = pawpaw_cspace_alloc_slot ();
+            assert (share_cap);
+
+            seL4_SetCapReceivePath (PAPAYA_ROOT_CNODE_SLOT, share_cap, PAPAYA_CSPACE_DEPTH);
+        }
     }
 
+    printf ("\t\tfinished, killing B\n");
+    process_delete (b_pid);
     printf ("\t\tdone - bye!\n");
 
     return 0;

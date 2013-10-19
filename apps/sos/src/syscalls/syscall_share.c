@@ -76,7 +76,9 @@ int syscall_share_mount (struct pawpaw_event* evt) {
     seL4_Word ep_cpy = cspace_copy_cap (cur_cspace, current_thread->croot, seL4_GetMR (1), seL4_AllRights);
 
     seL4_MessageInfo_t local_msg = seL4_MessageInfo_new (0, 0, 0, 0);
-    seL4_Call (ep_cpy, local_msg);  /* FIXME: this is bad - should do notify and get callback since this can be an arbitary EP */
+    //printf ("%s: calling on given EP\n", __FUNCTION__);
+    /* FIXME: this is VERY BAD - should do notify and get callback since this can be an arbitary EP and we may never get a callback */
+    seL4_Call (ep_cpy, local_msg);  
 
     if (!badgemap_found) {
         printf ("%s: badgemapper returned failure\n", __FUNCTION__);
@@ -95,6 +97,8 @@ int syscall_share_mount (struct pawpaw_event* evt) {
     }
 
     /* ensure the other region still exists */
+    //printf ("%s: wanting to get source region for source vaddr 0x%x\n", __FUNCTION__, seL4_GetMR (1));
+    //addrspace_print_regions (src_thread->as);
     struct as_region* other_reg = as_get_region_by_addr (src_thread->as, seL4_GetMR (1));
     if (!other_reg) {
         printf ("%s: fetching source region failed\n", __FUNCTION__);
@@ -103,6 +107,8 @@ int syscall_share_mount (struct pawpaw_event* evt) {
 
         return PAWPAW_EVENT_NEEDS_REPLY;
     }
+
+    //printf ("%s: ended up getting region 0x%x -> 0x%x\n", __FUNCTION__, other_reg->vbase, other_reg->vbase + other_reg->size);
 
     /* make a new region to place it in */
     struct as_region* share_reg = share_alloc_region ();
@@ -117,6 +123,8 @@ int syscall_share_mount (struct pawpaw_event* evt) {
     seL4_SetMR (2, 0);
 
     /* cool, now shared map the two */
+    //printf ("%s: mapping vaddr 0x%x in %s (share 0x%x) to 0x%x in %s\n", __FUNCTION__, other_reg->vbase, src_thread->name, id, share_reg->vbase, current_thread->name);
+
     struct pt_entry* pte = page_map_shared (current_thread->as, share_reg, share_reg->vbase,
         src_thread->as, other_reg, other_reg->vbase, false);
 
@@ -127,67 +135,3 @@ int syscall_share_mount (struct pawpaw_event* evt) {
 
     return PAWPAW_EVENT_NEEDS_REPLY;
 }
-
-#if 0
-seL4_MessageInfo_t syscall_sbuf_mount (thread_t thread) {
-    seL4_MessageInfo_t failure = seL4_MessageInfo_new (0, 0, 0, 1);
-    seL4_MessageInfo_t reply = seL4_MessageInfo_new (0, 0, 0, 3);
-
-    /* my copy - FIXME: should ahve a copy when we make it and not do this??? */
-    seL4_Word ep_cpy = cspace_copy_cap (cur_cspace, thread->croot, seL4_GetMR (1), seL4_AllRights);
-
-    seL4_MessageInfo_t local_msg = seL4_MessageInfo_new (0, 0, 0, 0);
-    seL4_Call (ep_cpy, local_msg);
-
-    if (badgemap_found) {
-        seL4_Word id = seL4_GetMR (2);
-        /* FIXME: ensure thread still exists */
-        thread_t src_thread = thread_lookup (seL4_GetMR (0));
-        printf ("WANT TO SHARE MEMORY WITH %s and %s\n", thread->name, src_thread->name);
-
-        //printf ("start addr was 0x%x\n", seL4_GetMR (1));
-        struct as_region* other_reg = as_get_region_by_addr (src_thread->as, seL4_GetMR (1));
-        //printf ("had other reg %p\n", other_reg);
-
-        /* FIXME: factorise out from above and here */
-        vaddr_t reg_start;
-        vaddr_t reg_offset = PROCESS_BEANS;
-
-        /* check if there was an exisiting region, and if so, increase our offset so that we create another region directly following it */
-        struct as_region* reg = as_get_region_by_type (thread->as, REGION_BEANS);
-        if (reg) {
-            reg_offset = reg->vbase + reg->size;
-        }
-
-        /* create a bean region */
-        reg = as_define_region (thread->as, reg_offset, other_reg->size, seL4_AllRights, REGION_BEANS);
-
-        if (!reg) {
-            /* FIXME: return some failure status */
-            seL4_SetMR (0, 0);
-            return failure;
-        }
-
-        reg_start = reg->vbase;
-
-        /* finally link them. */
-        printf ("linking 0x%x and 0x%x (%s)\n", other_reg->vbase, reg->vbase, thread->name);
-        if (!as_region_link (other_reg, reg)) {
-            seL4_SetMR (0, 0);
-            return failure;
-        }
-
-        //printf ("giving back 0x%x (size 0x%x)\n", reg_start, reg->size);
-        seL4_SetMR (0, reg_start);
-        seL4_SetMR (1, reg->size);
-        seL4_SetMR (2, id);
-
-        printf ("++++ SBUF FOR %s HAS ID %d\n", thread->name, id);
-        
-        return reply;
-    }
-
-    seL4_SetMR (0, 0);
-    return failure;
-}
-#endif
