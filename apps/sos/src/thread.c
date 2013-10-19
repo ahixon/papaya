@@ -263,21 +263,10 @@ thread_destroy (thread_t thread) {
         pid_free (thread->pid);
     }
 
-
-    /* FIXME: don't free TCB */
-    if (thread->tcb_cap) {
-        printf ("freeing TCB cap 0%x\n", thread->tcb_cap);
-        //cspace_delete_cap (cur_cspace, thread->tcb_cap);
-        printf ("%s:%d\n", __FILE__, __LINE__);
-    }
-
-    
-
     /* free any created resources (specifically, endpoints) */
     struct thread_resource *res = thread->resources;
     while (res) {
         ut_free (res->addr, res->size);
-        printf ("%s:%d\n", __FILE__, __LINE__);
 
         struct thread_resource *next = res->next;
         free (res);
@@ -287,9 +276,7 @@ thread_destroy (thread_t thread) {
     /* lastly, free the address space ONLY if we're not rootsvr's */
     if (thread->as && thread->as != cur_addrspace) {
         /* will free underlying pages + frames */
-        printf ("%s:%d\n", __FILE__, __LINE__);
         addrspace_destroy (thread->as);
-        printf ("%s:%d\n", __FILE__, __LINE__);
     }
 
     /* now, notify everyone about thread's death (and their presents) */
@@ -299,15 +286,11 @@ thread_destroy (thread_t thread) {
 
         /* FIXME: should save response args in event struct too */
         seL4_SetMR (0, thread->pid);
-        printf ("%s:%d\n", __FILE__, __LINE__);
         seL4_Send (evt->reply_cap, evt->reply);
-        printf ("%s:%d\n", __FILE__, __LINE__);
         pawpaw_event_dispose (evt); 
-        printf ("%s:%d\n", __FILE__, __LINE__);
 
         struct pawpaw_saved_event* next_bequest = bequests->next;
         free (bequests);
-        printf ("%s:%d\n", __FILE__, __LINE__);
         bequests = next_bequest;
     }
     
@@ -330,26 +313,25 @@ thread_destroy (thread_t thread) {
         running_head = thread->next;
     }
 
+    /*
+     * XXX: hack until seL4 bug fixed 
     if (thread->croot && thread->croot != cur_cspace) {
-        printf ("%s:%d\n", __FILE__, __LINE__);
         cspace_delete_cap (thread->croot, PAPAYA_TCB_SLOT);
-        printf ("%s:%d\n", __FILE__, __LINE__);
         cspace_destroy (thread->croot);
-        printf ("%s:%d\n", __FILE__, __LINE__);
     }
 
-    printf ("%s:%d\n", __FILE__, __LINE__);
     cspace_delete_cap (cur_cspace, thread->tcb_cap);
 
-    if (thread->tcb_addr) {
-        printf ("%s:%d\n", __FILE__, __LINE__);
-        ut_free (thread->tcb_addr, seL4_TCBBits);
+    if (thread->tcb_cap) {
+        cspace_delete_cap (cur_cspace, thread->tcb_cap);
         printf ("%s:%d\n", __FILE__, __LINE__);
     }
+
+    if (thread->tcb_addr) {
+        ut_free (thread->tcb_addr, seL4_TCBBits);
+    }*/
     
-    printf ("%s:%d\n", __FILE__, __LINE__);
     free (thread);
-    printf ("%s:%d\n", __FILE__, __LINE__);
 
     /* TODO: remove me, just for debugging */
     //print_resource_stats ();
