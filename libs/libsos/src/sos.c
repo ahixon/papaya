@@ -13,55 +13,44 @@
 #include <timer.h>
 
 seL4_CNode vfs_ep = 0;
+struct pawpaw_share* vfs_share = NULL;
 
 /* FIXME: what if the VFS service dies and then restarts? endpoint will have changed */
 fildes_t open(const char *path, fmode_t mode) {
-	//seL4_MessageInfo_t msg;
+	seL4_MessageInfo_t msg;
 
 	if (!vfs_ep) {
 		vfs_ep = pawpaw_service_lookup ("svc_vfs");
 	}
 
-#if 0
 	/* if this is our initial open, create a shared buffer between this thread
 	 * and the the VFS service to pass through filenames */
-	short created = false;
-	if (!vfs_buffer) {
-		vfs_buffer = pawpaw_sbuf_create (2);
-		created = true;
-		if (!vfs_buffer) {
+	if (!vfs_share) {
+		vfs_share = pawpaw_share_new ();
+		if (!vfs_share) {
+			printf ("%s: failed to make new share\n", __FUNCTION__);
 			return -1;
 		}
 	}
 
-	msg = seL4_MessageInfo_new(0, 0, created ? 1 : 0, 4);
+	msg = seL4_MessageInfo_new (0, 0, pawpaw_share_attach (vfs_share), 3);
+	strcpy (vfs_share->buf, path);
 
-	/* if it's the first open, attach our cap */
-	if (created) {
-		seL4_SetCap (0, pawpaw_sbuf_get_cap (vfs_buffer));
-	}
-
-	/* pick a slot to copy to */
-	int slot = pawpaw_sbuf_slot_next (vfs_buffer);
-	if (slot < 0) {
-		/* FIXME: ensure this doesn't happen - do pinning in root server */
-		printf ("OPEN: NO MORE SLOTS LEFT???\n");
-		return -1;
-	}
-
-	//printf ("copying in %s to %p\n", path, pawpaw_sbuf_slot_get (vfs_buffer, slot));
-	strcpy (pawpaw_sbuf_slot_get (vfs_buffer, slot), path);
+    seL4_CPtr recv_cap = pawpaw_cspace_alloc_slot ();
+    seL4_SetCapReceivePath (PAPAYA_ROOT_CNODE_SLOT, recv_cap, PAPAYA_CSPACE_DEPTH);
 
     seL4_SetMR (0, VFS_OPEN);
-    seL4_SetMR (1, pawpaw_sbuf_get_id (vfs_buffer));
-    seL4_SetMR (2, slot);
-    seL4_SetMR (3, mode);
+    seL4_SetMR (1, vfs_share->id);
+    seL4_SetMR (2, mode);
 
-    seL4_Call (vfs_ep, msg);
-
-    return seL4_GetMR(0);
-#endif
-    return -1;
+    printf ("Calling svc_vfs with VFS_OPEN = %d\n", VFS_OPEN);
+    seL4_MessageInfo_t reply = seL4_Call (vfs_ep, msg);
+    if (seL4_MessageInfo_get_extraCaps (reply) == 1) {
+    	return (fildes_t)recv_cap;
+    } else {
+    	pawpaw_cspace_free_slot (recv_cap);
+    	return seL4_GetMR (0);
+    }    
 }
 
 /* Open file and return file descriptor, -1 if unsuccessful
@@ -80,10 +69,23 @@ int close(fildes_t file) {
 
 // FIXME: needs to cheat with fd = {0, 1, 2}
 int read(fildes_t file, char *buf, size_t nbyte) {
-	if (nbyte <= (1 << 12))
+	if (nbyte >= (1 << 12))
 		return -1;		/* FIXME: crappy limitation */
 
-	return -1;
+
+	struct pawpaw_share* fd_share = pawpaw_share_new ();
+	if (!fd_share) {
+		return -1;
+	}
+
+	seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, pawpaw_share_attach (fd_share), 3);
+	seL4_SetMR (0, VFS_READ);
+    seL4_SetMR (1, fd_share->id);
+    seL4_SetMR (2, nbyte);
+
+    printf ("Calling someone with VFS_READ = %d\n", VFS_READ);
+    seL4_Call ((seL4_CPtr)file, msg);
+    return seL4_GetMR (0);
 }
 
 // FIXME: needs to cheat with fd = {0, 1, 2}

@@ -11,35 +11,64 @@
 #include <syscalls.h>
 #include <network.h>
 #include <sos.h>
+#include <vfs.h>
 
 #define DEV_REGISTER            21
 
-int main(void) {
-    
-    for (int i = 0; i < 350; i++) {
-        seL4_Yield();
-    }
-    //printf ("###############################\nsosh: continuing...\n");
-    /*
-     * I need those sweet, sweet caps.. Mr Simpson nooOOoOOoOOOOooo!!
-     * Dramatisation: may not have happened.
-     */
+seL4_CPtr service_ep = 0;
 
+int vfs_open (struct pawpaw_event* evt);
+int vfs_read (struct pawpaw_event* evt);
+
+struct pawpaw_eventhandler_info handlers[VFS_NUM_EVENTS] = {
+    {   0,  0,  0   },      //              //
+    {   0,  0,  0   },      //   RESERVED   //
+    {   0,  0,  0   },      //              //
+    {   vfs_open,           2,  HANDLER_REPLY },    // mode + badge, replies with EP to file (badged version of listen cap)
+    {   vfs_read,           2,  HANDLER_REPLY | HANDLER_AUTOMOUNT },    // num bytes
+};
+
+struct pawpaw_event_table handler_table = { VFS_NUM_EVENTS, handlers };
+
+
+int have_reader = false;
+
+int vfs_open (struct pawpaw_event* evt) {
+    if (evt->args[0] & FM_READ) {
+        if (have_reader) {
+            printf ("console: already opened for reading\n");
+            return PAWPAW_EVENT_UNHANDLED;
+        }
+
+        have_reader = true;
+    }
+
+    /* FIXME: register in open FD table so that opened for writing can't read and vice versa */
+
+    printf ("console: cool OK opened, giving back our cap\n");
+    seL4_SetCap (0, service_ep);
+    seL4_SetMR (0, 0);
+    evt->reply = seL4_MessageInfo_new (0, 0, 1, 1);
+    return PAWPAW_EVENT_NEEDS_REPLY;
+}
+
+int vfs_read (struct pawpaw_event* evt) {
+    printf ("*** WANT TO READ %d bytes\n", evt->args[0]);
+    return PAWPAW_EVENT_UNHANDLED;
+}
+
+int main (void) {
     /* ask the root server for network driver deets */
     /* we should get back a cap that we can communicate directly with it */
     /*seL4_CPtr net_ep = pawpaw_service_lookup ("sys.net.services");
     assert (net_ep);*/
 
-    seL4_CPtr service_ep = pawpaw_create_ep ();
+    pawpaw_event_init ();
+
+    service_ep = pawpaw_create_ep ();
     assert (service_ep);
 
-    seL4_CPtr dev_ep = 0;
-    while (!dev_ep) {
-        dev_ep = pawpaw_service_lookup ("svc_dev");
-        if (!dev_ep) {
-            seL4_Yield();
-        }
-    }
+    seL4_CPtr dev_ep = pawpaw_service_lookup ("svc_dev");
 
     seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 4);
     seL4_SetMR (0, DEV_REGISTER);
@@ -50,9 +79,9 @@ int main(void) {
     seL4_SetMR (2, 0);              // bus = platform device
     seL4_SetMR (3, 1337);           // product ID = 1337 lol??
 
-    /* FIXME: do we REALLY need Call? */
+    /* FIXME: do we REALLY need Call? at the moment, no lol */
     printf ("dev_console: registering device\n");
-    seL4_Call (dev_ep, msg);
+    seL4_Send (dev_ep, msg);
 
 #if 0
     
@@ -87,21 +116,16 @@ int main(void) {
     printf ("You are awesome.\n");
 #endif
 
-    seL4_Word sender_badge;
-    //seL4_MessageInfo msg;
-    while (1) {
-        msg = seL4_Wait (service_ep, &sender_badge);
+    pawpaw_event_loop (&handler_table, NULL, service_ep);
 
-        /*if (my_ep is interrupt) {
-            // check badge, probably from NETSVC
-        } else if (my_ep is message) {
-            // probably read/write message
-            // read from buffer and respond straight away, or add to internal queue and wait (wake thread up on interrupt)
-            // could optimise: if buffer is empty, and wants to read N bytes, could ask netsvc to load into their mbox directly? zerocopy?
-            // problem here is you'd need to setup netsvc to READ ONLY N BYTES AND UNREGISTER
-        }*/
-        printf ("@@@@@@@@@@@@@@@@@@@@@@\ndev_console: Got message from somebody!\n@@@@@@@@@@@@@@@@@@@@@@@@@\n");
-    }
+    /*if (my_ep is interrupt) {
+        // check badge, probably from NETSVC
+    } else if (my_ep is message) {
+        // probably read/write message
+        // read from buffer and respond straight away, or add to internal queue and wait (wake thread up on interrupt)
+        // could optimise: if buffer is empty, and wants to read N bytes, could ask netsvc to load into their mbox directly? zerocopy?
+        // problem here is you'd need to setup netsvc to READ ONLY N BYTES AND UNREGISTER
+    }*/
 
     /* now we play the waiting game... */
     /* read/write will contain:
@@ -114,10 +138,6 @@ int main(void) {
             - bytes written (success/partial success)
             - cap invalid
             - read/write failed (device specific error?)
-
-
-        need helper library for mbox selection?
-        (bit field to determine which is free/not?)
 
         if we get any reads add it to our buffer
         (until we're full, at which point start throwing away stuff)

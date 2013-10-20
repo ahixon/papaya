@@ -80,7 +80,7 @@ int pawpaw_bind_async_to_thread (seL4_CPtr async_ep);
 void pawpaw_suicide (void);
 
 void pawpaw_event_init (void);
-void pawpaw_event_loop (struct pawpaw_event_table* table, seL4_CPtr ep);
+void pawpaw_event_loop (struct pawpaw_event_table* table, void (*interrupt_func)(struct pawpaw_event* evt), seL4_CPtr ep);
 struct pawpaw_event* pawpaw_event_create (seL4_MessageInfo_t msg, seL4_Word badge);
 void pawpaw_event_dispose (struct pawpaw_event* evt);
 int pawpaw_event_process (struct pawpaw_event_table* table, struct pawpaw_event *evt, seL4_CPtr (*save_reply_func)(void));

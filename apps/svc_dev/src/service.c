@@ -84,7 +84,6 @@ int main(void) {
     seL4_MessageInfo_t message, reply;
 
     /* create our EP to listen on */
-    printf ("svc_dev: creating EP\n");
     seL4_CPtr service_cap = pawpaw_create_ep ();
     assert (service_cap);
 
@@ -94,7 +93,6 @@ int main(void) {
 
     seL4_SetCapReceivePath (PAPAYA_ROOT_CNODE_SLOT, msg_cap, PAPAYA_CSPACE_DEPTH);
 
-    printf ("svc_dev: registering service\n");
     pawpaw_register_service (service_cap);
     printf ("svc_dev: started\n");
 
@@ -104,7 +102,6 @@ int main(void) {
         seL4_CPtr reply_cap = pawpaw_save_reply ();
         uint32_t label = seL4_MessageInfo_get_label(message);
 
-        printf ("** SVC_DEV ** received message from %x with label %d and length %d\n", badge, label, seL4_MessageInfo_get_length (message));
 
         if (label == seL4_NoError) {
             if (seL4_GetMR (0) == DEV_LISTEN_CHANGES) {
@@ -124,7 +121,7 @@ int main(void) {
 
                 clients = c;
 
-                seL4_CPtr msg_cap = pawpaw_cspace_alloc_slot ();
+                msg_cap = pawpaw_cspace_alloc_slot ();
                 assert (msg_cap);
                 seL4_SetCapReceivePath (PAPAYA_ROOT_CNODE_SLOT, msg_cap, PAPAYA_CSPACE_DEPTH);
 
@@ -133,6 +130,15 @@ int main(void) {
                 seL4_SetMR (0, 0);
 
                 seL4_Send (reply_cap, reply);
+
+                /* notify for all existing devices - HACK really need an interator function */
+                struct device* dev = devlist;
+                while (dev) {
+                    printf ("sending notify to %d\n", c->their_cap);
+                    seL4_Notify (c->their_cap, dev->id);
+                    dev = dev->next;
+                }
+
 
             } else if (seL4_GetMR (0) == DEV_REGISTER) {
                 if (seL4_MessageInfo_get_extraCaps (message) != 1) {
@@ -167,9 +173,11 @@ int main(void) {
 
                 devlist = dev;
 
-                seL4_CPtr msg_cap = pawpaw_cspace_alloc_slot ();
+                msg_cap = pawpaw_cspace_alloc_slot ();
                 assert (msg_cap);
                 seL4_SetCapReceivePath (PAPAYA_ROOT_CNODE_SLOT, msg_cap, PAPAYA_CSPACE_DEPTH);
+
+                printf ("registered device\n");
 
                 notify_registered (dev);
             } else if (seL4_GetMR (0) == DEV_GET_INFO) {

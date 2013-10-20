@@ -311,27 +311,29 @@ int main (void) {
     rootserver_init (&rootserver_syscall_cap);
     printf ("Root server setup.\n");
     print_resource_stats ();
+    
+    /* boot up device filesystem & mount it */
+    thread_create_from_cpio ("fs_dev", rootserver_syscall_cap);
+    // FIXME: actually mount the thing
 
     /* boot up core services */
-    //printf ("Starting core services...\n");
-    //thread_create_from_cpio ("svc_dev", rootserver_syscall_cap);
-    //thread_create_from_cpio ("svc_vfs", rootserver_syscall_cap);
+    //thread_create_from_cpio ("svc_init", rootserver_syscall_cap);
+    printf ("Starting core services...\n");
+    thread_create_from_cpio ("svc_vfs", rootserver_syscall_cap);
+    thread_create_from_cpio ("svc_dev", rootserver_syscall_cap);
     // thread_create ("svc_net", rootserver_syscall_cap);
     // FIXME: need to rename svc_network -> svc_net
 
-    /* boot up device filesystem & mount it */
-    //thread_create_from_cpio ("fs_dev", rootserver_syscall_cap);
-    // FIXME: actually mount the thing
 
     /* start any devices services inside the CPIO archive */
-    // dprintf (1, "Looking for device services linked into CPIO...\n");
-    // unsigned long size;
-    // char *name;
-    // for (int i = 0; cpio_get_entry (_cpio_archive, i, (const char**)&name, &size); i++) {
-    //     if (strstr (name, "dev_") == name) {
-    //         thread_create_from_cpio (name, rootserver_syscall_cap);
-    //     }
-    // }
+    dprintf (1, "Looking for device services linked into CPIO...\n");
+    unsigned long size;
+    char *name;
+    for (int i = 0; cpio_get_entry (_cpio_archive, i, (const char**)&name, &size); i++) {
+        if (strstr (name, "dev_") == name) {
+            thread_create_from_cpio (name, rootserver_syscall_cap);
+        }
+    }
 
     /* finally, start the boot app */
     dprintf (1, "Starting boot application \"%s\"...\n", CONFIG_SOS_STARTUP_APP);
