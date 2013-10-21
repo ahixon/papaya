@@ -50,6 +50,8 @@ addrspace_create (seL4_ARM_PageTable pd)
         return NULL;
     }
 
+    memset (as, 0, sizeof (struct addrspace));
+
     as->pagetable = pagetable_init ();
     if (!as->pagetable) {
         free (as);
@@ -64,7 +66,7 @@ addrspace_create (seL4_ARM_PageTable pd)
         /* create a new page directory */
         int err;
 
-        as->pagedir_addr = ut_alloc(seL4_PageDirBits);
+        as->pagedir_addr = ut_alloc (seL4_PageDirBits);
         if (!as->pagedir_addr) {
             pagetable_free (as->pagetable);
             free (as);
@@ -101,8 +103,14 @@ addrspace_destroy (addrspace_t as) {
     as->pagetable = NULL;
 
     if (as->pagedir_cap != seL4_CapInitThreadPD) {
-        cspace_delete_cap (cur_cspace, as->pagedir_cap);
-        ut_free (as->pagedir_addr, seL4_PageDirBits);
+        if (as->pagedir_cap) {
+            printf ("deleting cap\n");
+            cspace_delete_cap (cur_cspace, as->pagedir_cap);
+        }
+
+        if (as->pagedir_addr) {
+            ut_free (as->pagedir_addr, seL4_PageDirBits);
+        }
     }
 
     free (as);

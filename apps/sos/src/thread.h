@@ -38,6 +38,7 @@ struct thread {
 
     seL4_CPtr service_cap;
     struct pawpaw_saved_event* bequests;
+    int default_caps;
 
     char* static_stack;
 

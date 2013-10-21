@@ -99,7 +99,7 @@ pagetable_kernel_install_pt (addrspace_t as, seL4_ARM_VMAttributes attributes, v
     int err;
     seL4_Word pt_cap, pt_addr;
 
-    pt_addr = ut_alloc(seL4_PageTableBits);
+    pt_addr = ut_alloc (seL4_PageTableBits);
     if (pt_addr == 0){
         printf ("pagetable_kernel_install_pt: utalloc failed\n");
         return 0;
@@ -120,9 +120,10 @@ pagetable_kernel_install_pt (addrspace_t as, seL4_ARM_VMAttributes attributes, v
                                  as->pagedir_cap, 
                                  vaddr, 
                                  attributes);
+    printf ("mapped 0x%x => 0x%x\n", vaddr, pt_cap);
 
     if (err) {
-        printf ("pagetable_kernel_install_pt: seL4_ARMpagetable_kernel_install_pt failed: %s\n", seL4_Error_Message(err));
+        printf ("pagetable_kernel_install_pt: seL4_ARM_PageTable_Map failed: %s\n", seL4_Error_Message(err));
         ut_free (pt_addr, seL4_PageTableBits);
 
         /* if someone's already mapped a pagetable in, don't worry about it */
@@ -281,9 +282,21 @@ pagetable_free (pagetable_t pt) {
                 page_unmap (entry);
             }
 
+
             /* now free the table cap + addrs */
-            cspace_delete_cap (cur_cspace, pt->table_caps [l1]);
-            ut_free (pt->table_addrs[l1], seL4_PageTableBits);
+            if (pt->table_caps [l1]) {
+                printf ("unmapping 0x%x\n", pt->table_caps [l1]);
+                if (seL4_ARM_PageTable_Unmap (pt->table_caps [l1])) {
+                    printf ("%s: unmap failed\n", __FUNCTION__);
+                }
+
+                cspace_delete_cap (cur_cspace, pt->table_caps [l1]);
+            }
+
+            if (pt->table_addrs[l1]) {
+                ut_free (pt->table_addrs[l1], seL4_PageTableBits);
+            }
+
             free (table);
         }
     }
@@ -298,7 +311,11 @@ page_unmap (struct pt_entry* entry) {
         entry->flags &= ~PAGE_ALLOCATED;
 
         /* unmap + delete the cap to the page */
-        assert (entry->cap);
+        if (!entry->cap) {
+            printf ("%s: entry 0x%x was allocated but had no cap???\n", entry->frame_idx);
+            return false;
+        }
+
         seL4_ARM_Page_Unmap (entry->cap);   /* FIXME: do we need this? or does it break? */
         cspace_delete_cap (cur_cspace, entry->cap);
 
@@ -334,7 +351,7 @@ page_map_shared (addrspace_t as_dst, struct as_region* reg_dst, vaddr_t dst,
     }
 
     if (!(src_entry->flags & PAGE_ALLOCATED)) {
-        printf ("%s: warning! source page wasn't allocated yet - allocating\n", __FUNCTION__);
+        //printf ("%s: warning! source page wasn't allocated yet - allocating\n", __FUNCTION__);
         page_map (as_src, reg_src, src);
     }
 

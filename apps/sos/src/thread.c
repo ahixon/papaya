@@ -186,7 +186,7 @@ thread_t thread_create (char* name, cspace_t *existing_cspace, addrspace_t exist
         thread_destroy (thread);
     }
 
-    printf ("TCB cap is now 0%x\n", thread->tcb_cap);
+    //printf ("TCB cap is now 0%x\n", thread->tcb_cap);
 
     if (!existing_addrspace) {
         /* create address space for process */
@@ -263,6 +263,29 @@ thread_destroy (thread_t thread) {
         pid_free (thread->pid);
     }
 
+    /* why doesn't the cspace free allocated nodes on destroy, we'll never know
+     * let's not modify that code because it's a giant mess */
+    if (thread->default_caps) {
+        printf ("deleting default caps\n");
+        for (int i = PAPAYA_SYSCALL_SLOT; i <= PAPAYA_PAGEDIR_SLOT; i++) {
+            cspace_delete_cap (thread->croot, i);
+        }
+
+        cspace_free_slot (thread->croot, PAPAYA_INITIAL_FREE_SLOT);
+    }
+
+    if (thread->croot && thread->croot != cur_cspace) {
+        printf ("destroying thread croot\n");
+        cspace_destroy (thread->croot);
+        printf ("done\n");
+    }
+
+    /* lastly, free the address space ONLY if we're not rootsvr's */
+    if (thread->as && thread->as != cur_addrspace) {
+        /* will free underlying pages + frames */
+        addrspace_destroy (thread->as);
+    }
+
     /* free any created resources (specifically, endpoints) */
     struct thread_resource *res = thread->resources;
     while (res) {
@@ -271,12 +294,6 @@ thread_destroy (thread_t thread) {
         struct thread_resource *next = res->next;
         free (res);
         res = next;
-    }
-
-    /* lastly, free the address space ONLY if we're not rootsvr's */
-    if (thread->as && thread->as != cur_addrspace) {
-        /* will free underlying pages + frames */
-        addrspace_destroy (thread->as);
     }
 
     /* now, notify everyone about thread's death (and their presents) */
@@ -313,13 +330,7 @@ thread_destroy (thread_t thread) {
         running_head = thread->next;
     }
 
-    /*
-     * XXX: hack until seL4 bug fixed 
-    if (thread->croot && thread->croot != cur_cspace) {
-        cspace_delete_cap (thread->croot, PAPAYA_TCB_SLOT);
-        cspace_destroy (thread->croot);
-    }
-
+    /* XXX: hack until seL4 bug fixed 
     cspace_delete_cap (cur_cspace, thread->tcb_cap);
 
     if (thread->tcb_cap) {
@@ -337,6 +348,7 @@ thread_destroy (thread_t thread) {
     //print_resource_stats ();
 }
 
+/* FIXME: should not assert */
 int thread_setup_default_caps (thread_t thread, seL4_CPtr rootsvr_ep) {
      /* Copy a whole bunch of default caps to their cspace, namely:
      *  - a minted reply cap (with their PID), so that they can do IPC to the
@@ -359,12 +371,15 @@ int thread_setup_default_caps (thread_t thread, seL4_CPtr rootsvr_ep) {
     last_cap = cspace_copy_cap (thread->croot, cur_cspace, thread->croot->root_cnode, seL4_AllRights);
     assert (last_cap == PAPAYA_ROOT_CNODE_SLOT);
 
+    printf ("copying pagedir cap...\n");
     last_cap = cspace_copy_cap (thread->croot, cur_cspace, thread->as->pagedir_cap, seL4_AllRights);
     assert (last_cap == PAPAYA_PAGEDIR_SLOT);
     
     /* Now, allocate an initial free slot */
     last_cap = cspace_alloc_slot (thread->croot);
     assert (last_cap == PAPAYA_INITIAL_FREE_SLOT);
+
+    thread->default_caps = true;
 
     return true;
 }
@@ -399,6 +414,7 @@ thread_t thread_create_from_cpio (char* path, seL4_CPtr rootsvr_ep) {
     dprintf (1, "Starting \"%s\"...\n", path);
     elf_base = cpio_get_file (_cpio_archive, path, &elf_size);
     if (!elf_base) {
+        printf ("failed to get file from CPIO\n");
         thread_destroy (thread);
         return NULL;
     }

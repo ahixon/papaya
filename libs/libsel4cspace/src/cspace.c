@@ -452,6 +452,7 @@ cspace_err_t cspace_destroy(cspace_t *c)
         for (i = 0; i < CSPACE_NODE_SIZE_IN_SLOTS; i++) {
             if (c->level2_alloc_tables[i] != NULL) {
                 /* delete the l2 cnode and the allocation table with it */
+                printf ("%s: deleting node %d\n", __FUNCTION__, i);
                 serr = seL4_CNode_Delete(c->root_cnode,
                                          i,
                                          CSPACE_DEPTH - CSPACE_NODE_SIZE_IN_SLOTS_BITS);

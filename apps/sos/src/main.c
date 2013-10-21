@@ -221,6 +221,14 @@ static void print_bootinfo(const seL4_BootInfo* info) {
     dprintf(1,"--------------------------------------------------------\n");
 }
 
+seL4_Word cspace_ut_alloc_wrapper (int sizebits) {
+    return ut_alloc (sizebits);
+}
+
+void cspace_ut_free_wrapper (seL4_Word addr, int sizebits) {
+    ut_free (addr, sizebits);
+}
+
 /*
  * Initialisation of subsystems and resources required for Papaya.
  */
@@ -251,7 +259,7 @@ static void rootserver_init(seL4_CPtr* ipc_ep){
     ut_allocator_init(low, high);
 
     /* Initialise the cspace manager */
-    err = cspace_root_task_bootstrap(ut_alloc, ut_free, ut_translate,
+    err = cspace_root_task_bootstrap(cspace_ut_alloc_wrapper, cspace_ut_free_wrapper, ut_translate,
                                      malloc, free);
     conditional_panic(err, "Failed to initialise the c space\n");
 
@@ -313,14 +321,14 @@ int main (void) {
     print_resource_stats ();
     
     /* boot up device filesystem & mount it */
-    thread_create_from_cpio ("fs_dev", rootserver_syscall_cap);
+    assert (thread_create_from_cpio ("fs_dev", rootserver_syscall_cap));
     // FIXME: actually mount the thing
 
     /* boot up core services */
     //thread_create_from_cpio ("svc_init", rootserver_syscall_cap);
     printf ("Starting core services...\n");
-    thread_create_from_cpio ("svc_vfs", rootserver_syscall_cap);
-    thread_create_from_cpio ("svc_dev", rootserver_syscall_cap);
+    assert (thread_create_from_cpio ("svc_vfs", rootserver_syscall_cap));
+     (thread_create_from_cpio ("svc_dev", rootserver_syscall_cap));
     // thread_create ("svc_net", rootserver_syscall_cap);
     // FIXME: need to rename svc_network -> svc_net
 
@@ -338,6 +346,7 @@ int main (void) {
     /* finally, start the boot app */
     dprintf (1, "Starting boot application \"%s\"...\n", CONFIG_SOS_STARTUP_APP);
     thread_t boot_thread = thread_create_from_cpio (CONFIG_SOS_STARTUP_APP, rootserver_syscall_cap);
+    assert (boot_thread);
     dprintf (1, "  started with PID %d\n", boot_thread->pid);
 
     /* and wait for IPC */
