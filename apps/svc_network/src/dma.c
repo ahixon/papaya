@@ -13,6 +13,9 @@
 #include <cspace/cspace.h>
 #include <dma.h>
 
+extern char DMA_REGION[1 << DMA_SIZE_BITS];
+#define DMA_VSTART ((seL4_Word)DMA_REGION)
+
 #define DMA_SIZE     (_dma_pend - _dma_pstart)
 #define DMA_PAGES    (DMA_SIZE >> seL4_PageBits)
 #define DMA_VEND     (DMA_VSTART + DMA_SIZE)
@@ -30,7 +33,7 @@
 #define DMA_ALIGN_BITS  7 /* 128 */
 #define DMA_ALIGN(a)    ROUND_UP(a,DMA_ALIGN_BITS)
 
-static seL4_CPtr* _dma_caps;
+//static seL4_CPtr* _dma_caps;
 
 static seL4_Word _dma_pstart = 0;
 static seL4_Word _dma_pend = 0;
@@ -50,48 +53,13 @@ dma_clean(void* cookie, eth_vaddr_t addr, int range){
     (void)range;
 }
 
-
-static inline void 
-_dma_fill(seL4_Word pstart, seL4_Word pend, int cached){
-    seL4_CPtr* caps = &_dma_caps[(pstart - _dma_pstart) >> seL4_PageBits];
-    seL4_ARM_VMAttributes vm_attr = 0;
-    int err;
-
-    if(cached){
-        vm_attr = seL4_ARM_Default_VMAttributes;
-        vm_attr = 0 /* TODO L2CC currently not controlled by kernel */;
-    }
-
-    pstart -= PAGE_OFFSET(pstart);
-    while(pstart < pend){
-        if(*caps == 0){
-            /* Create the frame cap */
-            err = cspace_ut_retype_addr(pstart, seL4_ARM_SmallPageObject,
-                                        seL4_PageBits, cur_cspace, caps);
-            assert(!err);
-            /* Map in the frame */
-            err = map_page(*caps, seL4_CapInitThreadPD, VIRT(pstart), 
-                           seL4_AllRights, vm_attr);
-            assert(!err);
-        }
-        /* Next */
-        pstart += (1 << seL4_PageBits);
-        caps++;
-    }
-}
-
-
 int 
 dma_init(seL4_Word dma_paddr_start, int sizebits){
     assert(_dma_pstart == 0);
 
     _dma_pstart = _dma_pnext = dma_paddr_start;
     _dma_pend = dma_paddr_start + (1 << sizebits);
-    _dma_caps = (seL4_CPtr*)malloc(sizeof(seL4_CPtr) * DMA_PAGES);
-    //conditional_panic(!_dma_caps, "Not enough heap space for dma frame caps");
-    assert (_dma_caps);
 
-    memset(_dma_caps, 0, sizeof(seL4_CPtr) * DMA_PAGES);
     return 0;
 }
 
@@ -110,8 +78,10 @@ sos_dma_malloc(void* cookie, uint32_t size, int cached) {
             _dma_pnext = ROUND_UP(_dma_pnext, seL4_PageBits);
         }
         alloc_cached = cached;
-        /* Fill the dma memory */
-        _dma_fill(_dma_pnext, _dma_pnext + size, cached);
+
+        /* FIXME: how to handle cache in API design - don't need atm since seL4 doesn't do L2CC */
+        /* don't need dma_fill since rootsvr does this for us if we fault */
+
         /* set return values */
         dma_mem.phys = (eth_paddr_t)_dma_pnext;
         dma_mem.virt = (eth_vaddr_t)VIRT(dma_mem.phys);

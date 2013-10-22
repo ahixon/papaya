@@ -9,31 +9,63 @@
 #include <pawpaw.h>
 #include <sos.h>
 
-int main(void) {
-    seL4_CPtr _sos_interrupt_ep_cap = pawpaw_create_ep_async ();
+#include <dma.h>
+#include "network.h"
 
-    /* Initialise the network hardware */
-    network_init (_sos_interrupt_ep_cap);
+seL4_CPtr async_ep;
 
-    printf ("Network service started.");
+struct pawpaw_eventhandler_info handlers[2] = {
+    {   0,  0,  0   },      // net register svc
+    {   0,  0,  0   },      // net unregister svc
+    // net state query
+    // debug stuff here (ie benchmark)
+};
 
-    while (1) {
-        seL4_Word badge;
-        seL4_Word interrupts_fired;
-        seL4_MessageInfo_t message;
+struct pawpaw_event_table handler_table = { 2, handlers };
 
-        message = seL4_Wait((SYSCALL_SERVICE_SLOT + 1), &badge);
+void interrupt_handler (struct pawpaw_event* evt) {
+    network_irq (evt->args[0]);
+}
 
-        uint32_t label = seL4_MessageInfo_get_label(message);
-        printf ("** SVC_NET ** received message from %x with label %d and length %d\n", badge, label, seL4_MessageInfo_get_length (message));
+char DMA_REGION[1 << DMA_SIZE_BITS] __attribute__((aligned(0x1000))) = { 0 };
 
-        if (label == seL4_Interrupt) {
-            //printf ("got network interrupt\n");
-            network_irq (interrupts_fired);
-        } else {
-            seL4_MessageInfo_t newmsg = seL4_MessageInfo_new (0, 0, 0, 1);
-            seL4_SetMR (0, 0);
-            seL4_Reply (newmsg);
-        }
-    }
+seL4_Word dma_physical;
+
+int main (void) {
+    int err;
+
+    /* init event handler */
+    pawpaw_event_init ();
+
+    /* create async EP for interrupts */
+    async_ep = pawpaw_create_ep_async ();
+    assert (async_ep);
+
+    /* bind async EP to any sync EPs (so we can just listen on one) */
+    err = seL4_TCB_BindAEP (PAPAYA_TCB_SLOT, async_ep);
+    assert (!err);
+
+    /* create our EP to listen on */
+    seL4_CPtr service_ep = pawpaw_create_ep ();
+    assert (service_ep);
+
+    /* set underlying physical memory to be contiguous for DMA */
+    dma_physical = pawpaw_dma_alloc (&DMA_REGION, DMA_SIZE_BITS);
+    assert (dma_physical);
+
+    /* setup our userspace allocator - DOES IT LOOK LIKE I HAVE TIME
+     * TO WRITE MY OWN LWIP WRAPPER, LET ALONE TRY TO UNDERSTAND LWIP?? */
+    dma_init (dma_physical, DMA_SIZE_BITS);
+
+    /* Initialise the network hardware - sets up interrupts */
+    network_init (async_ep);
+
+    /* register and listen */
+    err = pawpaw_register_service (service_ep);
+    assert (err);
+
+    printf ("svc_net: started\n");
+    pawpaw_event_loop (&handler_table, interrupt_handler, service_ep);
+
+    return 0;
 }

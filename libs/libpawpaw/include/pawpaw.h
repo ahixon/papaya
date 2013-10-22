@@ -62,6 +62,7 @@ struct pawpaw_share {
 /* FIXME: in the future, maybe register a device struct? */
 seL4_CPtr pawpaw_register_irq (int irq_num);
 void* pawpaw_map_device (unsigned int base, unsigned int size);
+seL4_Word pawpaw_dma_alloc (void *vaddr, unsigned int sizebits);
 
 seL4_CPtr pawpaw_save_reply (void);
 

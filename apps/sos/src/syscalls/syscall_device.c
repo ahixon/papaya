@@ -26,3 +26,8 @@ int syscall_map_device (struct pawpaw_event* evt) {
 
     return PAWPAW_EVENT_NEEDS_REPLY;
 }
+
+int syscall_alloc_dma (struct pawpaw_event* evt) {
+    /* FIXME: implement me! */
+    return PAWPAW_EVENT_UNHANDLED;
+}

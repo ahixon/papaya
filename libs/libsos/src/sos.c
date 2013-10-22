@@ -43,7 +43,6 @@ fildes_t open(const char *path, fmode_t mode) {
     seL4_SetMR (1, vfs_share->id);
     seL4_SetMR (2, mode);
 
-    printf ("Calling svc_vfs with VFS_OPEN = %d\n", VFS_OPEN);
     seL4_MessageInfo_t reply = seL4_Call (vfs_ep, msg);
     if (seL4_MessageInfo_get_extraCaps (reply) == 1) {
     	return (fildes_t)recv_cap;
@@ -83,7 +82,6 @@ int read(fildes_t file, char *buf, size_t nbyte) {
     seL4_SetMR (1, fd_share->id);
     seL4_SetMR (2, nbyte);
 
-    printf ("Calling someone with VFS_READ = %d\n", VFS_READ);
     seL4_Call ((seL4_CPtr)file, msg);
     return seL4_GetMR (0);
 }
@@ -177,7 +175,7 @@ pid_t process_wait(pid_t pid) {
 
 seL4_CPtr timersvc_ep = 0;
 
-int64_t time_stamp(void) {
+int64_t time_stamp (void) {
 	if (!timersvc_ep) timersvc_ep = pawpaw_service_lookup (TIMER_SERVICE_NAME);
 
 	seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 1);
@@ -189,14 +187,25 @@ int64_t time_stamp(void) {
 	return (int64_t)((uint64_t)seL4_GetMR (0) << 32 | seL4_GetMR (1));
 }
 
-void sleep(int msec) {
-	if (!timersvc_ep) timersvc_ep = pawpaw_service_lookup (TIMER_SERVICE_NAME);
+void sleep (int msec) {
+	usleep (msec * 1000);
+}
 
-    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 2);
+/* FIXME: move into libunix or libpawpaw or something */
+int usleep (useconds_t usec) {
+    if (!timersvc_ep) timersvc_ep = pawpaw_service_lookup (TIMER_SERVICE_NAME);
+
+    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 3);
+
+    uint32_t msb = (uint32_t)(usec >> 32);
+    uint32_t lsb = (uint32_t)usec;
+
     seL4_SetMR (0, TIMER_REGISTER);
-    seL4_SetMR (1, (seL4_Word)msec);
+    seL4_SetMR (1, msb);
+    seL4_SetMR (2, lsb);
 
-	seL4_Call (timersvc_ep, msg);
+    seL4_Call (timersvc_ep, msg);
+    return seL4_GetMR (0);
 }
 
 /*************** VM SYSCALLS ***************/

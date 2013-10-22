@@ -219,8 +219,6 @@ fire_timer (void) {
     }
 }
 
-/* Public API */
-
 /*
  * Handles a timer interrupt.
  */
@@ -261,12 +259,6 @@ handle_timer(void)
     if (status & SR_OF1) {
         fire_timer ();
         install_timers();
-    }
-
-    // check OC3 for weird 100ms tick
-    if (status & SR_OF3) {
-        printf ("** 100ms tick, timestamp = %lld\n", time_stamp());
-        regs->ocr[2] = regs->ocr[2] + TICK_100MS;
     }
 }
 
@@ -334,63 +326,61 @@ static void service_init (void) {
     int err;
 
     /* Try to register events on our IRQ */
-    printf ("timer: registering IRQ\n");
+    //printf ("timer: registering IRQ\n");
     handler = pawpaw_register_irq (IRQ_GPT);
     assert (handler);
 
-    printf ("timer: creating async EP\n");
+    //printf ("timer: creating async EP\n");
     seL4_CPtr async_ep = pawpaw_create_ep_async();
     assert (async_ep);
 
-    printf ("timer: creating sync EP\n");
+    //printf ("timer: creating sync EP\n");
     service_ep = pawpaw_create_ep ();
     assert (service_ep);
 
     /* now bind our async EP to our regular message EP (so we can receive msgs/signals) */
-    printf ("timer: binding TCB and async EP\n");
+    //printf ("timer: binding TCB and async EP\n");
     err = seL4_TCB_BindAEP (PAPAYA_TCB_SLOT, async_ep);
     assert (!err);
 
     /* awesome, now setup to receive interrupts on our async endpoint */
-    printf ("timer: setting async EP to receive IRQ events\n");
+    //printf ("timer: setting async EP to receive IRQ events\n");
     err = seL4_IRQHandler_SetEndpoint(handler, async_ep);
     assert (!err);
 
     /* map the GPT registers into memory */
-    printf ("timer: mapping device registers\n");
+    //printf ("timer: mapping device registers\n");
     regs = pawpaw_map_device (GPT_MEMMAP_BASE, GPT_MEMMAP_SIZE);
     assert (regs);
 
     /* and if anyone asks for us, tell them to use our endpoint */
-    printf ("timer: registering service\n");
+    //printf ("timer: registering service\n");
     err = pawpaw_register_service (service_ep);
     assert (err);
 
-    printf ("timer: service setup done\n");
+    //printf ("timer: service setup done\n");
     /* FIXME: register the device so we get /dev/timer0 !!! */
 }
 
-
-int main(void) {
+int main (void) {
     /* setup the service */
-    service_init();
+    service_init ();
 
     /* reset the device */
-    gpt_reset();
+    gpt_reset ();
     gpt_select_clock (CLOCK_PERIPHERAL);
 
     /* enable output compare */
-    regs->control |= CR_OM1 (OUTPUT_SET) | CR_OM2(OUTPUT_SET) | CR_OM3(OUTPUT_SET) | CR_FRR;
+    regs->control |= CR_OM1 (OUTPUT_SET) | CR_FRR;
 
     /* and setup overflow interrupt */
-    regs->interrupt |= IR_ROLLOVER/* | IR_OC3;
-    regs->ocr[2] = TICK_100MS;*/;
+    regs->interrupt |= IR_ROLLOVER;
 
     /* set prescaler so that the counter register increments every 1us */
     gpt_set_prescale (66);
 
     /* ack for safety just in case some interrupts already arrived while setting up */
-    int err = seL4_IRQHandler_Ack(handler);
+    int err = seL4_IRQHandler_Ack (handler);
     assert (!err);
 
     regs->control |= CR_EN;
@@ -400,6 +390,7 @@ int main(void) {
     seL4_Word badge;
     seL4_MessageInfo_t msg;
 
+    /* FIXME: use pawpaw_event stuff */
     while (1) {
         msg = seL4_Wait (service_ep, &badge);               /* FIXME: also hacky mcgee */
         seL4_Word label = seL4_MessageInfo_get_label (msg);
@@ -411,7 +402,7 @@ int main(void) {
 
             case seL4_NoFault:
                 if (seL4_GetMR (0) == TIMER_REGISTER) {
-                    uint64_t delay = (seL4_GetMR(1) * 1000);  /* arg is given in millsecs, need microsecs */
+                    uint64_t delay = (uint64_t)seL4_GetMR (1) << 32 | seL4_GetMR (2);
                     //printf ("timer: registering timer for %llu usecs\n", delay);
 
                     /* NOTE: remember to use seL4_GetMR before save_reply! */

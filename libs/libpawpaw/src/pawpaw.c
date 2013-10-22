@@ -129,3 +129,8 @@ void pawpaw_suicide (void) {
 
     seL4_Call (PAPAYA_SYSCALL_SLOT, msg);
 }
+
+seL4_Word pawpaw_dma_alloc (void *vaddr, unsigned int sizebits) {
+    /* FIXME: implment me! */
+    return 0;
+}

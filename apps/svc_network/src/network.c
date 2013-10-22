@@ -22,6 +22,9 @@
 #include <ethdrivers/lwip_iface.h>
 #include <cspace/cspace.h>
 
+#include <pawpaw.h>
+#include <sos.h>
+
 #include "dma.h"
 
 #define IRQ_BIT(irq) (1 << ((irq) & 0x1f))
@@ -36,8 +39,6 @@
 
 #define ARP_PRIME_TIMEOUT_MS     1000
 #define ARP_PRIME_RETRY_DELAY_MS   10
-
-extern const seL4_BootInfo* _boot_info;
 
 static struct net_irq {
     int irq;
@@ -55,44 +56,35 @@ struct netif *_netif;
  ***  OS support ***
  *******************/
 
-static void * 
-sos_malloc(void* cookie, uint32_t size){
+static void* sos_malloc (void* cookie, uint32_t size) {
     (void)cookie;
-    return malloc(size);
+    return malloc (size);
 }
 
-static void * 
-sos_map_device(void* cookie, eth_paddr_t addr, int size){
+static void* sos_map_device (void* cookie, eth_paddr_t addr, int size) {
     (void)cookie;
-    /* FIXME: should be syscall */
-    return map_device(addr, size);
+    return pawpaw_map_device ((unsigned int)addr, size);
 }
 
-void 
-sos_usleep(int usecs) {
-    /* FIXME: XXX: use timer service */
-    /* We need to spin because we do not as yet have a timer interrupt */
-    while(usecs-- > 0){
-        /* Assume 1 GHz clock */
-        volatile int i = 1000;
-        while(i-- > 0);
-        seL4_Yield();
-    }
-
-    /* Handle pending network traffic */
-    while(ethif_input(_netif));
+void sos_usleep (int usecs) {
+    usleep (usecs);
+   
+    /* FIXME: do we need this?
+     * Handle pending network traffic */
+    while (ethif_input (_netif));
 }
 
 /*******************
  *** IRQ handler ***
  *******************/
-void 
-network_irq(seL4_Word irq) {
+void network_irq (seL4_Word irq) {
     int i;
+
     /* skip if the network was not initialised */
-    if(_irq_ep == 0){
+    if (_irq_ep == 0){
         return;
     }
+
     /* Loop through network irqs until we find a match */
     for(i = 0; i < _nirqs; i++){
         if(irq & IRQ_BIT(_net_irqs[i].irq)){
@@ -104,21 +96,22 @@ network_irq(seL4_Word irq) {
     }
 }
 
-static seL4_CPtr
-enable_irq(int irq, seL4_CPtr aep) {
+static seL4_CPtr enable_irq (int irq, seL4_CPtr aep) {
     seL4_CPtr cap;
     int err;
-    /* FIXME: should be syscall */
 
     /* Create an IRQ handler */
-    cap = cspace_irq_control_get_cap(cur_cspace, seL4_CapIRQControl, irq);
-    conditional_panic(!cap, "Failed to acquire and IRQ control cap");
+    cap = pawpaw_register_irq (irq);
+    assert (cap);
+
     /* Assign to an end point */
     err = seL4_IRQHandler_SetEndpoint(cap, aep);
-    conditional_panic(err, "Failed to set interrupt endpoint");
+    assert (!err);
+
     /* Ack the handler before continuing */
-    err = seL4_IRQHandler_Ack(cap);
-    conditional_panic(err, "Failure to acknowledge pending interrupts");
+    err = seL4_IRQHandler_Ack (cap);
+    assert (!err);
+
     return cap;
 }
 
@@ -169,7 +162,8 @@ network_init(seL4_CPtr interrupt_ep) {
     err |= !ipaddr_aton(CONFIG_SOS_GATEWAY,      &gw);
     err |= !ipaddr_aton(CONFIG_SOS_IP     ,  &ipaddr);
     err |= !ipaddr_aton(CONFIG_SOS_NETMASK, &netmask);
-    conditional_panic(err, "Failed to parse IP address configuration");
+    assert (!err);
+    //conditional_panic(err, "Failed to parse IP address configuration");
     printf("  Local IP Address: %s\n", ipaddr_ntoa( &ipaddr));
     printf("Gateway IP Address: %s\n", ipaddr_ntoa(     &gw));
     printf("      Network Mask: %s\n", ipaddr_ntoa(&netmask));
@@ -235,7 +229,7 @@ network_init(seL4_CPtr interrupt_ep) {
  ****************************/
 
 /* FIXME: do we need this? */
-
+#if 0
 struct sync_ep_node {
     seL4_CPtr cap;
     seL4_Word paddr;
@@ -247,6 +241,8 @@ struct sync_ep_node* sync_ep_list = NULL;
 /* Provide an endpoint ready for use */
 void * 
 sync_new_ep(seL4_CPtr* ep_cap){
+    printf("sync new ep called, probably gonna die\n");
+
     struct sync_ep_node *epn = sync_ep_list;
     if(epn){
         /* Use endpoint from the pool */
@@ -286,5 +282,4 @@ sync_free_ep(void* _epn){
     epn->next = sync_ep_list;
     sync_ep_list = epn;
 }
-
-
+#endif
