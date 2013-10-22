@@ -3,6 +3,7 @@
  *  - stores a copy of the page table for this address space
  */
 
+#include <string.h>
 #include <sel4/sel4.h>
 
 #include <cspace/cspace.h>

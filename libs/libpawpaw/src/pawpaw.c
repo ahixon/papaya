@@ -131,6 +131,11 @@ void pawpaw_suicide (void) {
 }
 
 seL4_Word pawpaw_dma_alloc (void *vaddr, unsigned int sizebits) {
-    /* FIXME: implment me! */
-    return 0;
+    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 3);
+    seL4_SetMR (0, SYSCALL_ALLOC_DMA);
+    seL4_SetMR (1, (seL4_Word)vaddr);
+    seL4_SetMR (2, sizebits);
+
+    seL4_Call (PAPAYA_SYSCALL_SLOT, msg);
+    return seL4_GetMR (0);
 }

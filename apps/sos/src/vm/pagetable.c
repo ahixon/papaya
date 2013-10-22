@@ -232,24 +232,26 @@ page_map (addrspace_t as, struct as_region* region, vaddr_t vaddr) {
         return 0;
     }
 
-    /* ok now try to map in addrspace */
-    frameidx_t frame = frame_alloc ();
-    if (!frame) {
-        printf ("page_map: no memory left\n");
-        return 0;
+    /* ok now try to map in addrspace if not already provided */
+    if (!entry->frame_idx) {
+        entry->frame_idx = frame_alloc ();
+        if (!entry->frame_idx) {
+            printf ("page_map: no memory left\n");
+            return 0;
+        }
     }
     
-    entry->cap = pagetable_kernel_map_page (vaddr, frame, region, as);
+    entry->cap = pagetable_kernel_map_page (vaddr, entry->frame_idx, region, as);
     if (!entry->cap) {
         printf ("actual page map failed\n");
-        frame_free (frame);
+        frame_free (entry->frame_idx);
+        entry->frame_idx = 0;
         return 0;
     }
 
-    entry->frame_idx = frame;
     entry->flags |= PAGE_ALLOCATED;
 
-    return frame;
+    return entry->frame_idx;
 }
 
 /*
@@ -322,6 +324,7 @@ page_unmap (struct pt_entry* entry) {
         /* "free" the frame - removes from refcount and only
          * actually releases underlying frame when it's zero. */
         frame_free (entry->frame_idx);
+        entry->frame_idx = 0;
         return true;
     } else {
         return false;

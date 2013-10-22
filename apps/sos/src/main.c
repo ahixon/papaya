@@ -29,12 +29,14 @@
 #include <sys/panic.h>
 
 #define MAPPER_STACK_SIZE 1024
+#define DMA_SIZE_BITS 22
 
 extern char _cpio_archive[];        /* FIXME: move this out of here, one day.. */
 
 const seL4_BootInfo* _boot_info;
 seL4_CPtr rootserver_syscall_cap;
 extern seL4_CPtr _badgemap_ep;
+seL4_Word dma_addr;
 
 seL4_CPtr save_reply_cap (void) {
     seL4_CPtr reply_cap = cspace_save_reply_cap (cur_cspace);
@@ -70,7 +72,7 @@ struct pawpaw_eventhandler_info syscalls[NUM_SYSCALLS] = {
     { syscall_thread_pid,       0,  HANDLER_REPLY   },
     { NULL, 0, 0 },     // SYSCALL_PROCESS_SEND_STATUS 
     { syscall_thread_wait,      1,  HANDLER_REPLY   },
-    { syscall_alloc_dma,        1,  HANDLER_REPLY   },
+    { syscall_alloc_dma,        2,  HANDLER_REPLY   },
 };
 
 struct pawpaw_event_table syscall_table = { NUM_SYSCALLS, syscalls };
@@ -234,7 +236,6 @@ void cspace_ut_free_wrapper (seL4_Word addr, int sizebits) {
  * Initialisation of subsystems and resources required for Papaya.
  */
 static void rootserver_init (seL4_CPtr* ipc_ep){
-    seL4_Word dma_addr;
     seL4_Word low, high;
     int err;
 
@@ -247,7 +248,8 @@ static void rootserver_init (seL4_CPtr* ipc_ep){
     err = ut_table_init (_boot_info);
     conditional_panic (err, "failed to initialise untyped table\n");
 
-    /* DMA uses a large amount of memory that will never be freed */
+    /* DMA uses a large amount of memory that will never be freed
+     * FIXME: could use allocator? do we care? */
     dma_addr = ut_steal_mem (DMA_SIZE_BITS);
     conditional_panic (dma_addr == 0, "Failed to reserve DMA memory\n");
 
@@ -261,12 +263,6 @@ static void rootserver_init (seL4_CPtr* ipc_ep){
     err = cspace_root_task_bootstrap (cspace_ut_alloc_wrapper, cspace_ut_free_wrapper, ut_translate,
                                      malloc, free);
     conditional_panic (err, "failed to initialise root CSpace\n");
-
-    /* Initialise DMA memory */
-    #if 0
-    err = dma_init(dma_addr, DMA_SIZE_BITS);
-    conditional_panic(err, "Failed to intiialise DMA memory\n");
-    #endif
 
     /* Initialise frametable */
     frametable_init ();

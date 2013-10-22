@@ -2,8 +2,10 @@
 #include <thread.h>
 #include <cspace/cspace.h>
 #include <mapping.h>
+#include <assert.h>
 
 extern thread_t current_thread;
+extern seL4_Word dma_addr;
 
 int syscall_register_irq (struct pawpaw_event* evt) {
     evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
@@ -28,6 +30,38 @@ int syscall_map_device (struct pawpaw_event* evt) {
 }
 
 int syscall_alloc_dma (struct pawpaw_event* evt) {
-    /* FIXME: implement me! */
-    return PAWPAW_EVENT_UNHANDLED;
+    if (!dma_addr) {
+        printf("%s: DMA already all allocated\n", __FUNCTION__);
+        return PAWPAW_EVENT_UNHANDLED;
+    }
+
+    struct as_region* reg = as_get_region_by_addr (current_thread->as, evt->args[0]);
+    if (!reg) {
+        return PAWPAW_EVENT_UNHANDLED;
+    }
+
+    /* whole extent not in region */
+    vaddr_t end = evt->args[0] + (1 << evt->args[1]);
+    if (end >= (reg->vbase + reg->size)) {
+        return PAWPAW_EVENT_UNHANDLED;
+    }
+
+    /* XXX: need to write an allocator - as a hack, just give it what it asked as everything */
+    seL4_Word local_dma = dma_addr;
+    seL4_Word inital_dma = dma_addr;
+    dma_addr = 0;
+
+    /* go through all the underlying pages + preallocate frames */
+    for (vaddr_t vaddr = evt->args[0]; vaddr < end; vaddr += PAGE_SIZE) {
+        struct pt_entry* pte = page_fetch (current_thread->as->pagetable, vaddr);
+        assert (pte);
+
+        pte->frame_idx = local_dma;
+        local_dma += PAGE_SIZE;
+    }
+
+    evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+    seL4_SetMR (0, inital_dma);
+
+    return PAWPAW_EVENT_NEEDS_REPLY;
 }
