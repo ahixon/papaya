@@ -36,4 +36,6 @@ int syscall_share_create (struct pawpaw_event* evt);
 int syscall_share_mount (struct pawpaw_event* evt);
 int syscall_share_unmount (struct pawpaw_event* evt);
 
+int syscall_alloc_dma (struct pawpaw_event* evt);
+
 #endif

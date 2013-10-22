@@ -70,6 +70,7 @@ struct pawpaw_eventhandler_info syscalls[NUM_SYSCALLS] = {
     { syscall_thread_pid,       0,  HANDLER_REPLY   },
     { NULL, 0, 0 },     // SYSCALL_PROCESS_SEND_STATUS 
     { syscall_thread_wait,      1,  HANDLER_REPLY   },
+    { syscall_alloc_dma,        1,  HANDLER_REPLY   },
 };
 
 struct pawpaw_event_table syscall_table = { NUM_SYSCALLS, syscalls };
@@ -232,36 +233,34 @@ void cspace_ut_free_wrapper (seL4_Word addr, int sizebits) {
 /*
  * Initialisation of subsystems and resources required for Papaya.
  */
-static void rootserver_init(seL4_CPtr* ipc_ep){
+static void rootserver_init (seL4_CPtr* ipc_ep){
     seL4_Word dma_addr;
     seL4_Word low, high;
     int err;
 
     /* Retrieve boot info from seL4 */
-    _boot_info = seL4_GetBootInfo();
-    conditional_panic(!_boot_info, "Failed to retrieve boot info\n");
-    if(verbose > 0){
-        //print_bootinfo(_boot_info);
-    }
+    _boot_info = seL4_GetBootInfo ();
+    conditional_panic (!_boot_info, "failed to retrieve boot info\n");
+    //print_bootinfo (_boot_info);
 
     /* Initialise the untyped sub system and reserve memory for DMA */
-    err = ut_table_init(_boot_info);
-    conditional_panic(err, "Failed to initialise Untyped Table\n");
+    err = ut_table_init (_boot_info);
+    conditional_panic (err, "failed to initialise untyped table\n");
 
     /* DMA uses a large amount of memory that will never be freed */
-    dma_addr = ut_steal_mem(DMA_SIZE_BITS);
-    conditional_panic(dma_addr == 0, "Failed to reserve DMA memory\n");
+    dma_addr = ut_steal_mem (DMA_SIZE_BITS);
+    conditional_panic (dma_addr == 0, "Failed to reserve DMA memory\n");
 
     /* find available memory */
-    ut_find_memory(&low, &high);
+    ut_find_memory (&low, &high);
 
     /* Initialise the untyped memory allocator */
-    ut_allocator_init(low, high);
+    ut_allocator_init (low, high);
 
     /* Initialise the cspace manager */
-    err = cspace_root_task_bootstrap(cspace_ut_alloc_wrapper, cspace_ut_free_wrapper, ut_translate,
+    err = cspace_root_task_bootstrap (cspace_ut_alloc_wrapper, cspace_ut_free_wrapper, ut_translate,
                                      malloc, free);
-    conditional_panic(err, "Failed to initialise the c space\n");
+    conditional_panic (err, "failed to initialise root CSpace\n");
 
     /* Initialise DMA memory */
     #if 0
@@ -270,7 +269,7 @@ static void rootserver_init(seL4_CPtr* ipc_ep){
     #endif
 
     /* Initialise frametable */
-    frametable_init();
+    frametable_init ();
 
     /* Setup address space + pagetable for root server */
     cur_addrspace = addrspace_create (seL4_CapInitThreadPD);
@@ -286,27 +285,27 @@ static void rootserver_init(seL4_CPtr* ipc_ep){
     }
 
     /* Initialise PID and map ID generators */
-    uid_init();
+    uid_init ();
 
     /* Create synchronous endpoint for process syscalls via IPC */
-    seL4_Word ep_addr = ut_alloc(seL4_EndpointBits);
-    conditional_panic(!ep_addr, "No memory for endpoint");
-    err = cspace_ut_retype_addr(ep_addr, 
+    seL4_Word ep_addr = ut_alloc (seL4_EndpointBits);
+    conditional_panic (!ep_addr, "no memory for syscall endpoint");
+    err = cspace_ut_retype_addr (ep_addr, 
                                 seL4_EndpointObject, seL4_EndpointBits,
                                 cur_cspace, ipc_ep);
-    conditional_panic(err, "Failed to allocate c-slot for IPC endpoint");
+    conditional_panic (err, "failed to retype syscall endpoint");
 
     /* Start internal badge map service */
     thread_t badgemap_thread = thread_create_internal ("badgemap", mapper_main, MAPPER_STACK_SIZE);
     conditional_panic (!badgemap_thread, "failed to start badgemap");
 
     /* Create specific EP for badge map communication (compared to syscall EP) */
-    ep_addr = ut_alloc(seL4_EndpointBits);
-    conditional_panic(!ep_addr, "No memory for endpoint");
-    err = cspace_ut_retype_addr(ep_addr, 
+    ep_addr = ut_alloc (seL4_EndpointBits);
+    conditional_panic (!ep_addr, "no memory for badgemap endpoint");
+    err = cspace_ut_retype_addr (ep_addr, 
                                 seL4_EndpointObject, seL4_EndpointBits,
                                 cur_cspace, &_badgemap_ep);
-    conditional_panic(err, "Failed to allocate c-slot for badgemap");
+    conditional_panic (err, "failed to retype badgemap endpoint");
 }
 
 /*
@@ -321,17 +320,14 @@ int main (void) {
     print_resource_stats ();
     
     /* boot up device filesystem & mount it */
-    assert (thread_create_from_cpio ("fs_dev", rootserver_syscall_cap));
-    // FIXME: actually mount the thing
+    //assert (thread_create_from_cpio ("fs_dev", rootserver_syscall_cap));
 
     /* boot up core services */
     //thread_create_from_cpio ("svc_init", rootserver_syscall_cap);
     printf ("Starting core services...\n");
-    assert (thread_create_from_cpio ("svc_vfs", rootserver_syscall_cap));
-     (thread_create_from_cpio ("svc_dev", rootserver_syscall_cap));
-    // thread_create ("svc_net", rootserver_syscall_cap);
-    // FIXME: need to rename svc_network -> svc_net
-
+    //assert (thread_create_from_cpio ("svc_vfs", rootserver_syscall_cap));
+    //assert (thread_create_from_cpio ("svc_dev", rootserver_syscall_cap));
+    assert (thread_create_from_cpio ("svc_network", rootserver_syscall_cap));
 
     /* start any devices services inside the CPIO archive */
     dprintf (1, "Looking for device services linked into CPIO...\n");

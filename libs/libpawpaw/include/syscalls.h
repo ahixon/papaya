@@ -1,7 +1,7 @@
 #ifndef __SYSCALLS_H__
 #define __SYSCALLS_H__
 
-#define NUM_SYSCALLS				18
+#define NUM_SYSCALLS				19
 
 #define SYSCALL_SBRK	        	(0)
 
@@ -26,5 +26,7 @@
 #define SYSCALL_PROCESS_GETPID		(15)
 #define SYSCALL_PROCESS_SEND_STATUS	(16)
 #define SYSCALL_PROCESS_WAIT		(17)
+
+#define SYSCALL_ALLOC_DMA			(18)
 
 #endif

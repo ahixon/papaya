@@ -6,12 +6,14 @@
 
 #include <sel4/sel4.h>
 #include <syscalls.h>
-
+#include <pawpaw.h>
 #include <sos.h>
 
 int main(void) {
+    seL4_CPtr _sos_interrupt_ep_cap = pawpaw_create_ep_async ();
+
     /* Initialise the network hardware */
-    network_init(_sos_interrupt_ep_cap);
+    network_init (_sos_interrupt_ep_cap);
 
     printf ("Network service started.");
 
@@ -25,10 +27,13 @@ int main(void) {
         uint32_t label = seL4_MessageInfo_get_label(message);
         printf ("** SVC_NET ** received message from %x with label %d and length %d\n", badge, label, seL4_MessageInfo_get_length (message));
 
-        seL4_MessageInfo_t newmsg = seL4_MessageInfo_new (0, 0, 0, 1);
-        seL4_SetMR (0, 0);
-        seL4_Reply (newmsg);
-
-        network_irq(interrupts_fired);
+        if (label == seL4_Interrupt) {
+            //printf ("got network interrupt\n");
+            network_irq (interrupts_fired);
+        } else {
+            seL4_MessageInfo_t newmsg = seL4_MessageInfo_new (0, 0, 0, 1);
+            seL4_SetMR (0, 0);
+            seL4_Reply (newmsg);
+        }
     }
 }

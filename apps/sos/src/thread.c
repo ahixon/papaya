@@ -134,6 +134,8 @@ int thread_cspace_new_cnodes (thread_t thread, int num, seL4_CPtr* cnode) {
             break;
         }
 
+        /* FIXME: add to thread_resources list since they might need freeing */
+
         alloc++;
     }
 

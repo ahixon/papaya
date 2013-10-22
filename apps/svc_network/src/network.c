@@ -23,12 +23,6 @@
 #include <cspace/cspace.h>
 
 #include "dma.h"
-#include "mapping.h"
-#include "ut_manager/ut.h"
-
-#define verbose 0
-#include <sys/debug.h>
-#include <sys/panic.h>
 
 #define IRQ_BIT(irq) (1 << ((irq) & 0x1f))
 
@@ -70,12 +64,13 @@ sos_malloc(void* cookie, uint32_t size){
 static void * 
 sos_map_device(void* cookie, eth_paddr_t addr, int size){
     (void)cookie;
+    /* FIXME: should be syscall */
     return map_device(addr, size);
 }
 
 void 
 sos_usleep(int usecs) {
-    /* FIXME: use timer service */
+    /* FIXME: XXX: use timer service */
     /* We need to spin because we do not as yet have a timer interrupt */
     while(usecs-- > 0){
         /* Assume 1 GHz clock */
@@ -95,7 +90,7 @@ void
 network_irq(seL4_Word irq) {
     int i;
     /* skip if the network was not initialised */
-    if(_irq_ep == seL4_CapNull){
+    if(_irq_ep == 0){
         return;
     }
     /* Loop through network irqs until we find a match */
@@ -113,6 +108,8 @@ static seL4_CPtr
 enable_irq(int irq, seL4_CPtr aep) {
     seL4_CPtr cap;
     int err;
+    /* FIXME: should be syscall */
+
     /* Create an IRQ handler */
     cap = cspace_irq_control_get_cap(cur_cspace, seL4_CapIRQControl, irq);
     conditional_panic(!cap, "Failed to acquire and IRQ control cap");
@@ -209,6 +206,7 @@ network_init(seL4_CPtr interrupt_ep) {
     network_prime_arp(&gw);
 
     /* initialise and mount NFS */
+#if 0
     if(strlen(SOS_NFS_DIR)) {
         /* Initialise NFS */
         int err;
@@ -229,11 +227,14 @@ network_init(seL4_CPtr interrupt_ep) {
         WARN("Skipping Network initialisation since no mount point was "
              "specified\n");
     }
+#endif
 }
 
 /****************************
  *** Sync library support ***
  ****************************/
+
+/* FIXME: do we need this? */
 
 struct sync_ep_node {
     seL4_CPtr cap;

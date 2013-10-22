@@ -12,13 +12,6 @@
 #include <sel4/types.h>
 #include <cspace/cspace.h>
 #include <dma.h>
-#include <mapping.h>
-#include <ut_manager/ut.h>
-#include <vm/vmem_layout.h>
-
-#define verbose 5
-#include <sys/debug.h>
-#include <sys/panic.h>
 
 #define DMA_SIZE     (_dma_pend - _dma_pstart)
 #define DMA_PAGES    (DMA_SIZE >> seL4_PageBits)
@@ -71,7 +64,7 @@ _dma_fill(seL4_Word pstart, seL4_Word pend, int cached){
 
     pstart -= PAGE_OFFSET(pstart);
     while(pstart < pend){
-        if(*caps == seL4_CapNull){
+        if(*caps == 0){
             /* Create the frame cap */
             err = cspace_ut_retype_addr(pstart, seL4_ARM_SmallPageObject,
                                         seL4_PageBits, cur_cspace, caps);
@@ -95,7 +88,8 @@ dma_init(seL4_Word dma_paddr_start, int sizebits){
     _dma_pstart = _dma_pnext = dma_paddr_start;
     _dma_pend = dma_paddr_start + (1 << sizebits);
     _dma_caps = (seL4_CPtr*)malloc(sizeof(seL4_CPtr) * DMA_PAGES);
-    conditional_panic(!_dma_caps, "Not enough heap space for dma frame caps");
+    //conditional_panic(!_dma_caps, "Not enough heap space for dma frame caps");
+    assert (_dma_caps);
 
     memset(_dma_caps, 0, sizeof(seL4_CPtr) * DMA_PAGES);
     return 0;
@@ -126,8 +120,8 @@ sos_dma_malloc(void* cookie, uint32_t size, int cached) {
         dma_mem.phys = 0;
         dma_mem.virt = 0;
     }
-    dprintf(5, "DMA: 0x%x - 0x%x\n", (uint32_t)dma_mem.phys, 
-                                     (uint32_t)dma_mem.phys + size);
+    /*printf("DMA: 0x%x - 0x%x\n", (uint32_t)dma_mem.phys, 
+                                     (uint32_t)dma_mem.phys + size);*/
     return dma_mem;
 }
 
