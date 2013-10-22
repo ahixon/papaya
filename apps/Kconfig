@@ -16,7 +16,7 @@ source "$SEL4_APPS_PATH/dev_timer/Kconfig"
 endmenu
 
 menu "Services"
-source "$SEL4_APPS_PATH/svc_network/Kconfig"
+source "$SEL4_APPS_PATH/svc_net/Kconfig"
 source "$SEL4_APPS_PATH/svc_vfs/Kconfig"
 source "$SEL4_APPS_PATH/svc_dev/Kconfig"
 

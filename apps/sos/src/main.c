@@ -316,14 +316,14 @@ int main (void) {
     print_resource_stats ();
     
     /* boot up device filesystem & mount it */
-    //assert (thread_create_from_cpio ("fs_dev", rootserver_syscall_cap));
+    assert (thread_create_from_cpio ("fs_dev", rootserver_syscall_cap));
 
     /* boot up core services */
     //thread_create_from_cpio ("svc_init", rootserver_syscall_cap);
     printf ("Starting core services...\n");
-    //assert (thread_create_from_cpio ("svc_vfs", rootserver_syscall_cap));
-    //assert (thread_create_from_cpio ("svc_dev", rootserver_syscall_cap));
-    assert (thread_create_from_cpio ("svc_network", rootserver_syscall_cap));
+    assert (thread_create_from_cpio ("svc_vfs", rootserver_syscall_cap));
+    assert (thread_create_from_cpio ("svc_dev", rootserver_syscall_cap));
+    assert (thread_create_from_cpio ("svc_net", rootserver_syscall_cap));
 
     /* start any devices services inside the CPIO archive */
     dprintf (1, "Looking for device services linked into CPIO...\n");

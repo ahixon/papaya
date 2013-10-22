@@ -1,4 +1,4 @@
-components-$(CONFIG_APP_SVC_NETWORK) += svc_network
+components-$(CONFIG_APP_SVC_NET) += svc_net
 
 svc_network: $(libc) libsel4 libsos liblwip libethdrivers libsel4sync libpawpaw
 
