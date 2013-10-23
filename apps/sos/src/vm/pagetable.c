@@ -138,7 +138,7 @@ pagetable_kernel_install_pt (addrspace_t as, seL4_ARM_VMAttributes attributes, v
 }
 
 /* 
- * Maps a the page already created from the PTE (use page_map) into the kernel, using the region's
+ * Maps the page already created from the PTE (use page_map) into the kernel, using the region's
  * permission and attributes.
  * 
  * Returns CPtr to page capability on success, 0 otherwise.
@@ -239,6 +239,8 @@ page_map (addrspace_t as, struct as_region* region, vaddr_t vaddr) {
             printf ("page_map: no memory left\n");
             return 0;
         }
+    } else {
+        printf ("%s: already had frame allocaed")
     }
     
     entry->cap = pagetable_kernel_map_page (vaddr, entry->frame_idx, region, as);

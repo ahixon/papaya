@@ -46,6 +46,8 @@ int syscall_alloc_dma (struct pawpaw_event* evt) {
         return PAWPAW_EVENT_UNHANDLED;
     }
 
+    printf("%s: asked to DMA alloc vaddr 0x%x -> 0x%x\n", __FUNCTION__, evt->args[0], end);
+
     /* XXX: need to write an allocator - as a hack, just give it what it asked as everything */
     seL4_Word local_dma = dma_addr;
     seL4_Word inital_dma = dma_addr;
@@ -57,6 +59,7 @@ int syscall_alloc_dma (struct pawpaw_event* evt) {
         assert (pte);
 
         pte->frame_idx = local_dma;
+        printf ("%s: underlying frame for 0x%x is now 0x%x\n", vaddr, local_dma);
         local_dma += PAGE_SIZE;
     }
 
