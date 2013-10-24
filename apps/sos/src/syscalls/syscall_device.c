@@ -58,7 +58,11 @@ int syscall_alloc_dma (struct pawpaw_event* evt) {
         struct pt_entry* pte = page_fetch (current_thread->as->pagetable, vaddr);
         assert (pte);
 
-        pte->frame_idx = local_dma;
+        pte->frame = frame_new_from_untyped (local_dma);
+        if (!pte->frame) {
+            printf ("%s: failed to allocate new untyped frame\n", __FUNCTION__);
+        }
+
         printf ("%s: underlying frame for 0x%x is now 0x%x\n", vaddr, local_dma);
         local_dma += PAGE_SIZE;
     }

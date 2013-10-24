@@ -144,14 +144,13 @@ pagetable_kernel_install_pt (addrspace_t as, seL4_ARM_VMAttributes attributes, v
  * Returns CPtr to page capability on success, 0 otherwise.
 */
 int
-pagetable_kernel_map_page (vaddr_t vaddr, frameidx_t frame, struct as_region* region, addrspace_t as) {
+pagetable_kernel_map_page (vaddr_t vaddr, struct frameinfo* frame, struct as_region* region, addrspace_t as) {
     int err;
     seL4_Word frame_cap, dest_cap;
 
-    frame_cap = frametable_fetch_cap (frame);
-    assert (frame_cap);
+    assert (frame);
 
-    dest_cap = cspace_copy_cap (cur_cspace, cur_cspace, frame_cap, seL4_AllRights);
+    dest_cap = cspace_copy_cap (cur_cspace, cur_cspace, frame->capability, seL4_AllRights);
     assert (dest_cap);
 
     //printf ("pagetable_kernel_map_page: mapping cap (originally 0x%x, copy is 0x%x) to vaddr 0x%x\n", frame_cap, dest_cap, vaddr);
@@ -209,7 +208,7 @@ page_fetch_entry (addrspace_t as, seL4_ARM_VMAttributes attributes, pagetable_t 
  * Allocates an underlying frame, and maps the page to that frame.
  * Should only be called once.
  */
-frameidx_t
+struct frame_info*
 page_map (addrspace_t as, struct as_region* region, vaddr_t vaddr) {
     assert (as != NULL);
     assert (region != NULL);
@@ -219,41 +218,49 @@ page_map (addrspace_t as, struct as_region* region, vaddr_t vaddr) {
 
     struct pt_entry* entry = page_fetch_entry (as, region->attributes, pt, vaddr);
     if (!entry) {
-        return 0;
+        return NULL;
     }
 
     if (entry->flags & PAGE_ALLOCATED) {
         /* page already allocated.
          *
-         * we COULD return entry->frame_idx but we want to return NULL since
+         * we COULD return entry->frame but we want to return NULL since
          * the we really shouldn't be calling page_map on the same address twice
          * and this indicates a bug, so if we return an error we can more easily
          * see who the calling function was. */
-        return 0;
+        return NULL;
     }
 
-    /* ok now try to map in addrspace if not already provided */
-    if (!entry->frame_idx) {
-        entry->frame_idx = frame_alloc ();
-        if (!entry->frame_idx) {
-            printf ("page_map: no memory left\n");
+    /* allocate frame if not already provided */
+    short did_allocation = false;
+    if (!entry->frame) {
+        entry->frame = frame_alloc ();
+        if (!entry->frame) {
+            /* TODO: swapping goes here */
+            printf ("page_map: no physical memory left - would normally swap\n");
             return 0;
         }
+
+        did_allocation = true;
     } else {
-        printf ("%s: already had frame allocaed")
+        printf ("%s: vaddr 0x%xalready had frame allocated", __FUNCTION__, vaddr);
     }
     
-    entry->cap = pagetable_kernel_map_page (vaddr, entry->frame_idx, region, as);
+    entry->cap = pagetable_kernel_map_page (vaddr, entry->frame, region, as);
     if (!entry->cap) {
         printf ("actual page map failed\n");
-        frame_free (entry->frame_idx);
-        entry->frame_idx = 0;
-        return 0;
+        if (did_allocation) {
+            /* only free if we did the allocation, otherwise leave for whoever */
+            frame_free (entry->frame);
+            entry->frame = NULL;
+        }
+
+        return NULL;
     }
 
     entry->flags |= PAGE_ALLOCATED;
 
-    return entry->frame_idx;
+    return entry->frame;
 }
 
 /*
@@ -286,12 +293,11 @@ pagetable_free (pagetable_t pt) {
                 page_unmap (entry);
             }
 
-
             /* now free the table cap + addrs */
             if (pt->table_caps [l1]) {
-                printf ("unmapping 0x%x\n", pt->table_caps [l1]);
                 if (seL4_ARM_PageTable_Unmap (pt->table_caps [l1])) {
                     printf ("%s: unmap failed\n", __FUNCTION__);
+                    /* FIXME: continue depending on error type since delete/free would be bad */
                 }
 
                 cspace_delete_cap (cur_cspace, pt->table_caps [l1]);
@@ -325,8 +331,8 @@ page_unmap (struct pt_entry* entry) {
 
         /* "free" the frame - removes from refcount and only
          * actually releases underlying frame when it's zero. */
-        frame_free (entry->frame_idx);
-        entry->frame_idx = 0;
+        frame_free (entry->frame);
+        entry->frame = NULL;
         return true;
     } else {
         return false;
@@ -361,15 +367,15 @@ page_map_shared (addrspace_t as_dst, struct as_region* reg_dst, vaddr_t dst,
     }
 
     /* make them share flags and frames */
-    dst_entry->frame_idx = src_entry->frame_idx;
+    dst_entry->frame = src_entry->frame;
     dst_entry->flags = src_entry->flags;
 
     /* update underlying frame refcount */
-    struct frameinfo* frame = frametable_get_frame (dst_entry->frame_idx);
+    struct frameinfo* frame = dst_entry->frame;
     frame_set_refcount (frame, frame_get_refcount (frame) + 1);
 
     /* map the dest page into the dest address space */
-    dst_entry->cap = pagetable_kernel_map_page (dst, dst_entry->frame_idx, reg_dst, as_dst);
+    dst_entry->cap = pagetable_kernel_map_page (dst, dst_entry->frame, reg_dst, as_dst);
     if (!dst_entry->cap) {
         return NULL;
     }

@@ -21,20 +21,17 @@ typedef struct pt_directory* pagetable_t;
 #define PAGE_RESERVED       8       /* if you define any more flags, you must increase flag bits in pt_entry struct */
 
 struct pt_entry {
-    /* FIXME: is it better to use 4 (== 24 bits) or round up to 12 and use 32 bits
-     * for cache line optimisation? */
-    frameidx_t frame_idx        : (PAGETABLE_L1_BITS + PAGETABLE_L2_BITS);
-    unsigned short flags        : 4;
+    struct frameinfo* frame;
     seL4_CPtr cap;
+    unsigned short flags;
+    /* there is padding here so feel free to add more data structures */
 };
 
 struct pt_table {
-    /* requires 0.25 frames */
     struct pt_entry entries[PAGETABLE_L2_SIZE];
 };
 
 struct pt_directory {
-    /* requires 8 frames - frame aligned */
     struct pt_table* entries[PAGETABLE_L1_SIZE];
 
     /* could have one CPtr inside each pt_table, BUT then doesn't fit neatly into

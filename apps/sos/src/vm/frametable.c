@@ -72,14 +72,12 @@ frametable_init (void)
     }
 }
 
-frameidx_t
+struct frameinfo*
 frame_alloc (void)
 {
     conditional_panic (!frametable, "frametable not initialised yet");
 
     seL4_Word untyped_addr;
-    seL4_CPtr frame_cap;
-    int err;
 
     /* reserve some from untyped memory */
     untyped_addr = ut_alloc (seL4_PageBits);
@@ -89,35 +87,58 @@ frame_alloc (void)
         return 0;
     }
 
-    /* awesome; we have memory, now retype it so we get a vaddr */
-    err =  cspace_ut_retype_addr(untyped_addr,
+    struct frameinfo* frame = &frametable[index];
+    frame = frame_alloc_from_untyped (untyped_addr);
+
+    if (!frame) {
+        ut_free (untyped_addr, seL4_PageBits);
+        return NULL;
+    }
+
+    allocated++;
+    return frame;
+}
+
+struct frameinfo*
+frame_new_from_untyped (seL4_Word untyped) {
+    struct frameinfo* frame = calloc (sizeof (struct frameinfo));
+    if (!frame) {
+        return NULL;
+    }
+
+    frame = frame_alloc_from_untyped (frame, untyped);
+    if (!frame) {
+        free (frame);
+        return NULL;
+    }
+
+    return frame;
+}
+
+struct frameinfo*
+frame_alloc_from_untyped (struct frameinfo* frame, seL4_Word untyped) {
+    seL4_CPtr frame_cap;
+    int err;
+
+    err =  cspace_ut_retype_addr(untyped,
                                  seL4_ARM_SmallPageObject, seL4_PageBits,
                                  cur_cspace, &frame_cap);
     if (err != seL4_NoError) {
-        ut_free (untyped_addr, seL4_PageBits);
         printf ("frame_alloc: could not retype: %s\n", seL4_Error_Message (err));
-        return 0;
-    }
-
-    frameidx_t index = IDX_PHYS(untyped_addr);
-    struct frameinfo* frame = &frametable[index];
+        return NULL;
+    }    
 
     frame->flags |= FRAME_ALLOCATED;
     frame->capability = frame_cap;
-    frame->paddr = untyped_addr;
+    frame->paddr = untyped;
     frame_set_refcount (frame, 1);
 
-    allocated++;
-    return index;
+    return frame;
 }
 
 void
-frame_free (frameidx_t idx) {
-    if (idx > high_idx) {
-        return;
-    }
-
-    struct frameinfo* fi = &frametable[idx];
+frame_free (struct frameinfo* fi) {
+    //struct frameinfo* fi = &frametable[idx];
 
     assert (fi->flags & FRAME_ALLOCATED);
 

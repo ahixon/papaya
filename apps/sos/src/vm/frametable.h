@@ -17,7 +17,7 @@
 
 struct frameinfo {
     paddr_t paddr;
-    seL4_CPtr capability;
+    seL4_CPtr capability;	/* FIXME: do we need this?? */
     uint32_t flags;
 };
 
@@ -40,11 +40,11 @@ frametable_init (void);
 void
 frametable_freeall (void);
 
-frameidx_t
+struct frameinfo*
 frame_alloc (void);
 
 void
-frame_free (frameidx_t idx);
+frame_free (struct frameinfo* frame);
 
 seL4_CPtr
 frametable_fetch_cap (frameidx_t frame);
