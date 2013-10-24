@@ -6,7 +6,7 @@
 #include <assert.h>
 
 
-//#define DEBUG_TIME
+//#define DEBUG_TIME 1
 #ifdef DEBUG_TIME
 #define debug(x...) printf( x )
 #else
@@ -31,7 +31,7 @@ time_recv(void *arg, struct udp_pcb *upcb, struct pbuf *p,
 {
     int pos = 0;
     pb_readl(p, (uint32_t*)&utc1900_seconds, &pos);
-    debug("received time %d\n", utc1900_seconds);
+    debug("received time %u\n", utc1900_seconds);
     pbuf_free(p);
 }
 
@@ -45,10 +45,13 @@ udp_time_get(const struct ip_addr *server)
     /* Create a connection to the time server */
     time_pcb = udp_new();
     if(time_pcb == NULL){
-        debug("time: failed to create udp pcb\n");
+        printf("time: failed to create udp pcb\n");
         return 0;
     }
+
+    debug("time: setup udp_recv\n");
     udp_recv(time_pcb, time_recv, (void*) 0);
+    debug("time: connecting to time port\n");
     udp_connect(time_pcb, &s, TIME_PORT);
 
     utc1900_seconds = 0;

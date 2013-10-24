@@ -20,7 +20,6 @@
 #include <lwip/init.h>
 #include <netif/etharp.h>
 #include <ethdrivers/lwip_iface.h>
-#include <cspace/cspace.h>
 
 #include <pawpaw.h>
 #include <sos.h>
@@ -33,7 +32,7 @@
 #  ifdef CONFIG_SOS_NFS_DIR
 #    define SOS_NFS_DIR CONFIG_SOS_NFS_DIR
 #  else
-#    define SOS_NFS_DIR ""
+#    define SOS_NFS_DIR "/var/tftpboot/alex"
 #  endif
 #endif
 
@@ -69,10 +68,10 @@ static void* sos_map_device (void* cookie, eth_paddr_t addr, int size) {
 void sos_usleep (int usecs) {
     usleep (usecs);
    
-    /* FIXME: do we need this?
-     * Handle pending network traffic */
+    /* Handle pending network traffic */
     while (ethif_input (_netif));
 }
+
 
 /*******************
  *** IRQ handler ***
@@ -128,6 +127,7 @@ network_prime_arp(struct ip_addr *gw){
         /* Send an ARP request */
         etharp_request(_netif, gw);
         /* Wait for the response */
+        //printf ("Waiting for ARP response\n");
         sos_usleep(ARP_PRIME_RETRY_DELAY_MS * 1000);
         if(etharp_find_addr(_netif, gw, &eth, &ip) == -1){
             timeout += ARP_PRIME_RETRY_DELAY_MS;
@@ -174,21 +174,27 @@ network_init(seL4_CPtr interrupt_ep) {
     assert(eth_driver);
 
     /* Initialise IRQS */
+    // printf ("Initialising IRQs\n");
     irqs = ethif_enableIRQ(eth_driver, &_nirqs);
     _net_irqs = (struct net_irq*)calloc(_nirqs, sizeof(*_net_irqs));
     for(i = 0; i < _nirqs; i++){
         _net_irqs[i].irq = irqs[i];
+        // printf ("\tenabling IRQ for %d\n", irqs[i]);
         _net_irqs[i].cap = enable_irq(irqs[i], _irq_ep);
     }
 
     /* Setup the network interface */
+    // printf ("Initialising LWIP\n");
     lwip_init();
     _netif = (struct netif*)malloc(sizeof(*_netif));
     assert(_netif != NULL);
+    // printf ("adding interface\n");
     _netif = netif_add(_netif, &ipaddr, &netmask, &gw, 
                        eth_driver, ethif_init, ethernet_input);
     assert(_netif != NULL);
+    // printf ("enabling interface\n");
     netif_set_up(_netif);
+    // printf ("setting interface as default\n");
     netif_set_default(_netif);
 
     /*
@@ -197,10 +203,10 @@ network_init(seL4_CPtr interrupt_ep) {
      * request before sending another. On the other hand, priming the
      * table is cheap and can save a lot of heart ache 
      */
+    // printf ("priming ARP table\n");
     network_prime_arp(&gw);
 
     /* initialise and mount NFS */
-#if 0
     if(strlen(SOS_NFS_DIR)) {
         /* Initialise NFS */
         int err;
@@ -215,24 +221,26 @@ network_init(seL4_CPtr interrupt_ep) {
             }
         }
         if(err){
-            WARN("Failed to initialise NFS\n");
+            printf("Failed to initialise NFS\n");
         }
     }else{
-        WARN("Skipping Network initialisation since no mount point was "
+        printf("Skipping Network initialisation since no mount point was "
              "specified\n");
     }
-#endif
 }
 
 /****************************
  *** Sync library support ***
  ****************************/
 
-/* FIXME: do we need this? */
-#if 0
+/* FIXME: this needs to go - only used by
+ * libnfs' rpc.c for checking if RPCs have timed out
+ *
+ * a much better way would be to get dev_timer to call
+ * us back after 100 ms or whatever */
 struct sync_ep_node {
     seL4_CPtr cap;
-    seL4_Word paddr;
+    //seL4_Word paddr;
     struct sync_ep_node* next;
 };
 
@@ -241,8 +249,7 @@ struct sync_ep_node* sync_ep_list = NULL;
 /* Provide an endpoint ready for use */
 void * 
 sync_new_ep(seL4_CPtr* ep_cap){
-    printf("sync new ep called, probably gonna die\n");
-
+    // printf ("Asked for new sync EP\n");
     struct sync_ep_node *epn = sync_ep_list;
     if(epn){
         /* Use endpoint from the pool */
@@ -250,36 +257,29 @@ sync_new_ep(seL4_CPtr* ep_cap){
 
     }else{
         /* Pool is dry... Make another endpoint */
-        int err;
         epn = (struct sync_ep_node*)malloc(sizeof(*epn));
         if(epn == NULL){
+            printf ("%s: malloc failed\n", __FUNCTION__);
             return NULL;
         }
-        /* Allocate endpoint memory */
-        epn->paddr = ut_alloc(seL4_EndpointBits);
-        if(epn->paddr == 0){
-            free(epn);
+        epn->cap = pawpaw_create_ep_async ();
+        if (!epn->cap) {
+            printf ("%s: async EP creation failed\n", __FUNCTION__);
             return NULL;
         }
-        /* Create the end point */
-        err = cspace_ut_retype_addr(epn->paddr, 
-                                    seL4_AsyncEndpointObject,
-                                    seL4_EndpointBits,
-                                    cur_cspace,
-                                    &epn->cap);
-        conditional_panic(err, "Failed to allocate memory for network endpoint");
     }
     *ep_cap = epn->cap;
+    //printf ("%s: creation succeeded @ %p\n", __FUNCTION__, epn);
     return epn;
 }
 
 /* Don't free, just recycle it to our pool of end points */
 void 
 sync_free_ep(void* _epn){
+    // printf ("%s: freeing EP %p\n", __FUNCTION__, _epn);
     struct sync_ep_node *epn = (struct sync_ep_node*)_epn;
-    assert(_epn);
+    assert(epn);
     /* Add to our pool */
     epn->next = sync_ep_list;
     sync_ep_list = epn;
 }
-#endif

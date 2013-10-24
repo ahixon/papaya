@@ -27,7 +27,7 @@ void interrupt_handler (struct pawpaw_event* evt) {
     network_irq (evt->args[0]);
 }
 
-char DMA_REGION[1 << DMA_SIZE_BITS] __attribute__((aligned(0x1000))) = { 0 };
+volatile char DMA_REGION[1 << DMA_SIZE_BITS] __attribute__((aligned(0x1000))) = { 0 };
 
 seL4_Word dma_physical;
 
@@ -50,15 +50,18 @@ int main (void) {
     assert (service_ep);
 
     /* set underlying physical memory to be contiguous for DMA */
-    dma_physical = pawpaw_dma_alloc (&DMA_REGION, DMA_SIZE_BITS);
+    dma_physical = pawpaw_dma_alloc (DMA_REGION, DMA_SIZE_BITS);
     assert (dma_physical);
 
     /* setup our userspace allocator - DOES IT LOOK LIKE I HAVE TIME
      * TO WRITE MY OWN LWIP WRAPPER, LET ALONE TRY TO UNDERSTAND LWIP?? */
-    dma_init (dma_physical, DMA_SIZE_BITS);
+    err = dma_init (dma_physical, DMA_SIZE_BITS);
+    assert (!err);
 
     /* Initialise the network hardware - sets up interrupts */
-    network_init (async_ep);
+    // FIXME: make this return an error
+    /*err = */network_init (async_ep);
+    //assert (!err);
 
     /* register and listen */
     err = pawpaw_register_service (service_ep);

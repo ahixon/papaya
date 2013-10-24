@@ -12,7 +12,7 @@
 #include <assert.h>
 
 
-//#define DEBUG_RPC
+//#define DEBUG_RPC 1
 #ifdef DEBUG_RPC
 #define debug(x...) printf( x )
 #else
@@ -412,7 +412,7 @@ rpc_read_hdr(struct pbuf* pbuf, struct rpc_reply_hdr* hdr, int* pos)
     if(hdr->msg_type != MSG_REPLY){
         debug( "Got a reply to something else!!\n" );
         debug( "Looking for msgtype %d\n", MSG_REPLY );
-        debug( "Got msgtype %d\n", hdr->type);
+        debug( "Got msgtype %d\n", hdr->msg_type);
         return RPCERR_BAD_MSG;
 
     }else if(hdr->reply_stat != MSG_ACCEPTED){

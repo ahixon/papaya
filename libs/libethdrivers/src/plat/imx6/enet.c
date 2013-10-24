@@ -274,7 +274,7 @@ _mdc_clk_set_freq(struct clock* clk, uint32_t hz){
 
     regs->mscr = v << 1;
     CLK_DEBUG(printf("Set MDC frequency to %.1f Mhz (<= 2.5 Mhz)\n",
-                        (float)clk_get_freq(clk)/MHZ));
+                        (float)clk_get_freq(clk)/1000000));
     return clk_get_freq(clk);
 }
 

@@ -69,6 +69,7 @@ map_page(seL4_CPtr frame_cap, seL4_ARM_PageDirectory pd, seL4_Word vaddr,
     return err;
 }
 
+#if 0
 void* 
 map_device(void* paddr, int size){
     static seL4_Word virt = DEVICE_START;
@@ -100,6 +101,7 @@ map_device(void* paddr, int size){
     }
     return (void*)vstart;
 }
+#endif
 
 
 /* FIXME: THIS LEAKS CPTRS + ADDRESSES!! */

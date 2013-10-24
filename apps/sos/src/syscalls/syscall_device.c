@@ -3,6 +3,7 @@
 #include <cspace/cspace.h>
 #include <mapping.h>
 #include <assert.h>
+#include <stdio.h>
 
 extern thread_t current_thread;
 extern seL4_Word dma_addr;
@@ -40,6 +41,9 @@ int syscall_alloc_dma (struct pawpaw_event* evt) {
         return PAWPAW_EVENT_UNHANDLED;
     }
 
+    /* make sure we don't cache DMA regions */
+    reg->attributes = 0;
+
     /* whole extent not in region */
     vaddr_t end = evt->args[0] + (1 << evt->args[1]);
     if (end >= (reg->vbase + reg->size)) {
@@ -58,12 +62,22 @@ int syscall_alloc_dma (struct pawpaw_event* evt) {
         struct pt_entry* pte = page_fetch (current_thread->as->pagetable, vaddr);
         assert (pte);
 
-        pte->frame = frame_new_from_untyped (local_dma);
-        if (!pte->frame) {
-            printf ("%s: failed to allocate new untyped frame\n", __FUNCTION__);
+        if (pte->frame) {
+            /* free underlying frame - should flush cache, right? */
+            //printf ("%s: vaddr 0x%x already allocated, freeing\n", vaddr);
+            page_unmap (pte);
+            assert (!pte->frame);
         }
 
-        printf ("%s: underlying frame for 0x%x is now 0x%x\n", __FUNCTION__, vaddr, local_dma);
+        pte->frame = frame_new_from_untyped (local_dma);
+        if (!pte->frame) {
+            printf ("%s: failed to allocate new untyped frame for vaddr 0x%x\n", __FUNCTION__, vaddr);
+        }
+
+        /*struct frame_info* map_frame = page_map (current_thread->as, reg, vaddr);
+        assert (map_frame);*/
+
+        //printf ("%s: underlying frame for 0x%x is now 0x%x\n", __FUNCTION__, vaddr, local_dma);
         local_dma += PAGE_SIZE;
     }
 

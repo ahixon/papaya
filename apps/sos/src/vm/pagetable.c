@@ -120,7 +120,7 @@ pagetable_kernel_install_pt (addrspace_t as, seL4_ARM_VMAttributes attributes, v
                                  as->pagedir_cap, 
                                  vaddr, 
                                  attributes);
-    printf ("mapped 0x%x => 0x%x\n", vaddr, pt_cap);
+    //printf ("mapped 0x%x => 0x%x\n", vaddr, pt_cap);
 
     if (err) {
         printf ("pagetable_kernel_install_pt: seL4_ARM_PageTable_Map failed: %s\n", seL4_Error_Message(err));
@@ -230,7 +230,7 @@ page_map (addrspace_t as, struct as_region* region, vaddr_t vaddr) {
          * see who the calling function was. */
         return NULL;
     }
-
+    
     /* allocate frame if not already provided */
     short did_allocation = false;
     if (!entry->frame) {
@@ -243,7 +243,7 @@ page_map (addrspace_t as, struct as_region* region, vaddr_t vaddr) {
 
         did_allocation = true;
     } else {
-        printf ("%s: vaddr 0x%xalready had frame allocated", __FUNCTION__, vaddr);
+        //printf ("%s: vaddr 0x%x already had frame allocated\n", __FUNCTION__, vaddr);
     }
     
     entry->cap = pagetable_kernel_map_page (vaddr, entry->frame, region, as);

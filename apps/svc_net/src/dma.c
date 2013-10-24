@@ -10,7 +10,6 @@
 #include <string.h>
 
 #include <sel4/types.h>
-#include <cspace/cspace.h>
 #include <dma.h>
 
 extern char DMA_REGION[1 << DMA_SIZE_BITS];
@@ -90,8 +89,8 @@ sos_dma_malloc(void* cookie, uint32_t size, int cached) {
         dma_mem.phys = 0;
         dma_mem.virt = 0;
     }
-    /*printf("DMA: 0x%x - 0x%x\n", (uint32_t)dma_mem.phys, 
-                                     (uint32_t)dma_mem.phys + size);*/
+    /*printf("DMA: 0x%x - 0x%x (0x%x - 0x%x)\n", (uint32_t)dma_mem.phys, 
+                                     (uint32_t)dma_mem.phys + size, VIRT(dma_mem.phys), VIRT(dma_mem.phys) + size);*/
     return dma_mem;
 }
 

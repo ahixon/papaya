@@ -1,6 +1,6 @@
 config APP_SVC_NET
     bool "Networking service"
-    depends on LIB_SEL4 && LIB_SEL4_C && LIB_SOS && LIB_ETHIF && LIB_LWIP && LIB_SEL4_SYNC
+    depends on LIB_SEL4 && LIB_SEL4_C && LIB_SOS && LIB_ETHIF && LIB_LWIP && LIB_SEL4_SYNC && LIB_NFS
     default n
     select HAVE_SEL4_APPS
     help

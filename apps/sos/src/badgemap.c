@@ -42,9 +42,7 @@ volatile seL4_CPtr _badgemap_ep = 0;
 /*
  * internal info service
  */
-int mapper_main (void) {
-	printf ("Hello from badgemap!\n");
-	
+int mapper_main (void) {	
 	while (1) {
 		seL4_Word badge;
 		seL4_Wait (_badgemap_ep, &badge);
