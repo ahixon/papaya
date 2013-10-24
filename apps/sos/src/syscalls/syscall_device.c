@@ -63,7 +63,7 @@ int syscall_alloc_dma (struct pawpaw_event* evt) {
             printf ("%s: failed to allocate new untyped frame\n", __FUNCTION__);
         }
 
-        printf ("%s: underlying frame for 0x%x is now 0x%x\n", vaddr, local_dma);
+        printf ("%s: underlying frame for 0x%x is now 0x%x\n", __FUNCTION__, vaddr, local_dma);
         local_dma += PAGE_SIZE;
     }
 

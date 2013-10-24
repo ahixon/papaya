@@ -258,7 +258,7 @@ as_get_page_cap (addrspace_t as, vaddr_t vaddr) {
         return 0;
     }
 
-    return frametable_fetch_cap (page->frame_idx);
+    return frametable_fetch_cap (page->frame);
 }
 
 struct as_region*

@@ -37,17 +37,23 @@ frametable_get_frame (frameidx_t frame);
 void
 frametable_init (void);
 
+struct frameinfo*
+frame_new_from_untyped (seL4_Word untyped);
+
 void
 frametable_freeall (void);
 
 struct frameinfo*
 frame_alloc (void);
 
+struct frameinfo*
+frame_alloc_from_untyped (struct frameinfo* frame, seL4_Word untyped);
+
 void
 frame_free (struct frameinfo* frame);
 
 seL4_CPtr
-frametable_fetch_cap (frameidx_t frame);
+frametable_fetch_cap (struct frameinfo* frame);
 
 void
 frametable_stats (void);

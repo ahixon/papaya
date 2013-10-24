@@ -1,4 +1,5 @@
 #include <sel4/sel4.h>
+#include <string.h>
 
 #include <cspace/cspace.h>
 
@@ -87,8 +88,10 @@ frame_alloc (void)
         return 0;
     }
 
+    frameidx_t index = IDX_PHYS(untyped_addr);
+
     struct frameinfo* frame = &frametable[index];
-    frame = frame_alloc_from_untyped (untyped_addr);
+    frame = frame_alloc_from_untyped (frame, untyped_addr);
 
     if (!frame) {
         ut_free (untyped_addr, seL4_PageBits);
@@ -101,10 +104,12 @@ frame_alloc (void)
 
 struct frameinfo*
 frame_new_from_untyped (seL4_Word untyped) {
-    struct frameinfo* frame = calloc (sizeof (struct frameinfo));
+    struct frameinfo* frame = malloc (sizeof (struct frameinfo));
     if (!frame) {
         return NULL;
     }
+
+    memset (frame, 0, sizeof (struct frameinfo));
 
     frame = frame_alloc_from_untyped (frame, untyped);
     if (!frame) {
@@ -168,20 +173,20 @@ frame_free (struct frameinfo* fi) {
 void
 frametable_freeall (void) {
     for (int i = 0; i < high_idx; i++) {
-        frame_free (i);
+        frame_free (frametable_get_frame (i));
     }
 }
 
 void
 frametable_stats (void) {
     printf ("Allocated frames: 0x%x\n", allocated);
-    for (int i = 0; i <= high_idx; i++) {
+    /*for (int i = 0; i <= high_idx; i++) {
         struct frameinfo* fi = frametable_get_frame (i);
         if (fi->flags & FRAME_ALLOCATED) {
             printf ("\tFrame 0x%x:\tpaddr 0x%x\t0x%x ref(s)\n", i, fi->paddr, frame_get_refcount (fi));
         }
     }
-    printf ("\n");
+    printf ("\n");*/
 }
 
 struct frameinfo*
@@ -190,10 +195,6 @@ frametable_get_frame (frameidx_t frame) {
 }
 
 seL4_CPtr
-frametable_fetch_cap (frameidx_t frame) {
-    if (frame > high_idx) {
-        return 0;
-    }
-
-    return frametable[frame].capability;
+frametable_fetch_cap (struct frameinfo* frame) {
+    return frame->capability;
 }

@@ -8,7 +8,7 @@ sos-components-$(CONFIG_APP_FORKBOMB) += forkbomb
 sos-components-$(CONFIG_APP_DEV_CONSOLE) += dev_console
 sos-components-$(CONFIG_APP_DEV_TIMER) += dev_timer
 
-sos-components-$(CONFIG_APP_SVC_NETWORK) += svc_network
+sos-components-$(CONFIG_APP_SVC_NET) += svc_net
 sos-components-$(CONFIG_APP_SVC_VFS) += svc_vfs
 sos-components-$(CONFIG_APP_SVC_DEV) += svc_dev
 

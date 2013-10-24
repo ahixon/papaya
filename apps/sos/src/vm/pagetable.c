@@ -67,7 +67,7 @@ pagetable_dump (pagetable_t pt) {
                 }
 
 
-                printf ("\t0x%03x: frame 0x%0x %s\n", j, entry.frame_idx, entry.flags & PAGE_SHARED ? "SHARED" : "" );
+                printf ("\t0x%03x: frame %p %s\n", j, entry.frame, entry.flags & PAGE_SHARED ? "SHARED" : "" );
             }
         }
 
@@ -146,7 +146,7 @@ pagetable_kernel_install_pt (addrspace_t as, seL4_ARM_VMAttributes attributes, v
 int
 pagetable_kernel_map_page (vaddr_t vaddr, struct frameinfo* frame, struct as_region* region, addrspace_t as) {
     int err;
-    seL4_Word frame_cap, dest_cap;
+    seL4_Word dest_cap;
 
     assert (frame);
 
@@ -322,7 +322,7 @@ page_unmap (struct pt_entry* entry) {
 
         /* unmap + delete the cap to the page */
         if (!entry->cap) {
-            printf ("%s: entry 0x%x was allocated but had no cap???\n", entry->frame_idx);
+            printf ("%s: frame %p was allocated but had no cap???\n", entry->frame);
             return false;
         }
 

@@ -67,13 +67,13 @@ int vfs_open (struct pawpaw_event* evt) {
 
     seL4_MessageInfo_t underlying_msg = seL4_MessageInfo_new (0, 0, 0, 3);
     seL4_SetMR (0, VFS_OPEN);
-    if (evt->args[1] & FM_EXEC) {
+    if (evt->args[0] & FM_EXEC) {
         printf ("fs_dev: can't execute devices?\n");
         return PAWPAW_EVENT_UNHANDLED;
     }
 
-    seL4_SetMR (1, evt->args[1]);   /* file mode */
-    seL4_SetMR (2, evt->args[2]);   /* owner badge */
+    seL4_SetMR (1, evt->args[0]);   /* file mode */
+    seL4_SetMR (2, evt->args[1]);   /* owner badge */
 
     /* could be Call */
     printf ("calling %d\n", ret);
