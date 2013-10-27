@@ -280,6 +280,10 @@ static void rootserver_init (seL4_CPtr* ipc_ep){
         panic ("failed to map IPC region for internal processes");
     }
 
+    /*if (!as_define_region (cur_addrspace, PROCESS_IPC_BUFFER, PAGE_SIZE, seL4_AllRights, REGION_IPC)) {
+        panic ("failed to define IPC region for internal processes");
+    }*/
+
     /* Initialise PID and map ID generators */
     uid_init ();
 
@@ -316,13 +320,13 @@ int main (void) {
     // print_resource_stats ();
     
     /* boot up device filesystem & mount it */
-    // assert (thread_create_from_cpio ("fs_dev", rootserver_syscall_cap));
+    assert (thread_create_from_cpio ("fs_dev", rootserver_syscall_cap));
 
     /* boot up core services */
-    //thread_create_from_cpio ("svc_init", rootserver_syscall_cap);
+    // thread_create_from_cpio ("svc_init", rootserver_syscall_cap);
     printf ("Starting core services...\n");
-    // assert (thread_create_from_cpio ("svc_vfs", rootserver_syscall_cap));
-    // assert (thread_create_from_cpio ("svc_dev", rootserver_syscall_cap));
+    assert (thread_create_from_cpio ("svc_vfs", rootserver_syscall_cap));
+    assert (thread_create_from_cpio ("svc_dev", rootserver_syscall_cap));
     assert (thread_create_from_cpio ("svc_net", rootserver_syscall_cap));
 
     /* start any devices services inside the CPIO archive */
@@ -336,10 +340,10 @@ int main (void) {
     }
 
     /* finally, start the boot app */
-    // dprintf (1, "Starting boot application \"%s\"...\n", CONFIG_SOS_STARTUP_APP);
-    // thread_t boot_thread = thread_create_from_cpio (CONFIG_SOS_STARTUP_APP, rootserver_syscall_cap);
-    // assert (boot_thread);
-    // dprintf (1, "  started with PID %d\n", boot_thread->pid);
+    dprintf (1, "Starting boot application \"%s\"...\n", CONFIG_SOS_STARTUP_APP);
+    thread_t boot_thread = thread_create_from_cpio (CONFIG_SOS_STARTUP_APP, rootserver_syscall_cap);
+    assert (boot_thread);
+    dprintf (1, "  started with PID %d\n", boot_thread->pid);
 
     /* and wait for IPC */
     dprintf (0, "Root server starting event loop...\n");

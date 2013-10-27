@@ -3,6 +3,8 @@ seL4 failed assertion 'cap_reply_cap_get_capTCBPtr(replySlot->cap) == 0' at /fsc
 revision 69
 probably because a race when the timer service gets an IRQ within seL4 but we've killed (freed) it's TCB already
 
+=========
+
 ut_alloc: frame_alloc:85 allocated 0xc bits untyped @ 0x10dad000
 ut_alloc: cspace_ut_alloc_wrapper:225 allocated 0xe bits untyped @ 0x10db4000
 ut_alloc: cspace_ut_alloc_wrapper:225 allocated 0xe bits untyped @ 0x10db8000
@@ -26,3 +28,20 @@ ut_alloc: addrspace_create:69 allocated 0xe bits untyped @ 0x10db0000
 <<seL4 [decodeUntypedInvocation/202 Tfefed100 @12220]: Untyped Retype: collision with exisiting child>>
 
 unable to delete seL4_ARM_PageDirectoryObject cap if no pages have been mapped + copied to another cspace
+
+=========
+
+pawpaw_event_process: attempting to mount share from provided cap
+console: wanted to read 0x72 bytes
+vm fault at 0x00000008, pc = 0x00008174, Data fault
+killing thread 5 (dev_console)...
+deleting default caps
+destroying thread croot
+cspace_destroy: deleting node 0
+seL4 failed assertion 'cap_get_capType(slot->cap) != cap_reply_cap' at /fscratch/akroh/AOS/kernel/src/object/cnode.c:469 in function emptySlot
+halting...
+
+revision 90
+cat\n
+hello\n
+via netcat

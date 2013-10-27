@@ -95,4 +95,9 @@ int pawpaw_share_attach (struct pawpaw_share* share);
 struct pawpaw_share* pawpaw_share_get (seL4_Word id);
 void pawpaw_share_set (struct pawpaw_share* share);
 
+struct pawpaw_cbuf* pawpaw_cbuf_create (int size, void* start);
+void pawpaw_cbuf_destroy (struct pawpaw_cbuf* buf);
+int pawpaw_cbuf_count (struct pawpaw_cbuf* buf);
+void pawpaw_cbuf_write (struct pawpaw_cbuf* buf, void* data, int len);
+int pawpaw_cbuf_read (struct pawpaw_cbuf* buf, void* dst_data, int len);
 #endif

@@ -89,7 +89,7 @@ int vfs_open (struct pawpaw_event* evt) {
 
     seL4_Send (requestor, requestor_msg);*/
 
-    printf ("finally telling VFS\n");
+    //printf ("fs_dev: finally telling VFS how we went\n");
 
     /* and tell the VFS layer how we went (for caching) */
     /*seL4_MessageInfo_t reply = seL4_MessageInfo_new (0, 0, 0, 1);

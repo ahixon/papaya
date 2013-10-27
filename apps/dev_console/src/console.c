@@ -15,13 +15,21 @@
 
 #define DEV_REGISTER            21
 
+#define CONSOLE_BUF_SIZE        1024
+//#define NETSVC_SERVICE_DATA     3
+
+struct pawpaw_cbuf* console_buffer;
 seL4_CPtr service_ep = 0;
+seL4_CPtr net_ep = 0;
 
 int vfs_open (struct pawpaw_event* evt);
 int vfs_read (struct pawpaw_event* evt);
 
+void interrupt_handler (struct pawpaw_event* evt);
+int interrupt_handler_2 (struct pawpaw_event* evt);
+
 struct pawpaw_eventhandler_info handlers[VFS_NUM_EVENTS] = {
-    {   0,  0,  0   },      //              //
+    {   interrupt_handler,  0,  0   },      //              //
     {   0,  0,  0   },      //   RESERVED   //
     {   0,  0,  0   },      //              //
     {   vfs_open,           2,  HANDLER_REPLY },    // mode + badge, replies with EP to file (badged version of listen cap)
@@ -30,39 +38,107 @@ struct pawpaw_eventhandler_info handlers[VFS_NUM_EVENTS] = {
 
 struct pawpaw_event_table handler_table = { VFS_NUM_EVENTS, handlers };
 
-
-int have_reader = false;
+seL4_CPtr current_reader = 0;
+struct pawpaw_share* current_share = NULL;
+struct pawpaw_event* current_event = NULL;
 
 int vfs_open (struct pawpaw_event* evt) {
     if (evt->args[0] & FM_READ) {
-        if (have_reader) {
+        if (current_reader) {
             printf ("console: already opened for reading\n");
             return PAWPAW_EVENT_UNHANDLED;
         }
 
-        have_reader = true;
+        current_reader = evt->badge;
     }
 
     /* FIXME: register in open FD table so that opened for writing can't read and vice versa */
 
-    printf ("console: cool OK opened, giving back our cap\n");
+    printf ("console: open success\n");
     seL4_SetCap (0, service_ep);
     seL4_SetMR (0, 0);
     evt->reply = seL4_MessageInfo_new (0, 0, 1, 1);
     return PAWPAW_EVENT_NEEDS_REPLY;
 }
 
-int vfs_read (struct pawpaw_event* evt) {
-    printf ("*** WANT TO READ %d bytes\n", evt->args[0]);
+int interrupt_handler_2 (struct pawpaw_event* evt) {
+    interrupt_handler (evt);
     return PAWPAW_EVENT_UNHANDLED;
 }
 
-int main (void) {
-    /* ask the root server for network driver deets */
-    /* we should get back a cap that we can communicate directly with it */
-    /*seL4_CPtr net_ep = pawpaw_service_lookup ("sys.net.services");
-    assert (net_ep);*/
+void interrupt_handler (struct pawpaw_event* evt) {
+    printf ("console: got interrupt, asking netsvc for data\n");
 
+    /* NETWORK TRAFFIC - should check */
+    /* get the message from the netsvc */
+    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 1);
+    seL4_SetMR (0, NETSVC_SERVICE_DATA);
+    seL4_Call (net_ep, msg);
+
+    seL4_Word size = seL4_GetMR (1);
+    printf ("console: had %u bytes for us\n", size);
+
+    /* mount it if we didn't have it already */
+    struct pawpaw_share* netshare = pawpaw_share_get (seL4_GetMR (0));
+    if (!netshare) {
+        netshare = pawpaw_share_mount (pawpaw_event_get_recv_cap ());
+        assert (netshare);
+
+        pawpaw_share_set (netshare);
+    }
+
+    pawpaw_cbuf_write (console_buffer, netshare->buf, size);
+
+    /* FIXME: unmount? */
+
+    /* check if we had waiting client */
+    if (current_event) {
+        if (vfs_read (current_event) == PAWPAW_EVENT_NEEDS_REPLY) {
+            /* send it off */
+            seL4_Send (current_event->reply_cap, current_event->reply);
+
+            /* and free */
+            pawpaw_event_dispose (current_event);
+            current_event = NULL;
+        }
+    } else {
+        printf ("!!! no current client\n");
+    }
+}
+
+int vfs_read (struct pawpaw_event* evt) {
+    size_t amount = evt->args[0];
+    assert (evt->share);
+
+    printf ("console: wanted to read 0x%x bytes\n", amount);
+
+    /* FIXME: could zero copy, but lazy */
+    printf ("console: buffer currently has %d, trying to read into %p\n", pawpaw_cbuf_count (console_buffer), evt->share->buf);
+    int read = pawpaw_cbuf_read (console_buffer, evt->share->buf, amount);
+
+    if (read == 0) {
+        printf ("console: buffer was empty, waiting for interrupt..\n");
+        /* wait for more data */
+        /* FIXME: handle more than one reader */
+
+        current_event = evt;
+        //current_share = evt->share;
+        return PAWPAW_EVENT_HANDLED_SAVED;
+    } else {
+        printf ("console: managed to read 0x%x bytes, sending back '%s'\n", read, evt->share->buf);
+        /*if (!current_share) {
+            current_share = pawpaw_share_new ();
+        }*/
+
+        evt->reply = seL4_MessageInfo_new (0, 0, 0, 2);
+        seL4_SetMR (0, evt->share->id);
+        seL4_SetMR (1, read);
+    }
+
+    return PAWPAW_EVENT_NEEDS_REPLY;
+}
+
+int main (void) {
     pawpaw_event_init ();
 
     service_ep = pawpaw_create_ep ();
@@ -80,69 +156,27 @@ int main (void) {
     seL4_SetMR (3, 1337);           // product ID = 1337 lol??
 
     /* FIXME: do we REALLY need Call? at the moment, no lol */
-    printf ("dev_console: registering device\n");
+    printf ("console: registering with svc_dev\n");
     seL4_Send (dev_ep, msg);
 
-#if 0
-    
-    seL4_SetMR (0, NETSVC_SERVICE_REGISTER | NETSVC_PROTOCOL_UDP);
-    seL4_SetMR (0, 20);
-    seL4_SetMR (1, 26706);    
+    net_ep = pawpaw_service_lookup ("svc_net");
+    msg = seL4_MessageInfo_new (0, 0, 1, 3);
+    seL4_SetCap (0, service_ep);        /* FIXME: make this async EP instead to get rid of hack */
+    seL4_SetMR (0, NETSVC_SERVICE_REGISTER);
+    seL4_SetMR (1, NETSVC_PROTOCOL_UDP);
+    seL4_SetMR (2, 26706);
 
-    /* ask it to register us on UDP port 26706 with OUR provided mbox frame */
-    /* what about mbox circular buffers - would be nice otherwise we have to copy out into our buffer
-        - depends how common a use case this is - if it is common, then implement it in the API layer so we get zerocopy */
-
-    msg = seL4_MessageInfo_new (0, 0, /*XXX: 1*/0, 2);
-    seL4_SetMR (0, NETSVC_SERVICE_REGISTER | NETSVC_PROTOCOL_UDP);
-    seL4_SetMR (0, 20);
-    seL4_SetMR (1, 26706);
-
-    /* copy our mbox cap so we can give it to the netsvc to load in our data */
-    /* FIXME: can we copy directly into destination thread's addrspace? probably not? */
-    //seL4_CPtr server_mbox = cspace_copy_cap (cur_cspace, cur_cspace, MBOX_CAPS[0], seL4_AllRights); 
-    // fixme: also do we want all rights?
-
-    // does this go in msg?
-    //seL4_SetCap (0, server_mbox);
-    printf ("About to call on net_ep %d\n", net_ep);
-    msg = seL4_Call(net_ep, msg);
-
-    printf ("GOT RESPONSE, error = %s and reg 0 = %d\n", seL4_Error_Message(seL4_MessageInfo_get_label (msg)), seL4_GetMR(0));
-
-    // make sure no errors
+    printf ("console: registering with svc_net\n");
+    seL4_Call (net_ep, msg);
     assert (seL4_GetMR (0) == 0);
 
-    printf ("You are awesome.\n");
-#endif
+    /* we never need to free this */
+    char* buf = malloc (sizeof (char) * CONSOLE_BUF_SIZE);
+    assert (buf);
 
-    pawpaw_event_loop (&handler_table, NULL, service_ep);
+    console_buffer = pawpaw_cbuf_create (CONSOLE_BUF_SIZE, buf);
 
-    /*if (my_ep is interrupt) {
-        // check badge, probably from NETSVC
-    } else if (my_ep is message) {
-        // probably read/write message
-        // read from buffer and respond straight away, or add to internal queue and wait (wake thread up on interrupt)
-        // could optimise: if buffer is empty, and wants to read N bytes, could ask netsvc to load into their mbox directly? zerocopy?
-        // problem here is you'd need to setup netsvc to READ ONLY N BYTES AND UNREGISTER
-    }*/
-
-    /* now we play the waiting game... */
-    /* read/write will contain:
-            - cap to src/destination page/mbox
-            - reply cap to notify when done
-            - size (<= page size)
-            - offset (to help with zero-copy buffers)
-
-        can respond with:
-            - bytes written (success/partial success)
-            - cap invalid
-            - read/write failed (device specific error?)
-
-        if we get any reads add it to our buffer
-        (until we're full, at which point start throwing away stuff)
-        ^ goes into our mbox, might need to move out into another buffer (see above about integrating circular buf into API)
-    */
+    pawpaw_event_loop (&handler_table, interrupt_handler, service_ep);
 
     return 0;
 }

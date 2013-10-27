@@ -207,6 +207,7 @@ network_init(seL4_CPtr interrupt_ep) {
     network_prime_arp(&gw);
 
     /* initialise and mount NFS */
+#if 0
     if(strlen(SOS_NFS_DIR)) {
         /* Initialise NFS */
         int err;
@@ -227,6 +228,7 @@ network_init(seL4_CPtr interrupt_ep) {
         printf("Skipping Network initialisation since no mount point was "
              "specified\n");
     }
+#endif
 }
 
 /****************************

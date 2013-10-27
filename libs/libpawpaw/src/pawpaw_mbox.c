@@ -96,6 +96,7 @@ int pawpaw_share_unmount (struct pawpaw_share* share) {
 int pawpaw_share_attach (struct pawpaw_share* share) {
 	if (!share->sent) {
 		seL4_SetCap (0, share->cap);
+		share->sent = true;
 		return 1;
 	}
 

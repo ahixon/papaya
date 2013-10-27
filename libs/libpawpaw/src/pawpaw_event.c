@@ -115,7 +115,7 @@ int pawpaw_event_process (struct pawpaw_event_table* table, struct pawpaw_event 
 
     /* event is valid, but no function handler defined */
     if (eh.func == 0) {
-        printf ("%s: junking incoming request as function handler was NULL\n", __FUNCTION__);
+        printf ("%s: junking incoming request 0x%x as function handler was NULL\n", __FUNCTION__, evt_id);
         return PAWPAW_EVENT_UNHANDLED;
     }
 
@@ -165,6 +165,9 @@ int pawpaw_event_process (struct pawpaw_event_table* table, struct pawpaw_event 
                 pawpaw_share_set (evt->share);
 
                 pawpaw_event_new_recv_cap ();
+            } else {
+                printf ("%s: share cap missing, even though was automount\n", __FUNCTION__);
+                evt->share = NULL;
             }
         }
     } else {
