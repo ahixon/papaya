@@ -1,0 +1,4 @@
+components-$(CONFIG_APP_TEST_ECHOSERVER) += test_echoserver
+
+test_echoserver: $(libc) libsel4 libsos libpawpaw
+
