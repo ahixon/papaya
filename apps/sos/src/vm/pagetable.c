@@ -124,7 +124,7 @@ pagetable_kernel_install_pt (addrspace_t as, seL4_ARM_VMAttributes attributes, v
 
     if (err) {
         printf ("pagetable_kernel_install_pt: seL4_ARM_PageTable_Map failed: %s\n", seL4_Error_Message(err));
-        ut_free (pt_addr, seL4_PageTableBits);
+        //ut_free (pt_addr, seL4_PageTableBits);
 
         /* if someone's already mapped a pagetable in, don't worry about it */
         /* FIXME: remove once mapping.c is nixed */

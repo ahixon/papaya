@@ -65,9 +65,11 @@ int parse_filename (char* fname, struct fs_node* parent, struct fs_node** dest_f
         while (fs != NULL) {
             //printf ("comparing '%s' and '%s'\n", fs->dirname, cur);
             if (strcmp (fs->dirname, cur) == 0) {
+                //printf ("matched\n");
                 break;
             }
 
+            //printf ("no match, next\n");
             fs = fs->level_next;
         }
 
@@ -75,10 +77,10 @@ int parse_filename (char* fname, struct fs_node* parent, struct fs_node** dest_f
 
         /* got one, load up its children if we have more path to match */
         cur = part;
-        //printf ("remaining = %s\n", cur);
-        if (fs->children) {
+        //printf ("remaining = %p, children = %p\n", cur, fs->children);
+        if (fs && fs->children) {
             fs = fs->children;
-            //printf ("trying to load children? %p\n", fs);
+            // printf ("trying to load children? %p\n", fs);
             if (cur) {
                 part = get_next_path_part (cur, end);
             }
@@ -192,6 +194,7 @@ int vfs_open (struct pawpaw_event* evt) {
     char* requested_filename = strdup (evt->share->buf);
 
     if (parse_filename (requested_filename, root, &node, &remaining)) {
+        // printf ("vfs: path success\n");
         strcpy (node->fs->share->buf, remaining);
 
         /* pass the buck to the FS layer to see if it knows anything about the file */
@@ -215,6 +218,7 @@ int vfs_open (struct pawpaw_event* evt) {
         /* gonna forward MR 0 */
         seL4_SetCap (0, pawpaw_event_get_recv_cap());
     } else {
+        printf ("vfs: path failure for '%s'\n", requested_filename);
         /* path failure */
         evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
         seL4_SetMR (0, -1);

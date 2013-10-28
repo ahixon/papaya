@@ -27,6 +27,7 @@ endmenu
 endmenu
 
 menu "Tests"
+source "$SEL4_APPS_PATH/test_echoserver/Kconfig"
 source "$SEL4_APPS_PATH/test_runner/Kconfig"
 source "$SEL4_APPS_PATH/test_share_a/Kconfig"
 source "$SEL4_APPS_PATH/test_share_b/Kconfig"

@@ -33,7 +33,9 @@ fildes_t open(const char *path, fmode_t mode) {
 		}
 	}
 
-	msg = seL4_MessageInfo_new (0, 0, pawpaw_share_attach (vfs_share), 3);
+	msg = seL4_MessageInfo_new (0, 0, 1, 3);
+    seL4_SetCap (0, vfs_share->cap);
+    
 	strcpy (vfs_share->buf, path);
 
     seL4_CPtr recv_cap = pawpaw_cspace_alloc_slot ();

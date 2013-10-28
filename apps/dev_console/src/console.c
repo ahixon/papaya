@@ -67,16 +67,11 @@ int interrupt_handler_2 (struct pawpaw_event* evt) {
 }
 
 void interrupt_handler (struct pawpaw_event* evt) {
-    printf ("console: got interrupt, asking netsvc for data\n");
-
-    /* NETWORK TRAFFIC - should check */
-    /* get the message from the netsvc */
     seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 1);
     seL4_SetMR (0, NETSVC_SERVICE_DATA);
     seL4_Call (net_ep, msg);
 
     seL4_Word size = seL4_GetMR (1);
-    printf ("console: had %u bytes for us\n", size);
 
     /* mount it if we didn't have it already */
     struct pawpaw_share* netshare = pawpaw_share_get (seL4_GetMR (0));
@@ -110,14 +105,13 @@ int vfs_read (struct pawpaw_event* evt) {
     size_t amount = evt->args[0];
     assert (evt->share);
 
-    printf ("console: wanted to read 0x%x bytes\n", amount);
-
     /* FIXME: could zero copy, but lazy */
-    printf ("console: buffer currently has %d, trying to read into %p\n", pawpaw_cbuf_count (console_buffer), evt->share->buf);
+    // printf ("console: wanted to read 0x%x bytes\n", amount);
+    // printf ("console: buffer currently has %d, trying to read into %p\n", pawpaw_cbuf_count (console_buffer), evt->share->buf);
     int read = pawpaw_cbuf_read (console_buffer, evt->share->buf, amount);
 
     if (read == 0) {
-        printf ("console: buffer was empty, waiting for interrupt..\n");
+        // printf ("console: buffer was empty, waiting for interrupt..\n");
         /* wait for more data */
         /* FIXME: handle more than one reader */
 
@@ -125,7 +119,7 @@ int vfs_read (struct pawpaw_event* evt) {
         //current_share = evt->share;
         return PAWPAW_EVENT_HANDLED_SAVED;
     } else {
-        printf ("console: managed to read 0x%x bytes, sending back '%s'\n", read, evt->share->buf);
+        // printf ("console: managed to read 0x%x bytes, sending back '%s'\n", read, evt->share->buf);
         /*if (!current_share) {
             current_share = pawpaw_share_new ();
         }*/
@@ -166,7 +160,7 @@ int main (void) {
     seL4_SetMR (1, NETSVC_PROTOCOL_UDP);
     seL4_SetMR (2, 26706);
 
-    printf ("console: registering with svc_net\n");
+    //printf ("console: registering with svc_net\n");
     seL4_Call (net_ep, msg);
     assert (seL4_GetMR (0) == 0);
 

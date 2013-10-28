@@ -16,6 +16,7 @@
 
 #define BUF_SIZ   128
 #define MAX_ARGS   32
+#define CONSOLE_DEVICE  "/dev/console"
 
 static fildes_t in;
 static stat_t sbuf;
@@ -45,9 +46,15 @@ static int cat(int argc, char **argv) {
     printf("<%s>\n", argv[1]);
 
     fd = open(argv[1], FM_READ);
-    stdout_fd = open("console", FM_WRITE);
+    stdout_fd = open(CONSOLE_DEVICE, FM_WRITE);
+
+    if (fd < 0) {
+        printf ("cat: could not open file '%s'\n", argv[1]);
+        return 1;
+    }
 
     assert(fd >= 0);
+    assert(stdout_fd >= 0);
 
     while ((num_read = read(fd, buf, BUF_SIZ)) > 0)
         num_written = write(stdout_fd, buf, num_read);
@@ -149,7 +156,7 @@ static int exec(int argc, char **argv) {
         printf("Failed!\n");
     }
     if (bg == 0) {
-        in = open("console", FM_READ);
+        in = open(CONSOLE_DEVICE, FM_READ);
         assert(in >= 0);
     }
     return 0;
@@ -217,7 +224,7 @@ int main(void) {
     int i, r, done, found, new, argc;
     char *bp, *p;
 
-    in = open("/dev/console", FM_READ);
+    in = open(CONSOLE_DEVICE, FM_READ);
     assert(in >= 0);
 
     bp = buf;

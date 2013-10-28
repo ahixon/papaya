@@ -40,9 +40,9 @@ void interrupt_handler (struct pawpaw_event* evt) {
 struct saved_data {
     struct pawpaw_share* share;
     struct pawpaw_cbuf* buffer;
+    char* buffer_data;
     seL4_CPtr badge;
     seL4_CPtr cap;
-    int unread;         /* FIXME: cbuf should be IN share to have same state */
 
     struct saved_data* next;
 };
@@ -53,7 +53,6 @@ static void
 recv_handler (void* _client_badge, struct udp_pcb* pcb, 
                     struct pbuf *p, struct ip_addr* ipaddr, u16_t unused2) {
 
-    printf ("svc_net: got some UDP data\n");
     seL4_Word badge = (seL4_Word)_client_badge;
     /* keep the data around for when they ask for it */
     struct saved_data* saved = data_head;
@@ -73,29 +72,29 @@ recv_handler (void* _client_badge, struct udp_pcb* pcb,
         assert (saved->share);
 
         /* FIXME: yuck */
-        saved->buffer = pawpaw_cbuf_create (0x1000, saved->share->buf);
+        saved->buffer_data = malloc (sizeof (char) * 0x1000);
+        assert (saved->buffer_data);
+
+        saved->buffer = pawpaw_cbuf_create (0x1000, saved->buffer_data);
         assert (saved->buffer);
     }
 
     /* OK, copy the data in if we can, otherwise junk it */
     struct pbuf *q;
-    int total_len = 0;
     for (q = p; q != NULL; q = q->next) {
         char* data = q->payload;
         pawpaw_cbuf_write (saved->buffer, data, q->len);
         //printf ("just wrote '%s'\n", data, saved->share->buf);
-        total_len += q->len;
     }
 
     pbuf_free (p);
 
     /* and tell the client */
-    printf ("notifying...\n");
-    saved->unread += total_len;
     seL4_Notify (saved->cap, 0);
 }
 
 int netsvc_read (struct pawpaw_event* evt) {
+    //printf ("net: someone asked us for data\n");
     struct saved_data* saved = data_head;
     while (saved) {
         if (saved->badge == evt->badge) {
@@ -106,17 +105,18 @@ int netsvc_read (struct pawpaw_event* evt) {
     }
 
     if (!saved) {
+        printf ("net: nobody matched badge\n");
         return PAWPAW_EVENT_UNHANDLED;
     }
 
     /* FIXME: needs to send start instead */
     evt->reply = seL4_MessageInfo_new (0, 0, pawpaw_share_attach (saved->share), 2);
     seL4_SetMR (0, saved->share->id);
-    //seL4_SetMR (1, pawpaw_cbuf_count (saved->buffer));
-    seL4_SetMR (1, saved->unread);
+    seL4_SetMR (1, pawpaw_cbuf_count (saved->buffer));
     seL4_SetMR (2, 0);  /* no more buffers - if they ask again we can nuke the old one */
 
-    saved->unread = 0;
+    /* copy it all in */
+    pawpaw_cbuf_read (saved->buffer, saved->share->buf, pawpaw_cbuf_count (saved->buffer));
 
     return PAWPAW_EVENT_NEEDS_REPLY;
 }
@@ -142,7 +142,7 @@ int netsvc_register (struct pawpaw_event* evt) {
             return PAWPAW_EVENT_UNHANDLED;
         }
 
-        printf ("svc_net: registered a UDP handler on port %u\n", evt->args[1]);
+        //printf ("svc_net: registered a UDP handler on port %u\n", evt->args[1]);
         udp_recv (pcb, &recv_handler, (void*)owner);
 
         /* register the thing */

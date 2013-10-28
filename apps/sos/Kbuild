@@ -13,8 +13,10 @@ sos-components-$(CONFIG_APP_SVC_VFS) += svc_vfs
 sos-components-$(CONFIG_APP_SVC_DEV) += svc_dev
 
 sos-components-$(CONFIG_APP_FS_DEV) += fs_dev
+sos-components-$(CONFIG_APP_FS_NFS) += fs_nfs
 
 sos-components-$(CONFIG_APP_TEST_RUNNER) += test_runner
+sos-components-$(CONFIG_APP_TEST_ECHOSERVER) += test_echoserver
 
 sos-components-$(CONFIG_APP_TEST_SHARE_A) += test_share_a test_share_b
 
