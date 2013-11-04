@@ -28,7 +28,7 @@ fildes_t open(const char *path, fmode_t mode) {
 	if (!vfs_share) {
 		vfs_share = pawpaw_share_new ();
 		if (!vfs_share) {
-			printf ("%s: failed to make new share\n", __FUNCTION__);
+			sos_debug_print ("failed to make new share\n", strlen("failed to make a new share\n"));
 			return -1;
 		}
 	}
@@ -45,12 +45,17 @@ fildes_t open(const char *path, fmode_t mode) {
     seL4_SetMR (1, vfs_share->id);
     seL4_SetMR (2, mode);
 
+    sos_debug_print ("trying to open via VFS: ", strlen("trying to open via VFS: "));
+    sos_debug_print (vfs_share->buf, strlen(vfs_share->buf));
+    sos_debug_print ("\n", 1);
+
     seL4_MessageInfo_t reply = seL4_Call (vfs_ep, msg);
     if (seL4_MessageInfo_get_extraCaps (reply) == 1) {
     	return (fildes_t)recv_cap;
     } else {
     	pawpaw_cspace_free_slot (recv_cap);
-    	return seL4_GetMR (0);
+    	//return seL4_GetMR (0);
+        return -1;
     }    
 }
 
@@ -102,7 +107,32 @@ int read(fildes_t file, char *buf, size_t nbyte) {
 
 // FIXME: needs to cheat with fd = {0, 1, 2}
 int write(fildes_t file, const char *buf, size_t nbyte) {
-	return -1;
+	if (nbyte >= (1 << 12)) {
+        return -1;      /* FIXME: crappy limitation */
+    }
+
+    /* FIXME: in the future, associate locally for FD */
+    struct pawpaw_share* fd_share = pawpaw_share_new ();
+    if (!fd_share) {
+        return -1;
+    }
+
+    memcpy (fd_share->buf, buf, nbyte);
+
+    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 3);
+    pawpaw_share_attach (fd_share);
+
+    seL4_SetMR (0, VFS_WRITE);
+    seL4_SetMR (1, fd_share->id);
+    seL4_SetMR (2, nbyte);
+
+    seL4_Call ((seL4_CPtr)file, msg);
+    int wrote = seL4_GetMR (1);
+
+    // unmount needs notifier OR keep onto IDs until all unmounted
+    //pawpaw_share_unmount (fd_share);
+
+    return wrote;
 }
 
 int getdirent(int pos, char *name, size_t nbyte) {
@@ -187,39 +217,12 @@ pid_t process_wait(pid_t pid) {
 
 /*************** TIMER SYSCALLS ***************/
 
-seL4_CPtr timersvc_ep = 0;
-
 int64_t time_stamp (void) {
-	if (!timersvc_ep) timersvc_ep = pawpaw_service_lookup (TIMER_SERVICE_NAME);
-
-	seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 1);
-	seL4_SetMR (0, TIMER_TIMESTAMP);
-	seL4_Call (timersvc_ep, msg);
-
-	/* fun.. the timer service returns an unsigned int64, but the API
-	 * requires a signed int64 for some reason?? */
-	return (int64_t)((uint64_t)seL4_GetMR (0) << 32 | seL4_GetMR (1));
+    return pawpaw_time_stamp ();
 }
 
 void sleep (int msec) {
-	usleep (msec * 1000);
-}
-
-/* FIXME: move into libunix or libpawpaw or something */
-int usleep (useconds_t usec) {
-    if (!timersvc_ep) timersvc_ep = pawpaw_service_lookup (TIMER_SERVICE_NAME);
-
-    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 3);
-
-    uint32_t msb = (uint32_t)(usec >> 32);
-    uint32_t lsb = (uint32_t)usec;
-
-    seL4_SetMR (0, TIMER_REGISTER);
-    seL4_SetMR (1, msb);
-    seL4_SetMR (2, lsb);
-
-    seL4_Call (timersvc_ep, msg);
-    return seL4_GetMR (0);
+	pawpaw_usleep (msec * 1000);
 }
 
 /*************** VM SYSCALLS ***************/

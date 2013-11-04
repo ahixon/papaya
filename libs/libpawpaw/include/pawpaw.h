@@ -59,6 +59,11 @@ struct pawpaw_share {
 	int sent;
 };
 
+typedef uint64_t useconds_t;
+int pawpaw_usleep (useconds_t usec);
+#define usleep pawpaw_usleep
+int64_t pawpaw_time_stamp (void);
+
 /* FIXME: in the future, maybe register a device struct? */
 seL4_CPtr pawpaw_register_irq (int irq_num);
 void* pawpaw_map_device (unsigned int base, unsigned int size);
@@ -100,4 +105,7 @@ void pawpaw_cbuf_destroy (struct pawpaw_cbuf* buf);
 int pawpaw_cbuf_count (struct pawpaw_cbuf* buf);
 void pawpaw_cbuf_write (struct pawpaw_cbuf* buf, void* data, int len);
 int pawpaw_cbuf_read (struct pawpaw_cbuf* buf, void* dst_data, int len);
+
+/* XXX: debugging */
+size_t sos_debug_print(const void *vData, size_t count);
 #endif

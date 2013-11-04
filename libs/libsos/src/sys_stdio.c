@@ -8,7 +8,7 @@
 
 
 struct __file __stdin = {
-	NULL,
+	0,
 	sos_read,
 	NULL,
 	NULL,
@@ -21,7 +21,7 @@ struct __file __stdin = {
 
 
 struct __file __stdout = {
-	NULL,
+	(void*)1,
 	NULL,
 	sos_write,
 	NULL,
@@ -34,7 +34,7 @@ struct __file __stdout = {
 
 
 struct __file __stderr = {
-	NULL,
+	(void*)2,
 	NULL,
 	sos_write,
 	NULL,

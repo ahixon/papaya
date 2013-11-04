@@ -37,7 +37,6 @@ void interrupt_handler (struct pawpaw_event* evt) {
     printf ("echoserver: got '%s', length 0x%x\n", (char*)netshare->buf, size);
 
     /* and send it right back */
-#if 0
     msg = seL4_MessageInfo_new (0, 0, 1, 3);
     seL4_SetCap (0, netshare->cap);
     
@@ -45,7 +44,6 @@ void interrupt_handler (struct pawpaw_event* evt) {
     seL4_SetMR (1, netshare->id);
     seL4_SetMR (2, size);
     seL4_Call (net_ep, msg);    /* FIXME: should handle Call or Send */
-#endif
 
     //pawpaw_share_unmount (netshare);
 }

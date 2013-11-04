@@ -4,6 +4,7 @@
 
 #include <pawpaw.h>
 #include <syscalls.h>
+#include <timer.h>
 
 seL4_CPtr pawpaw_register_irq (int irq_num) {
 	/* setup a place to receive our IRQHandler cap */
@@ -138,4 +139,42 @@ seL4_Word pawpaw_dma_alloc (void *vaddr, unsigned int sizebits) {
 
     seL4_Call (PAPAYA_SYSCALL_SLOT, msg);
     return seL4_GetMR (0);
+}
+
+size_t sos_debug_print(const void *vData, size_t count) {
+    size_t i;
+    const char *realdata = vData;
+    for (i = 0; i < count; i++)
+        seL4_DebugPutChar(realdata[i]);
+    return count;
+}
+
+seL4_CPtr timersvc_ep = 0;
+
+int pawpaw_usleep (useconds_t usec) {
+    if (!timersvc_ep) timersvc_ep = pawpaw_service_lookup (TIMER_SERVICE_NAME);
+
+    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 3);
+
+    uint32_t msb = (uint32_t)(usec >> 32);
+    uint32_t lsb = (uint32_t)usec;
+
+    seL4_SetMR (0, TIMER_REGISTER);
+    seL4_SetMR (1, msb);
+    seL4_SetMR (2, lsb);
+
+    seL4_Call (timersvc_ep, msg);
+    return seL4_GetMR (0);
+}
+
+int64_t pawpaw_time_stamp (void) {
+    if (!timersvc_ep) timersvc_ep = pawpaw_service_lookup (TIMER_SERVICE_NAME);
+
+    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 1);
+    seL4_SetMR (0, TIMER_TIMESTAMP);
+    seL4_Call (timersvc_ep, msg);
+
+    /* fun.. the timer service returns an unsigned int64, but the API
+     * requires a signed int64 for some reason?? */
+    return (int64_t)((uint64_t)seL4_GetMR (0) << 32 | seL4_GetMR (1));
 }

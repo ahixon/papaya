@@ -10,6 +10,6 @@ ASMFILES := $(patsubst $(SOURCE_DIR)/%,%,$(wildcard $(SOURCE_DIR)/crt/arch-${ARC
 INCLUDE_DIRS  += $(SOURCE_DIR)/src 
 
 # Libraries required to build the target
-LIBS := sel4c sel4 sos lwip ethdrivers sel4sync pawpaw nfs
+LIBS := sel4c sel4 lwip ethdrivers sel4sync pawpaw nfs
 
 include $(SEL4_COMMON)/common.mk

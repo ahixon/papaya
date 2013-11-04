@@ -63,14 +63,16 @@ int parse_filename (char* fname, struct fs_node* parent, struct fs_node** dest_f
     while (cur && fs) {
         /* keep looking on this level for a fs mounted on that dir */
         while (fs != NULL) {
-            //printf ("comparing '%s' and '%s'\n", fs->dirname, cur);
+            printf ("comparing '%s' and '%s'\n", fs->dirname, cur);
             if (strcmp (fs->dirname, cur) == 0) {
-                //printf ("matched\n");
+                printf ("matched\n");
                 break;
             }
 
-            //printf ("no match, next\n");
+            printf ("no match, next\n");
             fs = fs->level_next;
+            /* FIXME: holy shit this code needs a lot more thought */
+            //fs = fs->mounted_next;
         }
 
         found = fs;
@@ -80,7 +82,7 @@ int parse_filename (char* fname, struct fs_node* parent, struct fs_node** dest_f
         //printf ("remaining = %p, children = %p\n", cur, fs->children);
         if (fs && fs->children) {
             fs = fs->children;
-            // printf ("trying to load children? %p\n", fs);
+            printf ("trying to load children? %p\n", fs);
             if (cur) {
                 part = get_next_path_part (cur, end);
             }
@@ -146,8 +148,8 @@ int fs_mount (struct pawpaw_event* evt) {
     }
 
     /* FIXME: should use some sort of copyin since can buffer overflow + crash */
-    char* mountpoint = (char*)evt->share->buf;
-    char* fstype = (char*)(evt->share->buf + strlen (mountpoint) + 1);
+    char* mountpoint = strdup ((char*)evt->share->buf);
+    char* fstype = strdup ((char*)(evt->share->buf + strlen (mountpoint) + 1));
 
     /* find the given filesystem type */
     struct filesystem* fs = fs_head;
@@ -169,12 +171,13 @@ int fs_mount (struct pawpaw_event* evt) {
     node->fs = fs;
     node->mounter_badge = evt->badge;   /* only mounter should unmount(?) */
     node->children = NULL;
-    node->level_next = NULL;
+    node->level_next = root->children;
 
     node->mounted_next = node_head;
     node_head = node;
 
     root->children = node;
+    //root->children->level_next = node;
 
     /* done */
     printf ("vfs: mounted fs '%s' to /%s\n", fstype, mountpoint);
@@ -211,12 +214,15 @@ int vfs_open (struct pawpaw_event* evt) {
 
         /* FIXME: need a callback ID - should be Send instead */
         printf ("vfs: calling filesystem layer..\n");
-        seL4_Call (node->fs->cap, lookup_msg);
+        seL4_MessageInfo_t fs_reply = seL4_Call (node->fs->cap, lookup_msg);
+        assert (seL4_MessageInfo_get_capsUnwrapped (fs_reply) == 0);
+        assert (seL4_MessageInfo_get_extraCaps (fs_reply) >= 1);
 
         /* SINCE I CAN'T FORWARD CAPS THANKS SEL4?????????? */
         evt->reply = seL4_MessageInfo_new (0, 0, 1, 1);
         /* gonna forward MR 0 */
         seL4_SetCap (0, pawpaw_event_get_recv_cap());
+        seL4_SetMR (0, 0);
     } else {
         printf ("vfs: path failure for '%s'\n", requested_filename);
         /* path failure */

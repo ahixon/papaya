@@ -24,6 +24,7 @@ seL4_CPtr net_ep = 0;
 
 int vfs_open (struct pawpaw_event* evt);
 int vfs_read (struct pawpaw_event* evt);
+int vfs_write (struct pawpaw_event* evt);
 
 void interrupt_handler (struct pawpaw_event* evt);
 int interrupt_handler_2 (struct pawpaw_event* evt);
@@ -34,6 +35,7 @@ struct pawpaw_eventhandler_info handlers[VFS_NUM_EVENTS] = {
     {   0,  0,  0   },      //              //
     {   vfs_open,           2,  HANDLER_REPLY },    // mode + badge, replies with EP to file (badged version of listen cap)
     {   vfs_read,           2,  HANDLER_REPLY | HANDLER_AUTOMOUNT },    // num bytes
+    {   vfs_write,          2,  HANDLER_REPLY | HANDLER_AUTOMOUNT },    // num bytes
 };
 
 struct pawpaw_event_table handler_table = { VFS_NUM_EVENTS, handlers };
@@ -129,6 +131,22 @@ int vfs_read (struct pawpaw_event* evt) {
         seL4_SetMR (1, read);
     }
 
+    return PAWPAW_EVENT_NEEDS_REPLY;
+}
+
+int vfs_write (struct pawpaw_event* evt) {
+    assert (evt->share);
+    
+    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 3);
+    seL4_SetCap (0, evt->share->cap);
+    seL4_SetMR (0, NETSVC_SERVICE_SEND);
+    seL4_SetMR (1, evt->share->id);
+    seL4_SetMR (2, evt->args[0]);
+
+    /* FIXME: should be write? or not really in this case since it's fast enough */
+    seL4_Call (net_ep, msg);
+
+    evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
     return PAWPAW_EVENT_NEEDS_REPLY;
 }
 

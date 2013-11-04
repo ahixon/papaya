@@ -29,12 +29,10 @@ int syscall_register_irq (struct pawpaw_event* evt) {
 }
 
 int syscall_map_device (struct pawpaw_event* evt) {
-    printf ("%s asked to map device\n", current_thread->name);
     evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
 
-    /* round len up to page size : FIXME: use #define */
+    /* round len up to page size */
     size_t len = evt->args[1];
-    //len &= ~(PAGE_SIZE - 1);
     len = (len + PAGE_SIZE - 1) & PAGE_MASK;
 
     if (len == 0) {
@@ -42,7 +40,6 @@ int syscall_map_device (struct pawpaw_event* evt) {
         return PAWPAW_EVENT_UNHANDLED;
     }
 
-    /* FIXME: use PROCESS_SHARE_* regions? */
     /* FIXME: need memmapped region type */
     struct as_region* reg = as_define_region_within_range (current_thread->as,
         DEVICE_START, DEVICE_END, len, seL4_AllRights, REGION_GENERIC);
@@ -58,7 +55,7 @@ int syscall_map_device (struct pawpaw_event* evt) {
     paddr_t paddr = evt->args[0];
     vaddr_t end = reg->vbase + len;
 
-    printf ("%s: mapping 0x%x -> 0x%x (using size 0x%x though asked for 0x%x) on paddr 0x%x\n", __FUNCTION__, reg->vbase, reg->vbase + reg->size, len, evt->args[1], paddr);
+    //printf ("%s: mapping 0x%x -> 0x%x (using size 0x%x though asked for 0x%x) on paddr 0x%x\n", __FUNCTION__, reg->vbase, reg->vbase + reg->size, len, evt->args[1], paddr);
     
     for (vaddr_t vaddr = reg->vbase; vaddr < end; vaddr += PAGE_SIZE) {
         struct pt_entry* pte = page_fetch_entry (current_thread->as, reg->attributes, current_thread->as->pagetable, vaddr);
@@ -76,15 +73,13 @@ int syscall_map_device (struct pawpaw_event* evt) {
             printf ("%s: failed to allocate new untyped frame for vaddr 0x%x\n", __FUNCTION__, vaddr);
         }
 
-        printf ("Mapping page just to make sure...\n");
         struct frameinfo* map_frame = page_map (current_thread->as, reg, vaddr);
         assert (map_frame);
 
-        printf ("%s: underlying frame for 0x%x is now 0x%x\n", __FUNCTION__, vaddr, paddr);
+        //printf ("%s: underlying frame for 0x%x is now 0x%x\n", __FUNCTION__, vaddr, paddr);
         paddr += PAGE_SIZE;
     }
 
-    printf ("done!\n");
     seL4_SetMR (0, reg->vbase);
 
     return PAWPAW_EVENT_NEEDS_REPLY;

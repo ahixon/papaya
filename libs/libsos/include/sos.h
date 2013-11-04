@@ -128,10 +128,6 @@ void sleep(int msec);
 /* Sleeps for the specified number of milliseconds.
  */
 
-/* FIXME: move into libunix or libpawpaw or something */
-typedef uint64_t useconds_t;
-int usleep (useconds_t usec);
-
 
 /*************************************************************************/
 /*                                   */

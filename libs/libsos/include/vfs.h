@@ -3,5 +3,6 @@
 #define VFS_MOUNT			(2)
 #define VFS_OPEN			(3)
 #define VFS_READ			(4)
+#define VFS_WRITE			(5)
 
-#define VFS_NUM_EVENTS		(5)
+#define VFS_NUM_EVENTS		(6)

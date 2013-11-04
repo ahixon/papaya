@@ -8,7 +8,6 @@
 #include <syscalls.h>
 #include <pawpaw.h>
 
-#include <sos.h>
 #include <vfs.h>
 
 //#define VFS_MOUNT               75
@@ -16,6 +15,8 @@
 #define DEV_GET_INFO            25
 
 #define FILESYSTEM_NAME     "dev"
+
+#define FM_EXEC  1 /* XXX: from sos.h -> move into separate .h? */
 
 seL4_CPtr service_ep;
 
@@ -75,40 +76,18 @@ int vfs_open (struct pawpaw_event* evt) {
     seL4_SetMR (1, evt->args[0]);   /* file mode */
     seL4_SetMR (2, evt->args[1]);   /* owner badge */
 
-    /* could be Call */
-    //printf ("calling %d\n", ret);
+    /* XXX: should be Send - we don't want to wait here forever */
     seL4_MessageInfo_t reply = seL4_Call (ret, underlying_msg);
-
-    /* attach the FD cap to our reply */
-    /*seL4_MessageInfo_t requestor_msg = seL4_MessageInfo_new (0, 0, 1, 1);
-    seL4_SetMR (0, 0);
-
-    seL4_CPtr dev_fd_cap = pawpaw_event_get_recv_cap ();
-    printf ("OK sending back to %d\n", requestor);
-    seL4_SetCap (0, dev_fd_cap);
-
-    seL4_Send (requestor, requestor_msg);*/
-
-    //printf ("fs_dev: finally telling VFS how we went\n");
-
-    /* and tell the VFS layer how we went (for caching) */
-    /*seL4_MessageInfo_t reply = seL4_MessageInfo_new (0, 0, 0, 1);
-    if (ret) {
-        seL4_SetMR (0, 0);  // file OK
-    } else {
-        seL4_SetMR (0, 1);  // file not OK
-    }
-
-    seL4_Reply (reply);
-    pawpaw_cspace_free_slot (resp_cap);*/
 
     /* and tell VFS layer */
     assert (seL4_MessageInfo_get_extraCaps (reply) == 1);
     seL4_CPtr dev_fd_cap = pawpaw_event_get_recv_cap ();
+    printf ("fs_dev: got cap 0x%x, replying to VFS\n", dev_fd_cap);
 
     evt->reply = seL4_MessageInfo_new (0, 0, 1, 1);
-    seL4_SetCap (0, dev_fd_cap);
     seL4_SetMR (0, 0);
+    seL4_SetCap (0, dev_fd_cap);
+    
     return PAWPAW_EVENT_NEEDS_REPLY;
 }
 

@@ -213,16 +213,18 @@ struct command commands[] = { { "dir", dir }, { "ls", dir }, { "cat", cat }, {
 
 int main(void) {
     /* XXX: hack until we can wait for services to start */
-    printf ("###############################\nsosh: started, but sleeping for a little...\n");
-    for (int i = 0; i < 1000; i++) {
+    //printf ("###############################\nsosh: started, but sleeping for a little...\n");
+    for (int i = 0; i < 2500; i++) {
         seL4_Yield();
     }
-    printf ("###############################\nsosh: continuing...\n");
+    sos_debug_print ("###############################\nsosh: continuing...\n", strlen ("###############################\nsosh: continuing...\n"));
 
     char buf[BUF_SIZ];
     char *argv[MAX_ARGS];
     int i, r, done, found, new, argc;
     char *bp, *p;
+
+    printf ("WELL SHIT\n");
 
     in = open(CONSOLE_DEVICE, FM_READ);
     assert(in >= 0);
