@@ -106,6 +106,7 @@ int fs_register_info (struct pawpaw_event* evt) {
     }
 
     if (!evt->share) {
+        printf ("fs_register_info: missing share\n");
         return PAWPAW_EVENT_UNHANDLED;
     }
 
@@ -144,6 +145,7 @@ int fs_register_cap (struct pawpaw_event* evt) {
 
 int fs_mount (struct pawpaw_event* evt) {
     if (!evt->share) {
+        printf ("vfs_mount: missing share\n");
         return PAWPAW_EVENT_UNHANDLED;
     }
 
@@ -181,12 +183,14 @@ int fs_mount (struct pawpaw_event* evt) {
 
     /* done */
     printf ("vfs: mounted fs '%s' to /%s\n", fstype, mountpoint);
+    free (fstype);
     evt->reply = seL4_MessageInfo_new (0, 0, 0, 0);
     return PAWPAW_EVENT_NEEDS_REPLY;
 }
 
 int vfs_open (struct pawpaw_event* evt) {
     if (!evt->share) {
+        printf ("vfs_open: missing share\n");
         return PAWPAW_EVENT_UNHANDLED;
     }
 
@@ -213,6 +217,7 @@ int vfs_open (struct pawpaw_event* evt) {
         //seL4_SetCap (0, evt->reply_cap);
 
         /* FIXME: need a callback ID - should be Send instead */
+        pawpaw_event_get_recv_cap();        /* try this */
         printf ("vfs: calling filesystem layer..\n");
         seL4_MessageInfo_t fs_reply = seL4_Call (node->fs->cap, lookup_msg);
         assert (seL4_MessageInfo_get_capsUnwrapped (fs_reply) == 0);

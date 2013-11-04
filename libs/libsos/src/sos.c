@@ -45,10 +45,6 @@ fildes_t open(const char *path, fmode_t mode) {
     seL4_SetMR (1, vfs_share->id);
     seL4_SetMR (2, mode);
 
-    sos_debug_print ("trying to open via VFS: ", strlen("trying to open via VFS: "));
-    sos_debug_print (vfs_share->buf, strlen(vfs_share->buf));
-    sos_debug_print ("\n", 1);
-
     seL4_MessageInfo_t reply = seL4_Call (vfs_ep, msg);
     if (seL4_MessageInfo_get_extraCaps (reply) == 1) {
     	return (fildes_t)recv_cap;

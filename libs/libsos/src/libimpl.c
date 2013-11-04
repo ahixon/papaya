@@ -13,8 +13,6 @@
 fildes_t handles[NUM_DEFAULT_HANDLES] = {0};
 
 size_t sos_write(void *vData, long int position, size_t count, void *handle) {
-    sos_debug_print ("doing sos write\n", strlen("doing sos write\n"));
-
     unsigned int handleid = (int)handle;
     if (handleid >= NUM_DEFAULT_HANDLES) {
         return 0;
@@ -31,7 +29,6 @@ size_t sos_write(void *vData, long int position, size_t count, void *handle) {
     }
 
     assert (handles[handleid] > 0);
-    sos_debug_print ("sosh: opened actually doing write\n", strlen("sosh: opened actually doing write\n"));
     return write (handles[handleid], vData, count);
 }
 

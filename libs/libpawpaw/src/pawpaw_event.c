@@ -159,7 +159,6 @@ int pawpaw_event_process (struct pawpaw_event_table* table, struct pawpaw_event 
         evt->share = pawpaw_share_get (share_id);
 
         if (!evt->share) {
-            printf ("%s: attempting to mount share from provided cap\n", __FUNCTION__);
             if (seL4_MessageInfo_get_extraCaps (evt->msg) > 0) {
                 evt->share = pawpaw_share_mount (recv_cap);
                 pawpaw_share_set (evt->share);
