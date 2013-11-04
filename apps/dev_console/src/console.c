@@ -44,6 +44,8 @@ seL4_CPtr current_reader = 0;
 struct pawpaw_share* current_share = NULL;
 struct pawpaw_event* current_event = NULL;
 
+int last_opened = 1;
+
 int vfs_open (struct pawpaw_event* evt) {
     if (evt->args[0] & FM_READ) {
         if (current_reader) {
@@ -57,7 +59,17 @@ int vfs_open (struct pawpaw_event* evt) {
     /* FIXME: register in open FD table so that opened for writing can't read and vice versa */
 
     printf ("console: open success\n");
-    seL4_SetCap (0, service_ep);
+    seL4_CPtr their_cap = pawpaw_cspace_alloc_slot();
+    int err = seL4_CNode_Mint (
+        PAPAYA_ROOT_CNODE_SLOT, their_cap,  PAPAYA_CSPACE_DEPTH,
+        PAPAYA_ROOT_CNODE_SLOT, service_ep, PAPAYA_CSPACE_DEPTH,
+        seL4_AllRights, seL4_CapData_Badge_new (last_opened));
+
+    last_opened++;
+    assert (their_cap > 0);
+    assert (err == 0);
+
+    seL4_SetCap (0, their_cap);
     seL4_SetMR (0, 0);
     evt->reply = seL4_MessageInfo_new (0, 0, 1, 1);
     return PAWPAW_EVENT_NEEDS_REPLY;
