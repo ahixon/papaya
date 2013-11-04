@@ -173,6 +173,7 @@ thread_t thread_create (char* name, cspace_t *existing_cspace, addrspace_t exist
     thread->pid = pid;
     thread->name = strdup (name);
     thread->next = NULL;
+    thread->start = 0;  /* so that thread.c doesn't depend on svc_timer */
 
     /* Create a new TCB object */
     thread->tcb_addr = ut_alloc (seL4_TCBBits);

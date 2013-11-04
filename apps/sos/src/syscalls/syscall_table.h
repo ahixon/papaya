@@ -20,6 +20,7 @@ int syscall_thread_create (struct pawpaw_event* evt);
 int syscall_thread_destroy (struct pawpaw_event* evt);
 int syscall_thread_pid (struct pawpaw_event* evt);
 int syscall_thread_wait (struct pawpaw_event* evt);
+int syscall_thread_list (struct pawpaw_event* evt);
 
 int syscall_alloc_cnodes (struct pawpaw_event* evt);
 int syscall_create_ep_sync (struct pawpaw_event* evt);

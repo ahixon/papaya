@@ -28,6 +28,7 @@ struct thread_resource {
 struct thread {
 	char* name;
 	pid_t pid;
+    uint64_t start;
 
     seL4_Word tcb_addr;
     seL4_TCB tcb_cap;

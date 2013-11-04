@@ -217,7 +217,7 @@ int vfs_open (struct pawpaw_event* evt) {
         //seL4_SetCap (0, evt->reply_cap);
 
         /* FIXME: need a callback ID - should be Send instead */
-        pawpaw_event_get_recv_cap();        /* try this */
+        pawpaw_event_get_recv_cap();        /* XXX: investigate why we need this */
         printf ("vfs: calling filesystem layer..\n");
         seL4_MessageInfo_t fs_reply = seL4_Call (node->fs->cap, lookup_msg);
         assert (seL4_MessageInfo_get_capsUnwrapped (fs_reply) == 0);

@@ -70,7 +70,7 @@ struct pawpaw_eventhandler_info syscalls[NUM_SYSCALLS] = {
     { syscall_thread_create,    2,  HANDLER_REPLY   },
     { syscall_thread_destroy,   1,  HANDLER_REPLY   },
     { syscall_thread_pid,       0,  HANDLER_REPLY   },
-    { NULL, 0, 0 },     // SYSCALL_PROCESS_SEND_STATUS 
+    { syscall_thread_list,      2,  HANDLER_REPLY   },
     { syscall_thread_wait,      1,  HANDLER_REPLY   },
     { syscall_alloc_dma,        2,  HANDLER_REPLY   },
 };

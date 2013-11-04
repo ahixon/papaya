@@ -93,3 +93,12 @@ int syscall_thread_wait (struct pawpaw_event* evt) {
 
     return PAWPAW_EVENT_HANDLED_SAVED;
 }
+
+int syscall_thread_list (struct pawpaw_event* evt) {
+    evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+    
+    /* FIXME: implement this! */
+    seL4_SetMR (0, 0);
+
+    return PAWPAW_EVENT_NEEDS_REPLY;
+}
