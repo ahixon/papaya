@@ -58,6 +58,9 @@ page_free (pagetable_t pt, vaddr_t vaddr);
 struct pt_entry*
 page_fetch (pagetable_t pt, vaddr_t vaddr);
 
+struct pt_entry* 
+page_fetch_entry (addrspace_t as, seL4_ARM_VMAttributes attributes, pagetable_t pt, vaddr_t vaddr);
+
 void pagetable_dump (pagetable_t pt);
 
 struct pt_entry*

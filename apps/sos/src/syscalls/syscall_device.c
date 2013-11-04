@@ -29,6 +29,7 @@ int syscall_register_irq (struct pawpaw_event* evt) {
 }
 
 int syscall_map_device (struct pawpaw_event* evt) {
+    printf ("%s asked to map device\n", current_thread->name);
     evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
 
     /* round len up to page size : FIXME: use #define */
@@ -44,7 +45,10 @@ int syscall_map_device (struct pawpaw_event* evt) {
     /* FIXME: use PROCESS_SHARE_* regions? */
     /* FIXME: need memmapped region type */
     struct as_region* reg = as_define_region_within_range (current_thread->as,
-        PROCESS_SHARE_START, PROCESS_SHARE_END, len, seL4_AllRights, REGION_GENERIC);
+        DEVICE_START, DEVICE_END, len, seL4_AllRights, REGION_GENERIC);
+
+    /* don't cache */
+    reg->attributes = 0;
 
     if (!reg) {
         seL4_SetMR (0, -1);
@@ -57,7 +61,7 @@ int syscall_map_device (struct pawpaw_event* evt) {
     printf ("%s: mapping 0x%x -> 0x%x (using size 0x%x though asked for 0x%x) on paddr 0x%x\n", __FUNCTION__, reg->vbase, reg->vbase + reg->size, len, evt->args[1], paddr);
     
     for (vaddr_t vaddr = reg->vbase; vaddr < end; vaddr += PAGE_SIZE) {
-        struct pt_entry* pte = page_fetch_entry (current_thread->as, seL4_ARM_Default_VMAttributes, current_thread->as->pagetable, vaddr);
+        struct pt_entry* pte = page_fetch_entry (current_thread->as, reg->attributes, current_thread->as->pagetable, vaddr);
         assert (pte);
 
         if (pte->frame) {
@@ -72,13 +76,15 @@ int syscall_map_device (struct pawpaw_event* evt) {
             printf ("%s: failed to allocate new untyped frame for vaddr 0x%x\n", __FUNCTION__, vaddr);
         }
 
-        /*struct frame_info* map_frame = page_map (current_thread->as, reg, vaddr);
-        assert (map_frame);*/
+        printf ("Mapping page just to make sure...\n");
+        struct frameinfo* map_frame = page_map (current_thread->as, reg, vaddr);
+        assert (map_frame);
 
-        //printf ("%s: underlying frame for 0x%x is now 0x%x\n", __FUNCTION__, vaddr, local_dma);
+        printf ("%s: underlying frame for 0x%x is now 0x%x\n", __FUNCTION__, vaddr, paddr);
         paddr += PAGE_SIZE;
     }
 
+    printf ("done!\n");
     seL4_SetMR (0, reg->vbase);
 
     return PAWPAW_EVENT_NEEDS_REPLY;

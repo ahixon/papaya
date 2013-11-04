@@ -5,6 +5,16 @@ probably because a race when the timer service gets an IRQ within seL4 but we've
 
 =========
 
+KERNEL DATA ABORT!
+Faulting instruction: 0xe001cdf8
+FAR: 0xb0000000 DFSR: 0x1c06
+halting...
+
+on mapping addr 0xb0000000?
+
+=========
+
+
 ut_alloc: frame_alloc:85 allocated 0xc bits untyped @ 0x10dad000
 ut_alloc: cspace_ut_alloc_wrapper:225 allocated 0xe bits untyped @ 0x10db4000
 ut_alloc: cspace_ut_alloc_wrapper:225 allocated 0xe bits untyped @ 0x10db8000

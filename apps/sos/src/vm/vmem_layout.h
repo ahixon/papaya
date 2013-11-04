@@ -5,6 +5,7 @@
 #define DMA_VSTART          (0x10000000)
 #define DMA_SIZE_BITS       (22)
 #define DEVICE_START        (0xB0000000)
+#define DEVICE_END			(0xC0000000)
 
 #define ROOT_VSTART         (0xC0000000)
 
