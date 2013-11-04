@@ -373,7 +373,6 @@ int thread_setup_default_caps (thread_t thread, seL4_CPtr rootsvr_ep) {
     last_cap = cspace_copy_cap (thread->croot, cur_cspace, thread->croot->root_cnode, seL4_AllRights);
     assert (last_cap == PAPAYA_ROOT_CNODE_SLOT);
 
-    printf ("copying pagedir cap...\n");
     last_cap = cspace_copy_cap (thread->croot, cur_cspace, thread->as->pagedir_cap, seL4_AllRights);
     assert (last_cap == PAPAYA_PAGEDIR_SLOT);
     

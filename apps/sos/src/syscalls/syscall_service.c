@@ -106,7 +106,7 @@ int syscall_service_find (struct pawpaw_event* evt) {
         seL4_SetMR (0, client_cap);
     } else if (seL4_GetMR (1) > 0) {
         /* if service asked to block, wait for it to come available */
-        printf ("%s: requested service %s not ready, %s will sleep until available\n", __FUNCTION__, service_name, current_thread->name);
+        //printf ("%s: requested service %s not ready, %s will sleep until available\n", __FUNCTION__, service_name, current_thread->name);
         struct svc_wait* sw = malloc (sizeof (struct svc_wait));
 
         sw->name = strdup (service_name);

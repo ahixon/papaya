@@ -56,7 +56,7 @@ int main(void) {
         seL4_SetMR (0, share->id);
         seL4_MessageInfo_t reply = seL4_Call (b, msg);
 
-        printf ("\t\tA: received in its buffer %s\n", share->buf);
+        printf ("\t\tA: received in its buffer %s\n", (char*)share->buf);
 
         if (seL4_MessageInfo_get_extraCaps (reply) == 1) {
             seL4_Word msgid = seL4_GetMR (0);
@@ -68,7 +68,7 @@ int main(void) {
 
             assert (tmpshare->id == msgid);
 
-            printf ("\t\tA: content mounted to vaddr %p was: %s\n", tmpshare->buf, tmpshare->buf);
+            printf ("\t\tA: content mounted to vaddr %p was: %s\n", tmpshare->buf, (char*)tmpshare->buf);
 
             /*share_cap = pawpaw_cspace_alloc_slot ();
             assert (share_cap);*/

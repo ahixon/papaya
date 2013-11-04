@@ -53,7 +53,7 @@ addrspace_create (seL4_ARM_PageTable pd);
 void
 addrspace_destroy (addrspace_t as);
 
-frameidx_t
+struct frameinfo*
 as_map_page (addrspace_t as, vaddr_t vaddr);
 
 struct as_region*

@@ -43,7 +43,7 @@ struct pawpaw_event_table handler_table = { VFS_NUM_EVENTS, handlers };
 
 int vfs_open (struct pawpaw_event* evt) {
     assert (evt->share);
-    printf ("fs_dev: want to open '%s'\n", evt->share->buf);
+    printf ("fs_dev: want to open '%s'\n", (char*)evt->share->buf);
 
     /*assert (seL4_MessageInfo_get_extraCaps (evt->msg) == 1);
     seL4_CPtr requestor = pawpaw_event_get_recv_cap ();*/
@@ -76,7 +76,7 @@ int vfs_open (struct pawpaw_event* evt) {
     seL4_SetMR (2, evt->args[1]);   /* owner badge */
 
     /* could be Call */
-    printf ("calling %d\n", ret);
+    //printf ("calling %d\n", ret);
     seL4_MessageInfo_t reply = seL4_Call (ret, underlying_msg);
 
     /* attach the FD cap to our reply */
@@ -145,7 +145,7 @@ void interrupt_handler (struct pawpaw_event* evt) {
 
     entries = ve;
 
-    printf ("fs_dev: registered new device %s with cap %d\n", ve->name, ve->vnode);
+    //printf ("fs_dev: registered new device %s with cap %d\n", ve->name, ve->vnode);
 }
 
 int main (void) {
@@ -165,7 +165,7 @@ int main (void) {
     assert (service_ep);
     
     /* ask the device service to notify us when a device is added/removed */
-    printf ("fs_dev: asking device manager to tell us about all device changes\n");
+    //printf ("fs_dev: asking device manager to tell us about all device changes\n");
     dev_ep = pawpaw_service_lookup ("svc_dev");
     assert (dev_ep);
 
@@ -176,7 +176,7 @@ int main (void) {
     seL4_SetCap (0, async_ep);
     seL4_Call (dev_ep, msg);
 
-    printf ("fs_dev: should recv messages\n");
+    //printf ("fs_dev: should recv messages\n");
 
     /* register this filesystem with the VFS */
     seL4_CPtr vfs_ep = pawpaw_service_lookup ("svc_vfs");

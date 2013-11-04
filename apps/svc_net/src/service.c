@@ -70,7 +70,7 @@ static void
 recv_handler (void* _client_badge, struct udp_pcb* pcb, 
                     struct pbuf *p, struct ip_addr* ipaddr, u16_t unused2) {
 
-    printf ("net: received data\n");
+    printf ("net: received data of size 0x%x\n", p->len);
     seL4_Word badge = (seL4_Word)_client_badge;
     /* keep the data around for when they ask for it */
     struct saved_data* saved = data_head;

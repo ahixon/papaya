@@ -37,6 +37,7 @@ void interrupt_handler (struct pawpaw_event* evt) {
     printf ("echoserver: got '%s', length 0x%x\n", (char*)netshare->buf, size);
 
     /* and send it right back */
+#if 0
     msg = seL4_MessageInfo_new (0, 0, 1, 3);
     seL4_SetCap (0, netshare->cap);
     
@@ -44,6 +45,7 @@ void interrupt_handler (struct pawpaw_event* evt) {
     seL4_SetMR (1, netshare->id);
     seL4_SetMR (2, size);
     seL4_Call (net_ep, msg);    /* FIXME: should handle Call or Send */
+#endif
 
     //pawpaw_share_unmount (netshare);
 }
@@ -74,7 +76,7 @@ int main (void) {
 
     sleep (200);
 
-    /*struct pawpaw_share* helloshare = pawpaw_share_new ();
+    struct pawpaw_share* helloshare = pawpaw_share_new ();
     memcpy (helloshare->buf, "hello!", strlen("hello!"));
     seL4_SetCap (0, helloshare->cap);
     seL4_SetMR (0, NETSVC_SERVICE_SEND);
@@ -82,7 +84,7 @@ int main (void) {
     seL4_SetMR (2, strlen("hello!"));
 
     seL4_Call (net_ep, msg);
-    assert (seL4_GetMR (0) == 0);*/
+    assert (seL4_GetMR (0) == 0);
 
     /*pawpaw_event_loop (&handler_table, interrupt_handler, async_ep);*/
     printf ("echoserver: ready, waiting for interrupt...\n");

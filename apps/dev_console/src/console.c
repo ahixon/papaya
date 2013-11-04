@@ -29,7 +29,7 @@ void interrupt_handler (struct pawpaw_event* evt);
 int interrupt_handler_2 (struct pawpaw_event* evt);
 
 struct pawpaw_eventhandler_info handlers[VFS_NUM_EVENTS] = {
-    {   interrupt_handler,  0,  0   },      //              //
+    {   interrupt_handler_2,  0,  0   },      //              //
     {   0,  0,  0   },      //   RESERVED   //
     {   0,  0,  0   },      //              //
     {   vfs_open,           2,  HANDLER_REPLY },    // mode + badge, replies with EP to file (badged version of listen cap)

@@ -75,7 +75,7 @@ static int load_segment_into_vspace(addrspace_t dest_as,
         kvpage = PAGE_ALIGN(kdst);
 
         /* Map the page into the destination address space */
-        frameidx_t frame = as_map_page (dest_as, vpage);
+        struct frameinfo* frame = as_map_page (dest_as, vpage);
         if (!frame) {
             panic ("failed to map into process addrspace");
         }

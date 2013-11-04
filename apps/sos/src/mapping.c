@@ -19,6 +19,7 @@ extern const seL4_BootInfo* _boot_info;
  */
 static int 
 _map_page_table(seL4_ARM_PageDirectory pd, seL4_Word vaddr){
+    printf ("%s: LEGACY API - trying to map pagetable 0x%x\n", __FUNCTION__, vaddr);
     seL4_Word pt_addr;
     seL4_ARM_PageTable pt_cap;
     int err;
@@ -56,6 +57,7 @@ map_page(seL4_CPtr frame_cap, seL4_ARM_PageDirectory pd, seL4_Word vaddr,
     int err;
 
     /* Attempt the mapping */
+    printf ("%s: LEGACY API - trying to map vaddr 0x%x\n", __FUNCTION__, vaddr);
     err = seL4_ARM_Page_Map(frame_cap, pd, vaddr, rights, attr);
     if(err == seL4_FailedLookup){
         /* Assume the error was because we have no page table */

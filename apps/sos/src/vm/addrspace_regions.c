@@ -108,6 +108,11 @@ as_define_region (addrspace_t as, vaddr_t vbase, size_t size, seL4_CapRights per
         return NULL;
     }
 
+    if (size == 0) {
+        printf ("%s: cannot create 0 sized region\n", __FUNCTION__);
+        return NULL;
+    }
+
     struct as_region* reg = malloc (sizeof (struct as_region));
     if (!reg) {
         printf ("as_create_region: no more space to malloc\n");

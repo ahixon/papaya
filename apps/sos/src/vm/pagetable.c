@@ -129,7 +129,7 @@ pagetable_kernel_install_pt (addrspace_t as, seL4_ARM_VMAttributes attributes, v
         /* if someone's already mapped a pagetable in, don't worry about it */
         /* FIXME: remove once mapping.c is nixed */
         if (err != seL4_DeleteFirst) {
-            //return 0;
+            return 0;
         }
     }
 
@@ -169,6 +169,8 @@ pagetable_kernel_map_page (vaddr_t vaddr, struct frameinfo* frame, struct as_reg
  * If it does not exist, it is created.
  *
  * Returns NULL on failure.
+
+ FIXME: this function should be renamed vs page_fetch
  */
 struct pt_entry* 
 page_fetch_entry (addrspace_t as, seL4_ARM_VMAttributes attributes, pagetable_t pt, vaddr_t vaddr) {
@@ -322,7 +324,7 @@ page_unmap (struct pt_entry* entry) {
 
         /* unmap + delete the cap to the page */
         if (!entry->cap) {
-            printf ("%s: frame %p was allocated but had no cap???\n", entry->frame);
+            printf ("%s: frame %p was allocated but had no cap???\n", __FUNCTION__, entry->frame);
             return false;
         }
 

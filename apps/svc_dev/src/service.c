@@ -79,15 +79,13 @@ unsigned int device_generate_id (struct device* d) {
 }
 
 int main(void) {
-    int err;
     seL4_Word badge;
-    seL4_MessageInfo_t message, reply;
+    seL4_MessageInfo_t message;
 
     /* create our EP to listen on */
     seL4_CPtr service_cap = pawpaw_create_ep ();
     assert (service_cap);
 
-    printf ("svc_dev: allocating msg slot\n");
     seL4_CPtr msg_cap = pawpaw_cspace_alloc_slot ();
     assert (msg_cap);
 
@@ -125,7 +123,7 @@ int main(void) {
                 assert (msg_cap);
                 seL4_SetCapReceivePath (PAPAYA_ROOT_CNODE_SLOT, msg_cap, PAPAYA_CSPACE_DEPTH);
 
-                printf ("some thread is now listening for changes\n");
+                //printf ("some thread is now listening for changes\n");
                 seL4_MessageInfo_t reply = seL4_MessageInfo_new (0, 0, 0, 1);
                 seL4_SetMR (0, 0);
 
@@ -134,7 +132,7 @@ int main(void) {
                 /* notify for all existing devices - HACK really need an interator function */
                 struct device* dev = devlist;
                 while (dev) {
-                    printf ("sending notify to %d\n", c->their_cap);
+                    //printf ("sending notify to %d\n", c->their_cap);
                     seL4_Notify (c->their_cap, dev->id);
                     dev = dev->next;
                 }
@@ -177,7 +175,7 @@ int main(void) {
                 assert (msg_cap);
                 seL4_SetCapReceivePath (PAPAYA_ROOT_CNODE_SLOT, msg_cap, PAPAYA_CSPACE_DEPTH);
 
-                printf ("registered device\n");
+                //printf ("registered device\n");
 
                 notify_registered (dev);
             } else if (seL4_GetMR (0) == DEV_GET_INFO) {
@@ -202,7 +200,7 @@ int main(void) {
 
                     seL4_Send (reply_cap, reply);
                 } else {
-                    printf ("UNKNOWN DEVICE ID 0x%x\n", dev);
+                    printf ("UNKNOWN DEVICE ID 0x%x\n", dev->id);
                 }
 
             }

@@ -157,17 +157,17 @@ network_init(seL4_CPtr interrupt_ep) {
     _irq_ep = interrupt_ep;
 
     /* Extract IP from .config */
-    printf("\nInitialising network...\n\n");
+    //printf("\nInitialising network...\n\n");
     err = 0;
     err |= !ipaddr_aton(CONFIG_SOS_GATEWAY,      &gw);
     err |= !ipaddr_aton(CONFIG_SOS_IP     ,  &ipaddr);
     err |= !ipaddr_aton(CONFIG_SOS_NETMASK, &netmask);
     assert (!err);
     //conditional_panic(err, "Failed to parse IP address configuration");
-    printf("  Local IP Address: %s\n", ipaddr_ntoa( &ipaddr));
-    printf("Gateway IP Address: %s\n", ipaddr_ntoa(     &gw));
-    printf("      Network Mask: %s\n", ipaddr_ntoa(&netmask));
-    printf("\n");
+    //printf("  Local IP Address: %s\n", ipaddr_ntoa( &ipaddr));
+    //printf("Gateway IP Address: %s\n", ipaddr_ntoa(     &gw));
+    //printf("      Network Mask: %s\n", ipaddr_ntoa(&netmask));
+    //printf("\n");
 
     /* low level initialisation */
     eth_driver = ethif_plat_init(0, sos_interface);
