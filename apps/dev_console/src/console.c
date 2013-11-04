@@ -184,11 +184,12 @@ int main (void) {
     seL4_Send (dev_ep, msg);
 
     net_ep = pawpaw_service_lookup ("svc_net");
-    msg = seL4_MessageInfo_new (0, 0, 1, 3);
+    msg = seL4_MessageInfo_new (0, 0, 1, 4);
     seL4_SetCap (0, service_ep);        /* FIXME: make this async EP instead to get rid of hack */
     seL4_SetMR (0, NETSVC_SERVICE_REGISTER);
     seL4_SetMR (1, NETSVC_PROTOCOL_UDP);
     seL4_SetMR (2, 26706);
+    seL4_SetMR (3, 0);
 
     //printf ("console: registering with svc_net\n");
     seL4_Call (net_ep, msg);

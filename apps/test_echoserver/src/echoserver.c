@@ -61,13 +61,12 @@ int main (void) {
     net_ep = pawpaw_service_lookup ("svc_net");
     assert (net_ep);
 
-    sleep (200);
-
-    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 3);
+    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 4);
     seL4_SetCap (0, async_ep);
     seL4_SetMR (0, NETSVC_SERVICE_REGISTER);
     seL4_SetMR (1, NETSVC_PROTOCOL_UDP);
     seL4_SetMR (2, 26706);
+    seL4_SetMR (3, 0);
 
     seL4_Call (net_ep, msg);
     assert (seL4_GetMR (0) == 0);

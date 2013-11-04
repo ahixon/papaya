@@ -5,7 +5,6 @@
 /************************************************************
  *  Imports
  ***********************************************************/
-extern void pawpaw_usleep(int usecs);
 #define _usleep(us) pawpaw_usleep(us)
 
 /* Mutex imports */

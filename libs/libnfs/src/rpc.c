@@ -10,7 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-
+#include <pawpaw.h>
 
 //#define DEBUG_RPC 1
 #ifdef DEBUG_RPC

@@ -10,6 +10,8 @@
 #include <stdlib.h>
 #include <assert.h>
 
+#include <pawpaw.h>
+
 
 //#define DEBUG_NFS 1
 #ifdef DEBUG_NFS
@@ -71,6 +73,7 @@
 #define READDIR_BUF_SIZE   1024
 
 static struct udp_pcb *_nfs_pcb = NULL;
+seL4_CPtr net_ep = 0;
 
 void 
 nfs_timeout(void)
@@ -100,6 +103,11 @@ nfs_print_exports(void)
 enum rpc_stat
 nfs_init(const struct ip_addr *server)
 {
+    if (!net_ep) {
+        net_ep = pawpaw_service_lookup ("svc_net");
+        assert (net_ep);
+    }
+
     int port;
     /* Initialise our RPC transport layer */
     if(init_rpc(server)){

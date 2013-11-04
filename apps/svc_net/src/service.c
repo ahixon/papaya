@@ -24,7 +24,7 @@ int netsvc_read (struct pawpaw_event* evt);
 int netsvc_write (struct pawpaw_event* evt);
 
 struct pawpaw_eventhandler_info handlers[4] = {
-    {   netsvc_register,    2, HANDLER_REPLY   },      // net register svc
+    {   netsvc_register,    3, HANDLER_REPLY   },      // net register svc
     {   0,  0,  0   },      // net unregister svc
     {   netsvc_read,        0,  HANDLER_REPLY   },      /* optionally needs to accept a buffer */
     {   netsvc_write,       2,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },      /* optionally needs to accept a buffer */
@@ -176,7 +176,14 @@ int netsvc_register (struct pawpaw_event* evt) {
             return PAWPAW_EVENT_UNHANDLED;
         }
 
-        if (udp_connect (pcb, &netif_default->gw, evt->args[1])) {
+        struct ip_addr dest;
+        if (evt->args[2] == 0) {
+            dest = netif_default->gw;
+        } else {
+            dest = (struct ip_addr)evt->args[2];
+        }
+
+        if (udp_connect (pcb, &dest, evt->args[1])) {
             printf ("svc_net: udp_connect failed\n");
             udp_remove (pcb);
             return PAWPAW_EVENT_UNHANDLED;

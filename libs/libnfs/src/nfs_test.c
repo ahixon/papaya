@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <string.h>
+#include <pawpaw.h>
 
 #include "rpc.h"
 #include "common.h"
