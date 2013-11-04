@@ -129,7 +129,7 @@ pagetable_kernel_install_pt (addrspace_t as, seL4_ARM_VMAttributes attributes, v
         /* if someone's already mapped a pagetable in, don't worry about it */
         /* FIXME: remove once mapping.c is nixed */
         if (err != seL4_DeleteFirst) {
-            return 0;
+            //return 0;
         }
     }
 
@@ -208,7 +208,7 @@ page_fetch_entry (addrspace_t as, seL4_ARM_VMAttributes attributes, pagetable_t 
  * Allocates an underlying frame, and maps the page to that frame.
  * Should only be called once.
  */
-struct frame_info*
+struct frameinfo*
 page_map (addrspace_t as, struct as_region* region, vaddr_t vaddr) {
     assert (as != NULL);
     assert (region != NULL);
@@ -238,7 +238,7 @@ page_map (addrspace_t as, struct as_region* region, vaddr_t vaddr) {
         if (!entry->frame) {
             /* TODO: swapping goes here */
             printf ("page_map: no physical memory left - would normally swap\n");
-            return 0;
+            return NULL;
         }
 
         did_allocation = true;
@@ -347,7 +347,7 @@ struct pt_entry*
 page_map_shared (addrspace_t as_dst, struct as_region* reg_dst, vaddr_t dst,
     addrspace_t as_src, struct as_region* reg_src, vaddr_t src, int cow) {
 
-    struct pt_entry* src_entry = page_fetch_entry (as_src, reg_dst->attributes, as_src->pagetable, src);
+    struct pt_entry* src_entry = page_fetch_entry (as_src, reg_src->attributes, as_src->pagetable, src);
     struct pt_entry* dst_entry = page_fetch_entry (as_dst, reg_dst->attributes, as_dst->pagetable, dst);
 
     if (!src_entry || !dst_entry) {
@@ -361,10 +361,12 @@ page_map_shared (addrspace_t as_dst, struct as_region* reg_dst, vaddr_t dst,
         /* FIXME: remap src + dest pages as read-only */
     }
 
-    if (!(src_entry->flags & PAGE_ALLOCATED)) {
+    if (!(src_entry->flags & PAGE_ALLOCATED) || !src_entry->frame) {
         //printf ("%s: warning! source page wasn't allocated yet - allocating\n", __FUNCTION__);
         page_map (as_src, reg_src, src);
     }
+
+    assert (src_entry->frame);
 
     /* make them share flags and frames */
     dst_entry->frame = src_entry->frame;

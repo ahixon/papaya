@@ -46,7 +46,7 @@ pagetable_init (void);
 void
 pagetable_free (pagetable_t pt);
 
-struct frame_info*
+struct frameinfo*
 page_map (struct addrspace * as, struct as_region * region, vaddr_t vaddr);
 
 int

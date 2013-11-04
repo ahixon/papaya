@@ -35,7 +35,7 @@ fildes_t open(const char *path, fmode_t mode) {
 
 	msg = seL4_MessageInfo_new (0, 0, 1, 3);
     seL4_SetCap (0, vfs_share->cap);
-    
+
 	strcpy (vfs_share->buf, path);
 
     seL4_CPtr recv_cap = pawpaw_cspace_alloc_slot ();
@@ -95,7 +95,7 @@ int read(fildes_t file, char *buf, size_t nbyte) {
     }
 
     // unmount needs notifier OR keep onto IDs until all unmounted
-    //pawpaw_share_unmount (fd_share);
+    pawpaw_share_unmount (fd_share);
 
     return read;
 }

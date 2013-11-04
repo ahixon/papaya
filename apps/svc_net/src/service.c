@@ -21,16 +21,18 @@ seL4_CPtr async_ep;
 
 int netsvc_register (struct pawpaw_event* evt);
 int netsvc_read (struct pawpaw_event* evt);
+int netsvc_write (struct pawpaw_event* evt);
 
-struct pawpaw_eventhandler_info handlers[3] = {
+struct pawpaw_eventhandler_info handlers[4] = {
     {   netsvc_register,    2, HANDLER_REPLY   },      // net register svc
     {   0,  0,  0   },      // net unregister svc
     {   netsvc_read,        0,  HANDLER_REPLY   },      /* optionally needs to accept a buffer */
+    {   netsvc_write,       2,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },      /* optionally needs to accept a buffer */
     // net state query
     // debug stuff here (ie benchmark)
 };
 
-struct pawpaw_event_table handler_table = { 3, handlers };
+struct pawpaw_event_table handler_table = { 4, handlers };
 
 void interrupt_handler (struct pawpaw_event* evt) {
     network_irq (evt->args[0]);
@@ -43,16 +45,32 @@ struct saved_data {
     char* buffer_data;
     seL4_CPtr badge;
     seL4_CPtr cap;
+    void* pcb;
 
     struct saved_data* next;
 };
 
 struct saved_data* data_head;
 
+struct saved_data*
+get_handler (struct pawpaw_event* evt) {
+    struct saved_data* saved = data_head;
+    while (saved) {
+        if (saved->badge == evt->badge) {
+            break;
+        }
+
+        saved = saved->next;
+    }
+
+    return saved;
+}
+
 static void 
 recv_handler (void* _client_badge, struct udp_pcb* pcb, 
                     struct pbuf *p, struct ip_addr* ipaddr, u16_t unused2) {
 
+    printf ("net: received data\n");
     seL4_Word badge = (seL4_Word)_client_badge;
     /* keep the data around for when they ask for it */
     struct saved_data* saved = data_head;
@@ -93,17 +111,39 @@ recv_handler (void* _client_badge, struct udp_pcb* pcb,
     seL4_Notify (saved->cap, 0);
 }
 
-int netsvc_read (struct pawpaw_event* evt) {
-    //printf ("net: someone asked us for data\n");
-    struct saved_data* saved = data_head;
-    while (saved) {
-        if (saved->badge == evt->badge) {
-            break;
-        }
+int netsvc_write (struct pawpaw_event* evt) {
+    assert (evt->share);
 
-        saved = saved->next;
+    struct saved_data* saved = get_handler (evt);
+    if (!saved) {
+        printf ("net: nobody matched badge\n");
+        return PAWPAW_EVENT_UNHANDLED;
     }
 
+    int len = evt->args[0];
+
+    struct pbuf *p;
+    p = pbuf_alloc (PBUF_TRANSPORT, len, PBUF_REF);
+    assert (p);
+
+    /* zero-copy woo */
+    p->payload = evt->share->buf;
+
+    evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+    if (udp_send (saved->pcb, p)){
+        printf ("net: failed to send UDP packet\n");
+        seL4_SetMR (0, -1);
+    } else {
+        seL4_SetMR (0, 0);
+    }
+
+    pbuf_free (p);
+
+    return PAWPAW_EVENT_NEEDS_REPLY;
+}
+
+int netsvc_read (struct pawpaw_event* evt) {
+    struct saved_data* saved = get_handler (evt);
     if (!saved) {
         printf ("net: nobody matched badge\n");
         return PAWPAW_EVENT_UNHANDLED;
@@ -142,7 +182,7 @@ int netsvc_register (struct pawpaw_event* evt) {
             return PAWPAW_EVENT_UNHANDLED;
         }
 
-        //printf ("svc_net: registered a UDP handler on port %u\n", evt->args[1]);
+        printf ("svc_net: registered a UDP handler on port %u\n", evt->args[1]);
         udp_recv (pcb, &recv_handler, (void*)owner);
 
         /* register the thing */
@@ -153,29 +193,12 @@ int netsvc_register (struct pawpaw_event* evt) {
         saved->buffer = NULL;
         saved->badge = owner;
         saved->cap = client_cap;
+        saved->pcb = pcb;
 
         saved->next = data_head;
         data_head = saved;
 
-        /* send some crap so we know we're ready */
-        char* obama = "and even though i sent you flowers...\n";
-        struct pbuf *p;
-        p = pbuf_alloc (PBUF_TRANSPORT, strlen(obama), PBUF_RAM);
-        assert (p);
-
-        if(pbuf_take(p, obama, strlen(obama))){
-            pbuf_free(p);
-            printf("failed to take pbuf\n");
-            return PAWPAW_EVENT_UNHANDLED;
-        }
-
-        if (udp_send(pcb, p)){
-            printf("failed to send pbuf\n");
-            pbuf_free(p);
-        }
-
-        pbuf_free(p);
-
+        /* tell client was OK */
         evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
         seL4_SetMR (0, 0);
 

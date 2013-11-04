@@ -37,13 +37,13 @@ void interrupt_handler (struct pawpaw_event* evt) {
     printf ("echoserver: got '%s', length 0x%x\n", (char*)netshare->buf, size);
 
     /* and send it right back */
-#if 0
-    msg = seL4_MessageInfo_new (0, 0, 0, 3);
+    msg = seL4_MessageInfo_new (0, 0, 1, 3);
+    seL4_SetCap (0, netshare->cap);
+    
     seL4_SetMR (0, NETSVC_SERVICE_SEND);
     seL4_SetMR (1, netshare->id);
-    seL4_SetMR (2, length);
+    seL4_SetMR (2, size);
     seL4_Call (net_ep, msg);    /* FIXME: should handle Call or Send */
-#endif
 
     //pawpaw_share_unmount (netshare);
 }
@@ -61,6 +61,8 @@ int main (void) {
     net_ep = pawpaw_service_lookup ("svc_net");
     assert (net_ep);
 
+    sleep (200);
+
     seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 3);
     seL4_SetCap (0, async_ep);
     seL4_SetMR (0, NETSVC_SERVICE_REGISTER);
@@ -70,7 +72,20 @@ int main (void) {
     seL4_Call (net_ep, msg);
     assert (seL4_GetMR (0) == 0);
 
+    sleep (200);
+
+    /*struct pawpaw_share* helloshare = pawpaw_share_new ();
+    memcpy (helloshare->buf, "hello!", strlen("hello!"));
+    seL4_SetCap (0, helloshare->cap);
+    seL4_SetMR (0, NETSVC_SERVICE_SEND);
+    seL4_SetMR (1, helloshare->id);
+    seL4_SetMR (2, strlen("hello!"));
+
+    seL4_Call (net_ep, msg);
+    assert (seL4_GetMR (0) == 0);*/
+
     /*pawpaw_event_loop (&handler_table, interrupt_handler, async_ep);*/
+    printf ("echoserver: ready, waiting for interrupt...\n");
     while (1) {
         seL4_Word badge = 0;
         seL4_MessageInfo_t msg = seL4_Wait (async_ep, &badge);
