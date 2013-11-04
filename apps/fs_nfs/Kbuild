@@ -1,4 +1,4 @@
 components-$(CONFIG_APP_FS_NFS) += fs_nfs
 
-fs_nfs: $(libc) libsel4 libsos libpawpaw libnfs
+fs_nfs: $(libc) libsel4 libsos libpawpaw libnfs libsel4sync
 

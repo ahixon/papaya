@@ -5,8 +5,8 @@
 /************************************************************
  *  Imports
  ***********************************************************/
-extern void sos_usleep(int usecs);
-#define _usleep(us) sos_usleep(us)
+extern void pawpaw_usleep(int usecs);
+#define _usleep(us) pawpaw_usleep(us)
 
 /* Mutex imports */
 #include <sync/mutex.h>

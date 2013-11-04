@@ -11,11 +11,18 @@
 #include <sos.h>
 #include <vfs.h>
 
+#include <nfs/nfs.h>
+#include <ethdrivers/lwip_iface.h>
+#include <autoconf.h>
+
+
+
 //#define VFS_MOUNT               75
 #define DEV_LISTEN_CHANGES      20
 #define DEV_GET_INFO            25
 
 #define FILESYSTEM_NAME     "nfs"
+#define sos_usleep pawpaw_usleep
 
 seL4_CPtr service_ep;
 
@@ -43,7 +50,7 @@ struct pawpaw_event_table handler_table = { VFS_NUM_EVENTS, handlers };
 
 int vfs_open (struct pawpaw_event* evt) {
     assert (evt->share);
-    printf ("fs_dev: want to open '%s'\n", evt->share->buf);
+    printf ("fs_dev: want to open '%s'\n", (char*)evt->share->buf);
 
     /*assert (seL4_MessageInfo_get_extraCaps (evt->msg) == 1);
     seL4_CPtr requestor = pawpaw_event_get_recv_cap ();*/
@@ -120,7 +127,6 @@ void interrupt_handler (struct pawpaw_event* evt) {
 
 int main (void) {
     int err;
-    seL4_MessageInfo_t msg;
 
     pawpaw_event_init ();
 
@@ -137,9 +143,9 @@ int main (void) {
 
     /* init NFS */
     struct ip_addr gateway; /* TODO: should prime ARP table? */ 
-    ipaddr_aton (CONFIG_SOS_GATEWAY,      &gw);
+    ipaddr_aton (CONFIG_SOS_GATEWAY,      &gateway);
 
-    if (nfs_init (&gw)) {
+    if (nfs_init (&gateway)) {
         nfs_print_exports ();
         return 1;
     } else {
@@ -186,4 +192,59 @@ int main (void) {
 
     return 0;
 #endif
+}
+
+/****************************
+ *** Sync library support ***
+ ****************************/
+
+/* FIXME: this needs to go - only used by
+ * libnfs' rpc.c for checking if RPCs have timed out
+ *
+ * a much better way would be to get dev_timer to call
+ * us back after 100 ms or whatever */
+struct sync_ep_node {
+    seL4_CPtr cap;
+    //seL4_Word paddr;
+    struct sync_ep_node* next;
+};
+
+struct sync_ep_node* sync_ep_list = NULL;
+
+/* Provide an endpoint ready for use */
+void * 
+sync_new_ep(seL4_CPtr* ep_cap){
+    // printf ("Asked for new sync EP\n");
+    struct sync_ep_node *epn = sync_ep_list;
+    if(epn){
+        /* Use endpoint from the pool */
+        sync_ep_list = epn->next;
+
+    }else{
+        /* Pool is dry... Make another endpoint */
+        epn = (struct sync_ep_node*)malloc(sizeof(*epn));
+        if(epn == NULL){
+            printf ("%s: malloc failed\n", __FUNCTION__);
+            return NULL;
+        }
+        epn->cap = pawpaw_create_ep_async ();
+        if (!epn->cap) {
+            printf ("%s: async EP creation failed\n", __FUNCTION__);
+            return NULL;
+        }
+    }
+    *ep_cap = epn->cap;
+    //printf ("%s: creation succeeded @ %p\n", __FUNCTION__, epn);
+    return epn;
+}
+
+/* Don't free, just recycle it to our pool of end points */
+void 
+sync_free_ep(void* _epn){
+    // printf ("%s: freeing EP %p\n", __FUNCTION__, _epn);
+    struct sync_ep_node *epn = (struct sync_ep_node*)_epn;
+    assert(epn);
+    /* Add to our pool */
+    epn->next = sync_ep_list;
+    sync_ep_list = epn;
 }

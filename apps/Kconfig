@@ -22,6 +22,7 @@ source "$SEL4_APPS_PATH/svc_dev/Kconfig"
 
 menu "Filesystems"
 source "$SEL4_APPS_PATH/fs_dev/Kconfig"
+source "$SEL4_APPS_PATH/fs_nfs/Kconfig"
 source "$SEL4_APPS_PATH/fs_cpio/Kconfig"
 endmenu
 endmenu
