@@ -144,7 +144,7 @@ int vfs_read (struct pawpaw_event* evt) {
         current_event = evt;
         return PAWPAW_EVENT_HANDLED_SAVED;
     } else {
-        printf ("console: managed to read 0x%x bytes, sending back '%s'\n", read, evt->share->buf);
+        //printf ("console: managed to read 0x%x bytes, sending back '%s'\n", read, evt->share->buf);
 
         evt->reply = seL4_MessageInfo_new (0, 0, 0, 2);
         seL4_SetMR (0, evt->share->id);

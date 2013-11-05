@@ -103,7 +103,7 @@ recv_handler (void* _client_badge, struct udp_pcb* pcb,
     for (q = p; q != NULL; q = q->next) {
         char* data = q->payload;
         pawpaw_cbuf_write (saved->buffer, data, q->len);
-        printf ("net: just wrote '%s'\n", data);
+        //printf ("net: just wrote '%s'\n", data);
     }
 
     pbuf_free (p);
@@ -165,7 +165,7 @@ int netsvc_read (struct pawpaw_event* evt) {
     /* copy it all in */
     printf ("net: reading into buf ID 0%x @ %p\n", saved->share->id, saved->share->buf);
     pawpaw_cbuf_read (saved->buffer, saved->share->buf, pawpaw_cbuf_count (saved->buffer));
-    printf ("net: is now %s\n", saved->share->buf);
+    //printf ("net: is now %s\n", saved->share->buf);
 
     return PAWPAW_EVENT_NEEDS_REPLY;
 }
