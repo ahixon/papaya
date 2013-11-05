@@ -41,6 +41,7 @@ int syscall_thread_create (struct pawpaw_event* evt) {
 }
 
 int syscall_thread_destroy (struct pawpaw_event* evt) {
+    printf ("%s: looking up PID %d\n", __FUNCTION__, evt->args[0]);
 	thread_t target = thread_lookup (evt->args[0]);
 
 	evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
@@ -113,10 +114,17 @@ int syscall_thread_list (struct pawpaw_event* evt) {
     int i = 0;
     while (thread) {
         processes[i].pid = thread->pid;
-        processes[i].size = 0;  /* FIXME: calculate processes size */
+
+        /* this is just the VM size, not the physical size as per spec? */
+        struct as_region* reg = thread->as->regions;
+        while (reg) {
+            processes[i].size += reg->size;
+            reg = reg->next;
+        }
+
         processes[i].stime = thread->start;
         strncpy (processes[i].command, thread->name, N_NAME);
-        
+
         i++;
         thread = thread->next;
     }

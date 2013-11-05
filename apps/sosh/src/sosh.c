@@ -127,6 +127,26 @@ static int ps(int argc, char **argv) {
     return 0;
 }
 
+static int kill(int argc, char **argv) {
+    if (argc != 2) {
+        printf("Usage: kill pid\n");
+        return 1;
+    }
+
+    pid_t pid = atoi (argv[1]);
+    //printf ("killing process %d\n", pid);
+    int res = process_delete (pid);
+
+    if (res != 0) {
+        printf("failed to kill PID %d, error = %d\n", pid, res);
+        return 1;
+    } else {
+        printf("process killed successfully\n");
+    }
+
+    return 0;
+}
+
 static int exec(int argc, char **argv) {
     pid_t pid;
     int r;
@@ -209,7 +229,7 @@ struct command {
 };
 
 struct command commands[] = { { "dir", dir }, { "ls", dir }, { "cat", cat }, {
-        "cp", cp }, { "ps", ps }, { "exec", exec } };
+        "cp", cp }, { "ps", ps }, { "kill", kill }, { "exec", exec } };
 
 int main(void) {
     /* XXX: hack until we can wait for services to start */
