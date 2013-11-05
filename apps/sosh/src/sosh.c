@@ -223,13 +223,26 @@ static int dir(int argc, char **argv) {
     return 0;
 }
 
+static int help(int argc, char **argv);
+
 struct command {
     char *name;
     int (*command)(int argc, char **argv);
 };
 
+#define NUM_COMMANDS 8
 struct command commands[] = { { "dir", dir }, { "ls", dir }, { "cat", cat }, {
-        "cp", cp }, { "ps", ps }, { "kill", kill }, { "exec", exec } };
+        "cp", cp }, { "ps", ps }, { "kill", kill }, { "exec", exec }, { "help", help } };
+
+static int help(int argc, char **argv) {
+    for (int i = 0; i < NUM_COMMANDS; i++) {
+        printf ("%s\n", commands[i].name);
+    }
+
+    printf ("\n");
+
+    return 0;
+}
 
 int main(void) {
     /* XXX: hack until we can wait for services to start */
