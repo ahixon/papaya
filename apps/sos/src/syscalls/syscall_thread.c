@@ -3,8 +3,10 @@
 #include <thread.h>
 #include <stdio.h>
 #include <copyinout.h>
+#include <sos.h>
 
 #define THREAD_PATH_SIZE_MAX	512
+#define MAX_PROCESS_LIST_SIZE   30
 
 extern thread_t current_thread;
 extern seL4_CPtr rootserver_syscall_cap;
@@ -96,9 +98,36 @@ int syscall_thread_wait (struct pawpaw_event* evt) {
 
 int syscall_thread_list (struct pawpaw_event* evt) {
     evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+
+    vaddr_t dest = evt->args[0];
+    unsigned count = evt->args[1];
+    size_t usize = count * sizeof (process_t);
+
+    if (count > MAX_PROCESS_LIST_SIZE) {
+        printf ("%s: too many processes requested\n", __FUNCTION__);
+        return PAWPAW_EVENT_UNHANDLED;
+    }
+
+    process_t* processes = malloc (usize);
+    thread_t thread = threadlist_first ();
+    int i = 0;
+    while (thread) {
+        processes[i].pid = thread->pid;
+        processes[i].size = 0;  /* FIXME: calculate processes size */
+        processes[i].stime = thread->start;
+        strncpy (processes[i].command, thread->name, N_NAME);
+        
+        i++;
+        thread = thread->next;
+    }
     
-    /* FIXME: implement this! */
-    seL4_SetMR (0, 0);
+    if (copyout (current_thread, dest, usize, processes, usize)) {
+        printf ("%s: had %d threads\n", __FUNCTION__, i);
+        seL4_SetMR (0, i);
+    } else {
+        printf ("%s: copyout failed\n", __FUNCTION__);
+        seL4_SetMR (0, 0);
+    }
 
     return PAWPAW_EVENT_NEEDS_REPLY;
 }

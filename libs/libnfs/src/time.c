@@ -58,7 +58,8 @@ udp_time_get(const struct ip_addr *server)
     seL4_SetMR (0, NETSVC_SERVICE_REGISTER);
     seL4_SetMR (1, NETSVC_PROTOCOL_UDP);
     seL4_SetMR (2, TIME_PORT);
-    seL4_SetMR (3, (seL4_Word)s[0]);  /* phew, this fits into u32 */
+    // FIXME: implement this
+    //seL4_SetMR (3, (seL4_Word)s[0]);  /* phew, this fits into u32 */
 
     seL4_Call (net_ep, msg);
     if (seL4_GetMR (0) != 0) {

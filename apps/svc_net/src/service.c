@@ -180,7 +180,8 @@ int netsvc_register (struct pawpaw_event* evt) {
         if (evt->args[2] == 0) {
             dest = netif_default->gw;
         } else {
-            dest = (struct ip_addr)evt->args[2];
+            //dest = (struct ip_addr)evt->args[2];
+            assert (false);
         }
 
         if (udp_connect (pcb, &dest, evt->args[1])) {

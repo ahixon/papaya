@@ -329,7 +329,7 @@ int main (void) {
     assert (thread_create_from_cpio ("svc_dev", rootserver_syscall_cap));
     assert (thread_create_from_cpio ("svc_net", rootserver_syscall_cap));
 
-    assert (thread_create_from_cpio ("fs_nfs", rootserver_syscall_cap));
+    // assert (thread_create_from_cpio ("fs_nfs", rootserver_syscall_cap));
 
     /* start any devices services inside the CPIO archive */
     dprintf (1, "Looking for device services linked into CPIO...\n");
