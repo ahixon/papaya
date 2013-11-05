@@ -38,10 +38,9 @@ struct pawpaw_eventhandler_info handlers[VFS_NUM_EVENTS] = {
     {   vfs_write,          2,  HANDLER_REPLY | HANDLER_AUTOMOUNT },    // num bytes
 };
 
-struct pawpaw_event_table handler_table = { VFS_NUM_EVENTS, handlers };
+struct pawpaw_event_table handler_table = { VFS_NUM_EVENTS, handlers, "console" };
 
 seL4_CPtr current_reader = 0;
-struct pawpaw_share* current_share = NULL;
 struct pawpaw_event* current_event = NULL;
 
 int last_opened = 1;
@@ -81,6 +80,9 @@ int interrupt_handler_2 (struct pawpaw_event* evt) {
 }
 
 void interrupt_handler (struct pawpaw_event* evt) {
+    printf ("console: net had data for us, fetching...\n");
+    pawpaw_event_get_recv_cap ();   /* FIXME: investigate why we need this - otherwise points to old share */
+
     seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 1);
     seL4_SetMR (0, NETSVC_SERVICE_DATA);
     seL4_Call (net_ep, msg);
@@ -88,22 +90,28 @@ void interrupt_handler (struct pawpaw_event* evt) {
     seL4_Word size = seL4_GetMR (1);
 
     /* mount it if we didn't have it already */
+    printf ("console: mounting ID 0x%x (was 0x%x bytes)\n", seL4_GetMR (0), size);
     struct pawpaw_share* netshare = pawpaw_share_get (seL4_GetMR (0));
     if (!netshare) {
+        printf ("console: using receive cap\n");
         netshare = pawpaw_share_mount (pawpaw_event_get_recv_cap ());
         assert (netshare);
 
         pawpaw_share_set (netshare);
     }
 
+    printf ("console: actually had ID 0x%x\n", netshare->id);
+
+    //printf ("console: writing '%s' to buffer\n", netshare->buf);
     pawpaw_cbuf_write (console_buffer, netshare->buf, size);
 
-    /* FIXME: unmount? */
+    /* FIXME: unmount? probably not since internal buffer */
 
     /* check if we had waiting client */
     if (current_event) {
         if (vfs_read (current_event) == PAWPAW_EVENT_NEEDS_REPLY) {
             /* send it off */
+            printf ("console: sending queued event to client\n");
             seL4_Send (current_event->reply_cap, current_event->reply);
 
             /* and free */
@@ -111,38 +119,39 @@ void interrupt_handler (struct pawpaw_event* evt) {
             current_event = NULL;
         }
     } else {
-        printf ("!!! no current client\n");
+        printf ("!!! no current client, leaving in buffer\n");
     }
 }
 
+/* 
+ * Reads evt->args[0] amount of bytes from buffer into provided share.
+ * Queues event is buffer was empty, and re-runs when buffer has data.
+ */
 int vfs_read (struct pawpaw_event* evt) {
     size_t amount = evt->args[0];
     assert (evt->share);
 
     /* FIXME: could zero copy, but lazy */
-    // printf ("console: wanted to read 0x%x bytes\n", amount);
-    // printf ("console: buffer currently has %d, trying to read into %p\n", pawpaw_cbuf_count (console_buffer), evt->share->buf);
+    printf ("console: wanted to read 0x%x bytes\n", amount);
+    printf ("console: buffer currently has %d, trying to read into %p\n", pawpaw_cbuf_count (console_buffer), evt->share->buf);
     int read = pawpaw_cbuf_read (console_buffer, evt->share->buf, amount);
 
     if (read == 0) {
-        // printf ("console: buffer was empty, waiting for interrupt..\n");
+        printf ("console: buffer was empty, waiting for interrupt..\n");
         /* wait for more data */
         /* FIXME: handle more than one reader */
 
         current_event = evt;
-        //current_share = evt->share;
         return PAWPAW_EVENT_HANDLED_SAVED;
     } else {
-        // printf ("console: managed to read 0x%x bytes, sending back '%s'\n", read, evt->share->buf);
-        /*if (!current_share) {
-            current_share = pawpaw_share_new ();
-        }*/
+        printf ("console: managed to read 0x%x bytes, sending back '%s'\n", read, evt->share->buf);
 
         evt->reply = seL4_MessageInfo_new (0, 0, 0, 2);
         seL4_SetMR (0, evt->share->id);
         seL4_SetMR (1, read);
     }
 
+    //evt->flags |= PAWPAW_EVENT_UNMOUNT;
     return PAWPAW_EVENT_NEEDS_REPLY;
 }
 
@@ -181,7 +190,9 @@ int main (void) {
 
     /* FIXME: do we REALLY need Call? at the moment, no lol */
     printf ("console: registering with svc_dev\n");
-    seL4_Send (dev_ep, msg);
+    seL4_Send (dev_ep, msg);    /*  FIXME: should eventually be Call, but at the
+                                    moment svc_dev never responds so don't change
+                                    it unless you want to spend a while debugging */
 
     net_ep = pawpaw_service_lookup ("svc_net");
     msg = seL4_MessageInfo_new (0, 0, 1, 4);
@@ -191,7 +202,7 @@ int main (void) {
     seL4_SetMR (2, 26706);
     seL4_SetMR (3, 0);
 
-    //printf ("console: registering with svc_net\n");
+    printf ("console: registering with svc_net\n");
     seL4_Call (net_ep, msg);
     assert (seL4_GetMR (0) == 0);
 

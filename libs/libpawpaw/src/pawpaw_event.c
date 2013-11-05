@@ -38,6 +38,8 @@ void pawpaw_event_loop (struct pawpaw_event_table* table, void (*interrupt_func)
         	continue;
         }
 
+        evt->table = table;
+
         if (label == seL4_Interrupt) {
             evt->args = malloc (sizeof (seL4_Word));
             evt->args[0] = seL4_GetMR (0);
@@ -92,7 +94,15 @@ void pawpaw_event_dispose (struct pawpaw_event* evt) {
 		free (evt->args);
 	}
 
-    /* FIXME: what about share */
+    if (evt->share) {
+        if (evt->flags & PAWPAW_EVENT_UNMOUNT) {
+            printf ("%s: had share 0x%x @ %p, unmounting\n", evt->table->app_name, evt->share->id, evt->share->buf);
+            pawpaw_share_unset (evt->share);
+            pawpaw_share_unmount (evt->share);
+        } else {
+            //printf ("%s: had share 0x%x @ %p, but NOT UNMOUNTING\n", evt->table->app_name, evt->share->id, evt->share->buf);
+        }
+    }
 
 	free (evt);
 }
@@ -150,18 +160,23 @@ int pawpaw_event_process (struct pawpaw_event_table* table, struct pawpaw_event 
     if (eh.flags & HANDLER_REPLY) {
         evt->reply_cap = save_reply_func ();
         if (!(evt->reply_cap)) {
-            printf ("%s: junking since failed to save reply cap\n", __FUNCTION__);
+            printf ("%s: %s: junking since failed to save reply cap\n", table->app_name, __FUNCTION__);
             return PAWPAW_EVENT_INVALID;
         }
     }
 
     if (eh.flags & HANDLER_AUTOMOUNT) {
+        printf ("%s: mounting share from ID 0x%x\n", table->app_name, share_id);
         evt->share = pawpaw_share_get (share_id);
 
         if (!evt->share) {
             if (seL4_MessageInfo_get_extraCaps (evt->msg) > 0) {
+                //printf ("%s: mounting share from cap\n", table->app_name);
                 evt->share = pawpaw_share_mount (recv_cap);
-                pawpaw_share_set (evt->share);
+                if (evt->share) {
+                    //printf ("\thad ID 0x%x\n", evt->share->id);
+                    pawpaw_share_set (evt->share);
+                }
 
                 pawpaw_event_new_recv_cap ();
             } else {
@@ -174,5 +189,6 @@ int pawpaw_event_process (struct pawpaw_event_table* table, struct pawpaw_event 
     }
 
     /* ok call the event */
-    return eh.func (evt);
+    eh.flags = eh.func (evt);
+    return eh.flags;
 }

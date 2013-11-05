@@ -63,13 +63,13 @@ int parse_filename (char* fname, struct fs_node* parent, struct fs_node** dest_f
     while (cur && fs) {
         /* keep looking on this level for a fs mounted on that dir */
         while (fs != NULL) {
-            printf ("comparing '%s' and '%s'\n", fs->dirname, cur);
+            //printf ("comparing '%s' and '%s'\n", fs->dirname, cur);
             if (strcmp (fs->dirname, cur) == 0) {
-                printf ("matched\n");
+                //printf ("matched\n");
                 break;
             }
 
-            printf ("no match, next\n");
+            //printf ("no match, next\n");
             fs = fs->level_next;
             /* FIXME: holy shit this code needs a lot more thought */
             //fs = fs->mounted_next;
@@ -82,7 +82,7 @@ int parse_filename (char* fname, struct fs_node* parent, struct fs_node** dest_f
         //printf ("remaining = %p, children = %p\n", cur, fs->children);
         if (fs && fs->children) {
             fs = fs->children;
-            printf ("trying to load children? %p\n", fs);
+            //printf ("trying to load children? %p\n", fs);
             if (cur) {
                 part = get_next_path_part (cur, end);
             }
@@ -101,10 +101,6 @@ int parse_filename (char* fname, struct fs_node* parent, struct fs_node** dest_f
 }
 
 int fs_register_info (struct pawpaw_event* evt) {
-    for (int i = 0; i < 50; i++) {
-        seL4_Yield();
-    }
-
     if (!evt->share) {
         printf ("fs_register_info: missing share\n");
         return PAWPAW_EVENT_UNHANDLED;
@@ -118,7 +114,10 @@ int fs_register_info (struct pawpaw_event* evt) {
     fs->share = evt->share;
     fs_head = fs;
 
+    printf ("vfs: registered info for '%s'\n", fs->type);
+
     evt->reply = seL4_MessageInfo_new (0, 0, 0, 0);
+    evt->flags |= PAWPAW_EVENT_NO_UNMOUNT;
     return PAWPAW_EVENT_NEEDS_REPLY;
 }
 
@@ -136,6 +135,8 @@ int fs_register_cap (struct pawpaw_event* evt) {
         printf ("vfs: failed to find matching fs\n");
         return PAWPAW_EVENT_UNHANDLED;
     }
+
+    printf ("vfs: registered cap for %s\n", fs->type);
 
     assert (seL4_MessageInfo_get_extraCaps (evt->msg)  == 1);
     fs->cap = pawpaw_event_get_recv_cap ();
@@ -164,6 +165,7 @@ int fs_mount (struct pawpaw_event* evt) {
     }
 
     if (!fs) {
+        printf("vfs_mount: could not find fs type '%s'\n", fstype);
         return PAWPAW_EVENT_UNHANDLED;
     }
 
@@ -185,6 +187,8 @@ int fs_mount (struct pawpaw_event* evt) {
     printf ("vfs: mounted fs '%s' to /%s\n", fstype, mountpoint);
     free (fstype);
     evt->reply = seL4_MessageInfo_new (0, 0, 0, 0);
+
+    evt->flags |= PAWPAW_EVENT_NO_UNMOUNT;
     return PAWPAW_EVENT_NEEDS_REPLY;
 }
 
@@ -199,12 +203,14 @@ int vfs_open (struct pawpaw_event* evt) {
 
     /* if the client changes this under us, weird stuff might happen so save it now */
     char* requested_filename = strdup (evt->share->buf);
+    char* orig_filename = strdup (requested_filename);
 
     if (parse_filename (requested_filename, root, &node, &remaining)) {
         // printf ("vfs: path success\n");
         strcpy (node->fs->share->buf, remaining);
 
         /* pass the buck to the FS layer to see if it knows anything about the file */
+        printf ("vfs: asking filesystem '%s' about '%s'\n", node->fs->type, remaining);
         seL4_MessageInfo_t lookup_msg = seL4_MessageInfo_new (0, 0, 0, 4);
         
         seL4_SetMR (0, VFS_OPEN);
@@ -218,7 +224,8 @@ int vfs_open (struct pawpaw_event* evt) {
 
         /* FIXME: need a callback ID - should be Send instead */
         pawpaw_event_get_recv_cap();        /* XXX: investigate why we need this */
-        printf ("vfs: calling filesystem layer..\n");
+        
+
         seL4_MessageInfo_t fs_reply = seL4_Call (node->fs->cap, lookup_msg);
         assert (seL4_MessageInfo_get_capsUnwrapped (fs_reply) == 0);
         assert (seL4_MessageInfo_get_extraCaps (fs_reply) >= 1);
@@ -229,14 +236,16 @@ int vfs_open (struct pawpaw_event* evt) {
         seL4_SetCap (0, pawpaw_event_get_recv_cap());
         seL4_SetMR (0, 0);
     } else {
-        printf ("vfs: path failure for '%s'\n", requested_filename);
-        /* path failure */
+        /* path failure - use orig_filename since other gets mangled */
+        printf ("vfs: path failure for '%s'\n", orig_filename);
         evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
         seL4_SetMR (0, -1);
     }
 
     free (requested_filename);
+    free (orig_filename);
 
+    //evt->flags |= PAWPAW_EVENT_NO_UNMOUNT;
     return PAWPAW_EVENT_NEEDS_REPLY;
 }
 
@@ -248,7 +257,7 @@ struct pawpaw_eventhandler_info handlers[VFS_NUM_EVENTS] = {
     {   0,  0,  0   },      //              //
 };
 
-struct pawpaw_event_table handler_table = { VFS_NUM_EVENTS, handlers };
+struct pawpaw_event_table handler_table = { VFS_NUM_EVENTS, handlers, "vfs" };
 
 int main (void) {
     /* install root node */

@@ -14,6 +14,7 @@
 
 seL4_CNode vfs_ep = 0;
 struct pawpaw_share* vfs_share = NULL;
+struct pawpaw_share* data_share = NULL;
 
 /* FIXME: what if the VFS service dies and then restarts? endpoint will have changed */
 fildes_t open(const char *path, fmode_t mode) {
@@ -37,6 +38,11 @@ fildes_t open(const char *path, fmode_t mode) {
     seL4_SetCap (0, vfs_share->cap);
 
 	strcpy (vfs_share->buf, path);
+    /*sos_debug_print ("sos: opening ", strlen("sos: opening "));
+    sos_debug_print (vfs_share->buf, strlen(vfs_share->buf));
+    //sos_debug_print (" on ", 4);
+    //sos_debug_print (vfs_share->id + '0', 1);
+    sos_debug_print ("\n", 1);*/
 
     seL4_CPtr recv_cap = pawpaw_cspace_alloc_slot ();
     seL4_SetCapReceivePath (PAPAYA_ROOT_CNODE_SLOT, recv_cap, PAPAYA_CSPACE_DEPTH);
@@ -46,6 +52,8 @@ fildes_t open(const char *path, fmode_t mode) {
     seL4_SetMR (2, mode);
 
     seL4_MessageInfo_t reply = seL4_Call (vfs_ep, msg);
+    //pawpaw_share_unmount (vfs_share);
+
     if (seL4_MessageInfo_get_extraCaps (reply) == 1) {
     	return (fildes_t)recv_cap;
     } else {
@@ -55,78 +63,75 @@ fildes_t open(const char *path, fmode_t mode) {
     }    
 }
 
-/* Open file and return file descriptor, -1 if unsuccessful
- * (too many open files, console already open for reading).
- * A new file should be created if 'path' does not already exist.
- * A failed attempt to open the console for reading (because it is already
- * open) will result in a context switch to reduce the cost of busy waiting
- * for the console.
- * "path" is file name, "mode" is one of O_RDONLY, O_WRONLY, O_RDWR.
- */
-
-// FIXME: needs to cheat with fd = {0, 1, 2}
 int close(fildes_t file) {
+    //pawpaw_cspace_free_slot ((seL4_CPtr)file);
 	return -1;
 }
 
-// FIXME: needs to cheat with fd = {0, 1, 2}
 int read(fildes_t file, char *buf, size_t nbyte) {
 	if (nbyte >= (1 << 12)) {
 		return -1;		/* FIXME: crappy limitation */
     }
 
     /* FIXME: in the future, associate locally for FD */
-	struct pawpaw_share* fd_share = pawpaw_share_new ();
-	if (!fd_share) {
-		return -1;
-	}
+    if (!data_share) {
+        data_share = pawpaw_share_new ();
+        if (!data_share) {
+            return -1;
+        }
+    }
 
 	seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 3);
-    pawpaw_share_attach (fd_share);
+    pawpaw_share_attach (data_share);
 
 	seL4_SetMR (0, VFS_READ);
-    seL4_SetMR (1, fd_share->id);
+    seL4_SetMR (1, data_share->id);
     seL4_SetMR (2, nbyte);
 
     seL4_Call ((seL4_CPtr)file, msg);
     int read = seL4_GetMR (1);
 
     if (read > 0) {
-        memcpy (buf, fd_share->buf, read);
+        memcpy (buf, data_share->buf, read);
     }
 
     // unmount needs notifier OR keep onto IDs until all unmounted
-    pawpaw_share_unmount (fd_share);
+    //pawpaw_share_unmount (fd_share);
 
     return read;
 }
 
-// FIXME: needs to cheat with fd = {0, 1, 2}
 int write(fildes_t file, const char *buf, size_t nbyte) {
 	if (nbyte >= (1 << 12)) {
         return -1;      /* FIXME: crappy limitation */
     }
 
     /* FIXME: in the future, associate locally for FD */
-    struct pawpaw_share* fd_share = pawpaw_share_new ();
-    if (!fd_share) {
-        return -1;
+    if (!data_share) {
+        data_share = pawpaw_share_new ();
+        if (!data_share) {
+            return -1;
+        }
     }
 
-    memcpy (fd_share->buf, buf, nbyte);
+    memcpy (data_share->buf, buf, nbyte);
+    /*sos_debug_print ("SOS: writing: '", strlen("SOS: writing: '"));
+    sos_debug_print (fd_share->buf, nbyte);
+    sos_debug_print ("'\n", 2);*/
 
     seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 3);
-    pawpaw_share_attach (fd_share);
+    pawpaw_share_attach (data_share);
+    //seL4_SetCap (0, fd_share->cap);
 
     seL4_SetMR (0, VFS_WRITE);
-    seL4_SetMR (1, fd_share->id);
+    seL4_SetMR (1, data_share->id);
     seL4_SetMR (2, nbyte);
 
     seL4_Call ((seL4_CPtr)file, msg);
     int wrote = seL4_GetMR (1);
 
     // unmount needs notifier OR keep onto IDs until all unmounted
-    //pawpaw_share_unmount (fd_share);
+    //pawpaw_share_unmount (data_share);
 
     return wrote;
 }

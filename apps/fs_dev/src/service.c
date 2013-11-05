@@ -40,7 +40,7 @@ struct pawpaw_eventhandler_info handlers[VFS_NUM_EVENTS] = {
     {   0,  0,  0   },      //              //
 };
 
-struct pawpaw_event_table handler_table = { VFS_NUM_EVENTS, handlers };
+struct pawpaw_event_table handler_table = { VFS_NUM_EVENTS, handlers, "fs_dev" };
 
 int vfs_open (struct pawpaw_event* evt) {
     assert (evt->share);
@@ -77,6 +77,7 @@ int vfs_open (struct pawpaw_event* evt) {
     seL4_SetMR (2, evt->args[1]);   /* owner badge */
 
     /* XXX: should be Send - we don't want to wait here forever */
+    printf ("fs_dev: asking vnode device...\n");
     seL4_MessageInfo_t reply = seL4_Call (ret, underlying_msg);
 
     /* and tell VFS layer */
@@ -84,10 +85,13 @@ int vfs_open (struct pawpaw_event* evt) {
     seL4_CPtr dev_fd_cap = pawpaw_event_get_recv_cap ();
     printf ("fs_dev: got cap 0x%x, replying to VFS\n", dev_fd_cap);
 
+
+
     evt->reply = seL4_MessageInfo_new (0, 0, 1, 1);
     seL4_SetMR (0, 0);
     seL4_SetCap (0, dev_fd_cap);
-    
+
+    evt->flags |= PAWPAW_EVENT_NO_UNMOUNT;  /* for VFS */
     return PAWPAW_EVENT_NEEDS_REPLY;
 }
 
@@ -153,9 +157,8 @@ int main (void) {
     seL4_SetMR (1, 0);  // all
 
     seL4_SetCap (0, async_ep);
+    printf ("fs_dev: asking device manager to tell us about changes\n");
     seL4_Call (dev_ep, msg);
-
-    //printf ("fs_dev: should recv messages\n");
 
     /* register this filesystem with the VFS */
     seL4_CPtr vfs_ep = pawpaw_service_lookup ("svc_vfs");
@@ -169,11 +172,13 @@ int main (void) {
 
     strcpy (newshare->buf, FILESYSTEM_NAME);
 
+    printf ("fs_dev: registering info\n");
     seL4_SetMR (0, VFS_REGISTER_INFO);
     seL4_SetMR (1, newshare->id);
     pawpaw_share_attach (newshare);
     seL4_Call (vfs_ep, msg);    /* FIXME: would we ever need call? otherwise this is OK :) */
 
+    printf ("fs_dev: registering cap\n");
     msg = seL4_MessageInfo_new (0, 0, 1, 1);
     seL4_SetMR (0, VFS_REGISTER_CAP);
     seL4_SetCap (0, service_ep);
@@ -183,6 +188,7 @@ int main (void) {
     /* mount device fs to /dev
      * FIXME: would be nice if svc_init did this */
     //printf ("")
+    printf ("fs_dev: mounting ourselves\n");
     strcpy (newshare->buf, "dev");
     strcpy (newshare->buf + strlen("dev") + 1, "dev");
 

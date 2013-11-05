@@ -32,7 +32,7 @@ struct pawpaw_eventhandler_info handlers[4] = {
     // debug stuff here (ie benchmark)
 };
 
-struct pawpaw_event_table handler_table = { 4, handlers };
+struct pawpaw_event_table handler_table = { 4, handlers, "net" };
 
 void interrupt_handler (struct pawpaw_event* evt) {
     network_irq (evt->args[0]);
@@ -87,9 +87,10 @@ recv_handler (void* _client_badge, struct udp_pcb* pcb,
     if (!saved->share) {
         /* FIXME: not atomic */
         saved->share = pawpaw_share_new ();
+        printf ("net: making new buffer for badge %d, had ID 0x%x @ %p\n", badge, saved->share->id, saved->share->buf);
         assert (saved->share);
 
-        /* FIXME: yuck */
+        /* backing data for ringbuffer */
         saved->buffer_data = malloc (sizeof (char) * 0x1000);
         assert (saved->buffer_data);
 
@@ -102,7 +103,7 @@ recv_handler (void* _client_badge, struct udp_pcb* pcb,
     for (q = p; q != NULL; q = q->next) {
         char* data = q->payload;
         pawpaw_cbuf_write (saved->buffer, data, q->len);
-        //printf ("just wrote '%s'\n", data, saved->share->buf);
+        printf ("net: just wrote '%s'\n", data);
     }
 
     pbuf_free (p);
@@ -139,9 +140,13 @@ int netsvc_write (struct pawpaw_event* evt) {
 
     pbuf_free (p);
 
+    //evt->flags |= PAWPAW_EVENT_UNMOUNT;         /* user buf */
     return PAWPAW_EVENT_NEEDS_REPLY;
 }
 
+/*
+ * Fetches given data after we've saved it in our interrupt handler.
+ * Reads out from the per-client ringbuffer into their sharebuf */
 int netsvc_read (struct pawpaw_event* evt) {
     struct saved_data* saved = get_handler (evt);
     if (!saved) {
@@ -150,18 +155,23 @@ int netsvc_read (struct pawpaw_event* evt) {
     }
 
     /* FIXME: needs to send start instead */
-    evt->reply = seL4_MessageInfo_new (0, 0, pawpaw_share_attach (saved->share), 2);
+    evt->reply = seL4_MessageInfo_new (0, 0, 1, 3);
+    seL4_SetCap (0, saved->share->cap);
+
     seL4_SetMR (0, saved->share->id);
     seL4_SetMR (1, pawpaw_cbuf_count (saved->buffer));
     seL4_SetMR (2, 0);  /* no more buffers - if they ask again we can nuke the old one */
 
     /* copy it all in */
+    printf ("net: reading into buf ID 0%x @ %p\n", saved->share->id, saved->share->buf);
     pawpaw_cbuf_read (saved->buffer, saved->share->buf, pawpaw_cbuf_count (saved->buffer));
+    printf ("net: is now %s\n", saved->share->buf);
 
     return PAWPAW_EVENT_NEEDS_REPLY;
 }
 
 int netsvc_register (struct pawpaw_event* evt) {
+    assert (seL4_MessageInfo_get_extraCaps (evt->msg)  == 1);
     seL4_CPtr client_cap = pawpaw_event_get_recv_cap ();
     seL4_Word owner = evt->badge;
 

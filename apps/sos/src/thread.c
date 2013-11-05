@@ -33,7 +33,6 @@ extern char _cpio_archive[];
 thread_t threadlist[PID_MAX] = {0};
 
 thread_t running_head = NULL;
-thread_t running_tail = NULL;
 
 seL4_CPtr thread_cspace_new_ep (thread_t thread) {
     int err;
@@ -316,13 +315,14 @@ thread_destroy (thread_t thread) {
     
     /* FIXME: this takes O(n) which sucks, but we only do it on thread
      * deletion... - maybe have a prev pointer too? */
-    thread_t prev = running_head;
-    while (prev) {
-        if (prev->next == thread) {
-            break;
+    thread_t cur = running_head;
+    thread_t prev = NULL;
+    while (cur && !prev) {
+        if (cur->next == thread) {
+            prev = cur;
         }
 
-        prev = prev->next;
+        cur = cur->next;
     }
 
     /* update next */
@@ -330,6 +330,7 @@ thread_destroy (thread_t thread) {
         prev->next = thread->next;
     } else {
         /* we must've been first */
+        printf ("%s: updating head from pid %d\n", __FUNCTION__, thread->pid);
         running_head = thread->next;
     }
 
@@ -438,15 +439,17 @@ thread_t thread_create_from_cpio (char* path, seL4_CPtr rootsvr_ep) {
     threadlist_add (thread->pid, thread);
 
     /* and stick at end of running thread queue */
-    /* FIXME: what is this shit */
-    if (running_tail) {
-        running_tail->next = thread;
-        running_tail = thread;
-    } else {
+    if (!running_head) {
         running_head = thread;
-        running_tail = running_head;
-    }
+    } else {
+        thread_t end = running_head;
+        while (end->next) {
+            end = end->next;
+        }
 
+        end->next = thread;
+    }
+    
     /* FINALLY, start the new process */
     seL4_TCB_WritePCSP (thread->tcb_cap, true, elf_getEntryPoint(elf_base), stack_top);
     return thread;

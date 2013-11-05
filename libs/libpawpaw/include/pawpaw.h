@@ -15,7 +15,9 @@
 #define PAWPAW_EVENT_UNHANDLED		(0)
 #define PAWPAW_EVENT_HANDLED		(1)
 #define PAWPAW_EVENT_NEEDS_REPLY	(2)
-#define PAWPAW_EVENT_HANDLED_SAVED	(3)
+#define PAWPAW_EVENT_HANDLED_SAVED	(4)
+#define PAWPAW_EVENT_NO_UNMOUNT		(8)			/* depreciated */
+#define	PAWPAW_EVENT_UNMOUNT		(16)
 
 #define PAWPAW_EVENT_INVALID		(-2)
 
@@ -33,6 +35,7 @@ struct pawpaw_event {
 	seL4_MessageInfo_t reply;
 	seL4_Word *args;
 	struct pawpaw_share* share;
+	struct pawpaw_event_table* table;			/* XXX: for debug */
 };
 
 struct pawpaw_saved_event {
@@ -49,6 +52,7 @@ struct pawpaw_eventhandler_info {
 struct pawpaw_event_table {
 	unsigned int num_events;
 	struct pawpaw_eventhandler_info* handlers;	/* should be an array, don't want to be stuck to C99 */
+	char* app_name;
 };
 
 struct pawpaw_share {
@@ -99,6 +103,7 @@ int pawpaw_share_attach (struct pawpaw_share* share);
 
 struct pawpaw_share* pawpaw_share_get (seL4_Word id);
 void pawpaw_share_set (struct pawpaw_share* share);
+void pawpaw_share_unset (struct pawpaw_share* share);
 
 struct pawpaw_cbuf* pawpaw_cbuf_create (int size, void* start);
 void pawpaw_cbuf_destroy (struct pawpaw_cbuf* buf);

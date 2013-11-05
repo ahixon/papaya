@@ -33,7 +33,7 @@ size_t sos_write(void *vData, long int position, size_t count, void *handle) {
 }
 
 size_t sos_read(void *vData, long int position, size_t count, void *handle) {
-    //implement this to use your syscall
+    /* FIXME: should just pass through to read */
     return 0;
 }
 
