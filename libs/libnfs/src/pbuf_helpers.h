@@ -23,6 +23,7 @@ void pb_writel(struct pbuf* pbuf, uint32_t v, int* pos);
 /* read a single host order long from the buf in network order.
  * return 0 on success */
 void pb_readl(struct pbuf* pbuf, uint32_t *v, int* pos);
+void readl(uint32_t *v, int* pos);
 
 /* Write an array of host order longs into the buf in network order.
  * Size is the size of the array in bytes.

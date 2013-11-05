@@ -123,6 +123,24 @@ pb_readl(struct pbuf* pbuf, uint32_t *v, int* pos)
 }
 
 void
+read_arrl(uint32_t* arr, int size, int* pos)
+{
+    int i;
+    for(i = 0; i < size/sizeof(*arr); i++){
+        arr[i] = ntohl(arr[i]);
+    }
+}
+
+/* read a single host order long from the buf in network order.
+ * return 0 on success */
+void
+readl(uint32_t *v, int* pos)
+{
+    read_arrl(v, sizeof(*v), pos);
+}
+
+
+void
 pb_read_str(struct pbuf* pbuf, char* str, int maxlen, int* pos)
 {
     uint32_t strlen;
