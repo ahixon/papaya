@@ -31,7 +31,7 @@ void interrupt_handler (struct pawpaw_event* evt);
 int interrupt_handler_2 (struct pawpaw_event* evt);
 
 struct pawpaw_eventhandler_info handlers[VFS_NUM_EVENTS] = {
-    {   interrupt_handler_2,  0,  0   },      //              //
+    {   0,  0,  0   },      //   RESERVED   //
     {   0,  0,  0   },      //   RESERVED   //
     {   0,  0,  0   },      //              //
     {   vfs_open,           2,  HANDLER_REPLY },    // mode + badge, replies with EP to file (badged version of listen cap)
@@ -73,11 +73,6 @@ int vfs_open (struct pawpaw_event* evt) {
     seL4_SetMR (0, 0);
     evt->reply = seL4_MessageInfo_new (0, 0, 1, 1);
     return PAWPAW_EVENT_NEEDS_REPLY;
-}
-
-int interrupt_handler_2 (struct pawpaw_event* evt) {
-    interrupt_handler (evt);
-    return PAWPAW_EVENT_UNHANDLED;
 }
 
 void interrupt_handler (struct pawpaw_event* evt) {
@@ -175,10 +170,18 @@ int vfs_write (struct pawpaw_event* evt) {
 }
 
 int main (void) {
+    int err;
+    
     pawpaw_event_init ();
 
     service_ep = pawpaw_create_ep ();
     assert (service_ep);
+
+    seL4_CPtr async_ep = pawpaw_create_ep_async ();
+    assert (async_ep);
+
+    err = seL4_TCB_BindAEP (PAPAYA_TCB_SLOT, async_ep);
+    assert (!err);
 
     seL4_CPtr dev_ep = pawpaw_service_lookup ("svc_dev");
 
@@ -199,7 +202,7 @@ int main (void) {
 
     net_ep = pawpaw_service_lookup ("svc_net");
     msg = seL4_MessageInfo_new (0, 0, 1, 4);
-    seL4_SetCap (0, service_ep);        /* FIXME: make this async EP instead to get rid of hack */
+    seL4_SetCap (0, async_ep);
     seL4_SetMR (0, NETSVC_SERVICE_REGISTER);
     seL4_SetMR (1, NETSVC_PROTOCOL_UDP);
     seL4_SetMR (2, 26706);
