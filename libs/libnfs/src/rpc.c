@@ -379,10 +379,25 @@ init_rpc(const struct ip_addr *server)
     return time == 0;
 }
 
-struct udp_pcb* 
+int
 rpc_new_udp(const struct ip_addr *server, int remote_port, 
             enum port_type local_port)
 {
+    seL4_MessageInfo_t msg;
+
+    msg = seL4_MessageInfo_new (0, 0, 1, 4);
+    seL4_SetCap (0, wait_ep);        /* FIXME: make this async EP instead to get rid of hack */
+    seL4_SetMR (0, NETSVC_SERVICE_REGISTER);
+    seL4_SetMR (1, NETSVC_PROTOCOL_UDP);
+    seL4_SetMR (2, remote_port);    /* FIXME: what about binding local port */
+    seL4_SetMR (3, 0);
+    // FIXME: implement this
+    //seL4_SetMR (3, (seL4_Word)s[0]);  /* phew, this fits into u32 */
+
+    seL4_Call (net_ep, msg);
+    return seL4_GetMR (0) == 0;
+
+#if 0
     struct udp_pcb* ret;
     static int root_port = -1;
     struct ip_addr s = *server;
@@ -400,6 +415,7 @@ rpc_new_udp(const struct ip_addr *server, int remote_port,
     }
     udp_connect(ret, &s, remote_port);
     return ret;
+#endif
 }
 
 

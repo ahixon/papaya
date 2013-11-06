@@ -4,7 +4,7 @@
 
 #include <assert.h>
 
-//#define DEBUG_PMAP 1
+#define DEBUG_PMAP 1
 #ifdef DEBUG_PMAP
 #define debug(x...) printf(x)
 #else
@@ -40,14 +40,14 @@ getport_cb(void *callback, uintptr_t token, struct pbuf *pbuf)
 int 
 portmapper_getport(const struct ip_addr *server, uint32_t prog, uint32_t vers)
 {
-    struct udp_pcb* rpc_pcb;
+    int had_handler = false;
     struct pbuf *pbuf;
     int pos;
     uint32_t port;
     int err;
 
-    rpc_pcb = rpc_new_udp(server, PMAP_PORT, PORT_ANY);
-    assert(rpc_pcb);
+    had_handler = rpc_new_udp(server, PMAP_PORT, PORT_ANY);
+    assert(had_handler);
 
     debug("Getting port\n");
     /* Initialise the request packet */
@@ -62,7 +62,6 @@ portmapper_getport(const struct ip_addr *server, uint32_t prog, uint32_t vers)
 
     /* Make the call */
     err = rpc_call(pbuf, pos, rpc_pcb, &getport_cb, NULL, (uintptr_t)&port);
-    udp_remove(rpc_pcb);
     if(err){
         debug("Portmapper: RPC failed\n");
         return -1;
