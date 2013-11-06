@@ -341,10 +341,10 @@ int main (void) {
     }
 
     /* finally, start the boot app */
-    // dprintf (1, "Starting boot application \"%s\"...\n", CONFIG_SOS_STARTUP_APP);
-    // thread_t boot_thread = thread_create_from_cpio (CONFIG_SOS_STARTUP_APP, rootserver_syscall_cap);
-    // assert (boot_thread);
-    // dprintf (1, "  started with PID %d\n", boot_thread->pid);
+    dprintf (1, "Starting boot application \"%s\"...\n", CONFIG_SOS_STARTUP_APP);
+    thread_t boot_thread = thread_create_from_cpio (CONFIG_SOS_STARTUP_APP, rootserver_syscall_cap);
+    assert (boot_thread);
+    dprintf (1, "  started with PID %d\n", boot_thread->pid);
 
     /* and wait for IPC */
     dprintf (0, "Root server starting event loop...\n");

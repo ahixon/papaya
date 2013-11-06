@@ -189,8 +189,8 @@ int main (void) {
      * FIXME: would be nice if svc_init did this */
     //printf ("")
     printf ("fs_dev: mounting ourselves\n");
-    strcpy (newshare->buf, "dev");
-    strcpy (newshare->buf + strlen("dev") + 1, "dev");
+    strcpy (newshare->buf, "/dev");
+    strcpy (newshare->buf + strlen("/dev") + 1, "dev");
 
     msg = seL4_MessageInfo_new (0, 0, 0, 2);
     seL4_SetMR (0, VFS_MOUNT);

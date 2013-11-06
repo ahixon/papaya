@@ -89,7 +89,8 @@ int syscall_share_mount (struct pawpaw_event* evt) {
     seL4_Word id = seL4_GetMR (2);
     seL4_Word thread_id = seL4_GetMR (0); 
 
-    if (!badgemap_found || id == 0) {
+    /* FIXME: maybe made ids start from 1 not 0 */
+    if (!badgemap_found) {
         printf ("%s: badgemapper returned failure\n", __FUNCTION__);
         evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
         seL4_SetMR (0, 0);

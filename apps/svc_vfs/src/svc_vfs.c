@@ -17,15 +17,12 @@ struct fs_node {
     char* dirname;
 
     struct filesystem* fs;
-    seL4_Word mounter_badge;
+    seL4_Word mounter_badge;    /* keep track of PID that mounted us */
+
+    /* linked list of children */
     struct fs_node* children;
-
-    struct fs_node* level_next;
-    struct fs_node* mounted_next;
+    struct fs_node* next;
 };
-
-struct fs_node* node_head; /* head for iterating */
-struct fs_node* root;    /* ROOT NODE for walking trie */
 
 struct filesystem {
     char* type;
@@ -35,8 +32,20 @@ struct filesystem {
     struct filesystem* next;
 };
 
-struct filesystem* fs_head = NULL;
+struct fs_node* fs_root = NULL;
+struct filesystem* fs_head = NULL; /* for iterating filesystems */
 
+int parse_pathname (char* current_path_part, char* end, struct fs_node* fs, struct fs_node** dest_fs, char** remaining, int* best_depth, int level);
+
+/*
+ * find/replaces the next forward slash with an ASCII NUL.
+ * param s now points to the current path part, and the
+ * part that is returned is the NEXT path part, or NULL
+ * if no more remains or you've gone past 'end'.
+ *
+ * mangles parameter s, so make sure you strdup if you need
+ * the original.
+ */
 char* get_next_path_part (char* s, char* end) {
     char* c = s;
     while (c < end) {
@@ -52,51 +61,70 @@ char* get_next_path_part (char* s, char* end) {
     return NULL;
 }
 
-int parse_filename (char* fname, struct fs_node* parent, struct fs_node** dest_fs, char** remaining) {
-    struct fs_node* fs = parent;
-    struct fs_node* found = NULL;
-    char* cur = fname;
-    char* end = cur + strlen(fname);
+/* this could go away if you re-wrote it not to be recursive.. */
+#define MAX_PATH_RECURSION  20
 
-    char* part = get_next_path_part (cur, end);
-
-    while (cur && fs) {
-        /* keep looking on this level for a fs mounted on that dir */
-        while (fs != NULL) {
-            //printf ("comparing '%s' and '%s'\n", fs->dirname, cur);
-            if (strcmp (fs->dirname, cur) == 0) {
-                //printf ("matched\n");
-                break;
-            }
-
-            //printf ("no match, next\n");
-            fs = fs->level_next;
-            /* FIXME: holy shit this code needs a lot more thought */
-            //fs = fs->mounted_next;
-        }
-
-        found = fs;
-
-        /* got one, load up its children if we have more path to match */
-        cur = part;
-        //printf ("remaining = %p, children = %p\n", cur, fs->children);
-        if (fs && fs->children) {
-            fs = fs->children;
-            //printf ("trying to load children? %p\n", fs);
-            if (cur) {
-                part = get_next_path_part (cur, end);
-            }
-        } else {
-            break;
-        }
+/*
+ * assumes path is at least /, and initially passed in root
+ * returns true if path fully consumed, false otherwise.
+ */
+int parse_pathname (char* current_path_part, char* end, struct fs_node* fs, struct fs_node** dest_fs, char** remaining, int* best_depth, int level) {
+    if (level > MAX_PATH_RECURSION) {
+        return false;
     }
 
-    if (found != NULL && cur && fs && fs != root) {
-        *remaining = cur;
+    for (int i = 0; i < level; i++) { printf ("\t"); }
+    printf ("parse_pathname (%s, end, fs:%s, .., ..)\n", current_path_part ? current_path_part : "<NULL>", fs->dirname);
+
+    /* base case */
+    if (current_path_part == NULL) {
+        *remaining = NULL;
         *dest_fs = fs;
         return true;
     }
 
+    /* changes current_path_part and next_path_part */
+    char* next_path_part = get_next_path_part (current_path_part, end);
+    for (int i = 0; i < level; i++) { printf ("\t"); }
+    printf ("next path part = %s\n", next_path_part ? next_path_part : "<NULL>");
+
+    /* keep digging through all matching children filesystems
+       recursively */
+    struct fs_node* child = fs->children;
+    while (child) {
+        if (strcmp (child->dirname, current_path_part)) {
+            /* sub-call NOT terminating here will set dest_fs and remaining */
+            /* XXX: don't return, but keep checking if we want to allow nested mounted FS */
+            if (parse_pathname (next_path_part, end, child, dest_fs, remaining, best_depth, level + 1)) {
+                return true;
+            }
+        }
+
+        child = child->next;
+    }
+
+    for (int i = 0; i < level; i++) { printf ("\t"); }
+    printf ("comparing '%s' and '%s'\n", current_path_part, fs->dirname);
+    if (strcmp (current_path_part, fs->dirname) == 0) {
+        /* ok wasn't a child this was as far as we got */
+        if (level > *best_depth) {
+            printf ("* new best\n");
+            /* found deeper, update */
+            *remaining = next_path_part;
+            *dest_fs = fs;
+            *best_depth = level;
+        }
+
+        /* if no more path remains, WE ARE IT! */
+        if (next_path_part == NULL || *next_path_part == '\0') {
+            for (int i = 0; i < level; i++) { printf ("\t"); }
+            printf ("success!\n");
+            return true;
+        }
+    }
+
+    for (int i = 0; i < level; i++) { printf ("\t"); }
+    printf ("failed, next path part = %s\n", next_path_part ? next_path_part : "<NULL>");
     return false;
 }
 
@@ -152,7 +180,14 @@ int fs_mount (struct pawpaw_event* evt) {
 
     /* FIXME: should use some sort of copyin since can buffer overflow + crash */
     char* mountpoint = strdup ((char*)evt->share->buf);
+    char* end = mountpoint + strlen(mountpoint);
+    char* orig_mountpoint = strdup (mountpoint);
     char* fstype = strdup ((char*)(evt->share->buf + strlen (mountpoint) + 1));
+
+    if (mountpoint == end) {
+        printf ("vfs: mountpoint was empty\n");
+        return PAWPAW_EVENT_UNHANDLED;
+    }
 
     /* find the given filesystem type */
     struct filesystem* fs = fs_head;
@@ -170,22 +205,59 @@ int fs_mount (struct pawpaw_event* evt) {
     }
 
     /* FIXME: currently only handles mounts on root */
-    struct fs_node* node = malloc (sizeof (struct filesystem));
-    node->dirname = mountpoint;
-    node->fs = fs;
-    node->mounter_badge = evt->badge;   /* only mounter should unmount(?) */
-    node->children = NULL;
-    node->level_next = root->children;
+    char* remaining = NULL;
+    struct fs_node* parent_fs = NULL;
+    int best_depth = -1;
 
-    node->mounted_next = node_head;
-    node_head = node;
+    //get_next_path_part (mountpoint, end);
 
-    root->children = node;
-    //root->children->level_next = node;
+    /* allow mount on arbitrary directory - FIXME: does not check depth limit */
+    int done = false;
+    while (!done) {
+        int consumed = parse_pathname (mountpoint, end, fs_root, &parent_fs, &remaining, &best_depth, 0);
+        if (consumed) {
+            if (parent_fs) {
+                if (parent_fs->fs) {
+                    /* already mounted on that path */
+                    printf ("already mounted on %s\n", mountpoint);
+                    return PAWPAW_EVENT_UNHANDLED;
+                } else {
+                    /* had structure but nothing mounted, seems OK */
+                    break;
+                }
+            }
+        }
+
+        char* next_part = remaining || get_next_path_part (remaining, end);
+        if (next_part) {
+            /* create parent "folder" */
+            printf ("creating parent fsnode %s\n", remaining);
+            struct fs_node *new_parent = malloc (sizeof (struct fs_node));
+            new_parent->dirname = remaining;
+            new_parent->fs = NULL;
+            new_parent->mounter_badge = 0;
+            new_parent->children = NULL;
+
+            /* and attach it */
+            new_parent->next = parent_fs->children;
+            parent_fs->children = new_parent;
+
+            /* reset depth count + path strings and go again */
+            best_depth = -1;
+            free (mountpoint);
+            mountpoint = strdup (orig_mountpoint);
+            end = mountpoint + strlen(mountpoint);
+        }
+    }
+
+    /* mount here */
+    parent_fs->fs = fs;
+    parent_fs->mounter_badge = evt->badge;   /* only mounter should unmount(?) */
 
     /* done */
-    printf ("vfs: mounted fs '%s' to /%s\n", fstype, mountpoint);
+    printf ("vfs: mounted fs '%s' to %s\n", fstype, mountpoint);
     free (fstype);
+    free (orig_mountpoint);
     evt->reply = seL4_MessageInfo_new (0, 0, 0, 0);
 
     evt->flags |= PAWPAW_EVENT_NO_UNMOUNT;
@@ -198,15 +270,18 @@ int vfs_open (struct pawpaw_event* evt) {
         return PAWPAW_EVENT_UNHANDLED;
     }
 
-    struct fs_node* node;
-    char* remaining;
+    struct fs_node* node = NULL;
+    char* remaining = NULL;
 
     /* if the client changes this under us, weird stuff might happen so save it now */
     char* requested_filename = strdup (evt->share->buf);
     char* orig_filename = strdup (requested_filename);
+    int best_depth = -1;
 
-    if (parse_filename (requested_filename, root, &node, &remaining)) {
-        // printf ("vfs: path success\n");
+    parse_pathname (requested_filename, requested_filename + strlen(requested_filename), fs_root, &node, &remaining, &best_depth, 0);
+
+    if (remaining) {
+        printf ("vfs: path success\n");
         strcpy (node->fs->share->buf, remaining);
 
         /* pass the buck to the FS layer to see if it knows anything about the file */
@@ -261,15 +336,14 @@ struct pawpaw_event_table handler_table = { VFS_NUM_EVENTS, handlers, "vfs" };
 
 int main (void) {
     /* install root node */
-    root = malloc (sizeof (struct fs_node));
+    struct fs_node *root = malloc (sizeof (struct fs_node));
     root->dirname = "";
     root->fs = NULL;
     root->mounter_badge = 0;
     root->children = NULL;
-    root->level_next = NULL;
-    root->mounted_next = NULL;
+    root->next = NULL;
 
-    node_head = root;
+    fs_root = root;
 
     /* init event handler */
     pawpaw_event_init ();

@@ -46,15 +46,16 @@ struct pawpaw_eventhandler_info handlers[VFS_NUM_EVENTS] = {
     {   0,  0,  0   },      //              //
 };
 
-struct pawpaw_event_table handler_table = { VFS_NUM_EVENTS, handlers };
+struct pawpaw_event_table handler_table = { VFS_NUM_EVENTS, handlers, "nfs" };
 
 int vfs_open (struct pawpaw_event* evt) {
     assert (evt->share);
-    printf ("fs_dev: want to open '%s'\n", (char*)evt->share->buf);
+    printf ("fs_nfs: want to open '%s'\n", (char*)evt->share->buf);
 
     /*assert (seL4_MessageInfo_get_extraCaps (evt->msg) == 1);
     seL4_CPtr requestor = pawpaw_event_get_recv_cap ();*/
 
+#if 0
     seL4_CPtr ret = 0;
     struct ventry* entry = entries;
 
@@ -117,6 +118,8 @@ int vfs_open (struct pawpaw_event* evt) {
     seL4_SetCap (0, dev_fd_cap);
     seL4_SetMR (0, 0);
     return PAWPAW_EVENT_NEEDS_REPLY;
+#endif
+    return PAWPAW_EVENT_UNHANDLED;
 }
 
 seL4_CPtr dev_ep = 0;
@@ -147,18 +150,14 @@ int main (void) {
 
     if (nfs_init (&gateway) == RPC_OK) {
         nfs_print_exports ();
-        return 1;
     } else {
         printf ("NFS init failed\n");
-        return 0;
     }
-#if 0
 
     /* now that we're "setup", register this filesystem with the VFS */
     seL4_CPtr vfs_ep = pawpaw_service_lookup ("svc_vfs");
 
-    /* first, register it - kinda important so we can mount without cap just id */
-    msg = seL4_MessageInfo_new (0, 0, 1, 2);
+    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 2);
     struct pawpaw_share *newshare = pawpaw_share_new ();
     assert (newshare);
 
@@ -179,7 +178,8 @@ int main (void) {
     seL4_Call (vfs_ep, msg);    /* FIXME: would we ever need call? otherwise this is OK :) */
 
     /* XXX: mount device fs to / - svc_init should do this instead */
-    newshare->buf = '\0';
+    strcpy (newshare->buf, "/");
+    strcpy ((newshare->buf) + 2, FILESYSTEM_NAME);
     
     msg = seL4_MessageInfo_new (0, 0, 0, 2);
     seL4_SetMR (0, VFS_MOUNT);
@@ -188,10 +188,10 @@ int main (void) {
     seL4_Call (vfs_ep, msg);
 
     /* setup done, now listen to VFS or other people we've given our EP to */
+    printf ("nfs: started\n");
     pawpaw_event_loop (&handler_table, interrupt_handler, service_ep);
 
     return 0;
-#endif
 }
 
 /****************************
