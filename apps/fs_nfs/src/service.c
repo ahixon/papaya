@@ -145,7 +145,7 @@ int main (void) {
     struct ip_addr gateway; /* TODO: should prime ARP table? */ 
     ipaddr_aton (CONFIG_SOS_GATEWAY,      &gateway);
 
-    if (nfs_init (&gateway)) {
+    if (nfs_init (&gateway) == RPC_OK) {
         nfs_print_exports ();
         return 1;
     } else {

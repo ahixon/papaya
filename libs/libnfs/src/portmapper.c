@@ -40,18 +40,20 @@ getport_cb(void *callback, uintptr_t token, struct pbuf *pbuf)
     }
 }
 
+int portmapper_handler_id = -1;
+
 int 
 portmapper_getport(const struct ip_addr *server, uint32_t prog, uint32_t vers)
 {
-    int handler_id = -1;
-
     struct pbuf *pbuf;
     int pos;
     uint32_t port;
     int err;
 
-    handler_id = rpc_new_udp(server, PMAP_PORT, PORT_ANY);
-    assert (handler_id >= 0);
+    if (portmapper_handler_id < 0) {
+        portmapper_handler_id = rpc_new_udp(server, PMAP_PORT, PORT_ANY);
+        assert (portmapper_handler_id >= 0);
+    }
 
     debug("Getting port\n");
     /* Initialise the request packet */
@@ -66,7 +68,7 @@ portmapper_getport(const struct ip_addr *server, uint32_t prog, uint32_t vers)
 
     /* Make the call */
     debug ("Doing blocking RPC call\n");
-    err = rpc_call(pbuf, pos, handler_id, &getport_cb, NULL, (uintptr_t)&port);
+    err = rpc_call(pbuf, pos, portmapper_handler_id, &getport_cb, NULL, (uintptr_t)&port);
     if(err){
         debug("Portmapper: RPC failed\n");
         return -1;

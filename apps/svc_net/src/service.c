@@ -154,6 +154,7 @@ int netsvc_read (struct pawpaw_event* evt) {
     evt->reply = seL4_MessageInfo_new (0, 0, 1, 3);
     seL4_SetCap (0, saved->share->cap);
 
+    printf ("net: reading out of buf belonging to conn 0x%x\n", saved->id);
     seL4_SetMR (0, saved->share->id);
     seL4_SetMR (1, pawpaw_cbuf_count (saved->buffer));
     seL4_SetMR (2, 0);  /* no more buffers - if they ask again we can nuke the old one */
@@ -170,6 +171,8 @@ int netsvc_register (struct pawpaw_event* evt) {
     assert (seL4_MessageInfo_get_extraCaps (evt->msg)  == 1);
     seL4_CPtr client_cap = pawpaw_event_get_recv_cap ();
     seL4_Word owner = evt->badge;
+    
+    evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
 
     seL4_Word type = evt->args[0];
     if (type == NETSVC_PROTOCOL_UDP) {
@@ -179,7 +182,8 @@ int netsvc_register (struct pawpaw_event* evt) {
         if (udp_bind (pcb, &netif_default->ip_addr, evt->args[1])) {
             printf ("svc_net: udp_bind failed\n");
             udp_remove (pcb);
-            return PAWPAW_EVENT_UNHANDLED;
+            seL4_SetMR (0, -1);
+            return PAWPAW_EVENT_NEEDS_REPLY;
         }
 
         struct ip_addr dest;
@@ -193,7 +197,8 @@ int netsvc_register (struct pawpaw_event* evt) {
         if (udp_connect (pcb, &dest, evt->args[1])) {
             printf ("svc_net: udp_connect failed\n");
             udp_remove (pcb);
-            return PAWPAW_EVENT_UNHANDLED;
+            seL4_SetMR (0, -1);
+            return PAWPAW_EVENT_NEEDS_REPLY;
         }
 
 
@@ -217,7 +222,6 @@ int netsvc_register (struct pawpaw_event* evt) {
         printf ("svc_net: registered a UDP handler on port %u, id = 0x%x\n", evt->args[1], saved->id);
 
         /* tell client was OK */
-        evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
         seL4_SetMR (0, saved->id);
 
         return PAWPAW_EVENT_NEEDS_REPLY;

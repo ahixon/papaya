@@ -113,12 +113,14 @@ my_udp_send(int connection_id, struct pbuf *pbuf)
     struct pawpaw_share* share = pawpaw_share_new ();
     assert (share);
 
+#if 0
     struct pbuf *p = pbuf_new(pbuf->tot_len);
     if(p == NULL) {
         return RPCERR_NOBUF;
     }
 
     assert(!pbuf_copy(p, pbuf));
+#endif
 
     /* read data out of pbuf into our regular buffer
      * TODO: yes, this is inefficient, but it means i don't have to re-write
@@ -126,14 +128,15 @@ my_udp_send(int connection_id, struct pbuf *pbuf)
     /* FIXME: make sure we don't overrun our buffer! */
     struct pbuf *q;
     int offset = 0;
-    for (q = p; q != NULL; q = q->next) {
+    for (q = pbuf; q != NULL; q = q->next) {
         char* data = q->payload;
         memcpy (share->buf + offset, data, q->len);
-        for (int i = 0; i < q->len && i < 500; i++) {
-            printf ("out_data[%d] = 0x%x\n", offset + i, ((char*)(share->buf))[offset + i]);
-        }
+        // for (int i = 0; i < q->len && i < 500; i++) {
+        //     printf ("out_data[%d] = 0x%x\n", offset + i, ((char*)(share->buf))[offset + i]);
+        // }
         offset += q->len;
     }
+
 
     debug ("loaded pbuf into cap, sending to svc_net (len 0x%x)...\n", offset);
     seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 4);
@@ -141,7 +144,7 @@ my_udp_send(int connection_id, struct pbuf *pbuf)
     seL4_SetMR (0, NETSVC_SERVICE_SEND);
     seL4_SetMR (1, share->id);
     seL4_SetMR (2, connection_id);
-    seL4_SetMR (3, p->tot_len);
+    seL4_SetMR (3, pbuf->tot_len);
     seL4_Call (net_ep, msg);
 
     debug ("got result %d\n", seL4_GetMR (0));
@@ -305,6 +308,8 @@ my_recv(void *arg, int upcb, struct pbuf *p,
         pbuf_free(q_item->pbuf);
         free(q_item);
         return true;
+    } else {
+        debug ("missing callback for XID\n");
     }
     /* Done with the incoming packet so free it */
     pbuf_free(p);
@@ -403,10 +408,18 @@ rpc_call(struct pbuf *pbuf, int len, int handler_id,
 
     debug ("asking for data for connection %d\n", id);
     seL4_Call (net_ep, msg);
-    seL4_Word size = seL4_GetMR(0);
+    seL4_Word size = seL4_GetMR(1);
     debug ("had 0x%x bytes data\n", size);
 
-    struct pawpaw_share* result_share = pawpaw_share_mount (pawpaw_event_get_recv_cap ());
+    int share_id = seL4_GetMR (0);
+    seL4_CPtr share_cap = pawpaw_event_get_recv_cap ();
+
+    struct pawpaw_share* result_share = pawpaw_share_get (share_id);
+    if (!result_share) {
+        result_share = pawpaw_share_mount (share_cap);
+        pawpaw_share_set (result_share);
+    }
+
     assert (result_share);
 
     /* create pbuf: FIXME maybe need a local copy rather than ref? */
@@ -417,8 +430,8 @@ rpc_call(struct pbuf *pbuf, int len, int handler_id,
 
     /* handle it */
     //debug ("calling recv function\n");
-    /* FIXME: unmount share after recv */
-    return my_recv (NULL, id, recv_pbuf, NULL, 0) == true;
+    /* FIXME: unmount share after recv, also MAN WTF RETURN CODES */
+    return my_recv (NULL, id, recv_pbuf, NULL, 0) == true ? 0 : 1;
 
     //return 0;
 

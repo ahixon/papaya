@@ -86,16 +86,20 @@ int syscall_share_mount (struct pawpaw_event* evt) {
 
     cspace_delete_cap (cur_cspace, ep_cpy);
 
-    if (!badgemap_found) {
+    seL4_Word id = seL4_GetMR (2);
+    seL4_Word thread_id = seL4_GetMR (0); 
+
+    if (!badgemap_found || id == 0) {
         printf ("%s: badgemapper returned failure\n", __FUNCTION__);
-        /* didn't actually call mapper service */
-        return PAWPAW_EVENT_UNHANDLED;
+        evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+        seL4_SetMR (0, 0);
+
+        return PAWPAW_EVENT_NEEDS_REPLY;
     }
 
-    seL4_Word id = seL4_GetMR (2);
-    thread_t src_thread = thread_lookup (seL4_GetMR (0));
+    thread_t src_thread = thread_lookup (thread_id);
     if (!src_thread) {
-        printf ("%s: fetching source thread failed\n", __FUNCTION__);
+        printf ("%s: fetching source thread failed, looked up thread id %d (share id 0x%x)\n", __FUNCTION__, thread_id, id);
         evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
         seL4_SetMR (0, 0);
 
