@@ -268,7 +268,6 @@ thread_destroy (thread_t thread) {
     /* why doesn't the cspace free allocated nodes on destroy, we'll never know
      * let's not modify that code because it's a giant mess */
     if (thread->default_caps) {
-        printf ("deleting default caps\n");
         for (int i = PAPAYA_SYSCALL_SLOT; i <= PAPAYA_PAGEDIR_SLOT; i++) {
             cspace_delete_cap (thread->croot, i);
         }
@@ -276,10 +275,12 @@ thread_destroy (thread_t thread) {
         cspace_free_slot (thread->croot, PAPAYA_INITIAL_FREE_SLOT);
     }
 
+    /* FIXME: for some reason NFS has the syscall cap in their CSpace?
+     * Related to IRQ bug? */
     if (thread->croot && thread->croot != cur_cspace) {
-        printf ("destroying thread croot\n");
-        cspace_destroy (thread->croot);
-        printf ("done\n");
+        //printf ("destroying thread croot\n");
+        //cspace_destroy (thread->croot);
+        //printf ("done\n");
     }
 
     /* lastly, free the address space ONLY if we're not rootsvr's */
@@ -330,7 +331,6 @@ thread_destroy (thread_t thread) {
         prev->next = thread->next;
     } else {
         /* we must've been first */
-        printf ("%s: updating head from pid %d\n", __FUNCTION__, thread->pid);
         running_head = thread->next;
     }
 

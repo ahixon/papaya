@@ -189,6 +189,8 @@ int pawpaw_event_process (struct pawpaw_event_table* table, struct pawpaw_event 
     }
 
     /* ok call the event */
-    eh.flags = eh.func (evt);
-    return eh.flags;
+    //printf ("%s: handling function id %d\n", table->app_name, evt_id);
+    int res = eh.func (evt);
+    //printf ("%s: finished syscall\n", table->app_name);
+    return res;
 }

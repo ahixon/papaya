@@ -75,7 +75,7 @@ struct pawpaw_eventhandler_info syscalls[NUM_SYSCALLS] = {
     { syscall_alloc_dma,        2,  HANDLER_REPLY   },
 };
 
-struct pawpaw_event_table syscall_table = { NUM_SYSCALLS, syscalls };
+struct pawpaw_event_table syscall_table = { NUM_SYSCALLS, syscalls, "sos" };
 
 thread_t current_thread;
 
@@ -89,7 +89,6 @@ void syscall_loop (seL4_CPtr ep) {
         /* look for the thread associated with the syscall */
         thread_t thread = thread_lookup (badge);
         if (!thread) {
-            printf ("syscall: invalid thread - had badge %d\n", badge);
             continue;
         }
 
