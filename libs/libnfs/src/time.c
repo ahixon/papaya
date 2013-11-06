@@ -9,7 +9,7 @@
 #include <assert.h>
 
 
-//#define DEBUG_TIME 1
+#define DEBUG_TIME 1
 #ifdef DEBUG_TIME
 #define debug(x...) printf( x )
 #else
@@ -42,6 +42,8 @@ udp_time_get(const struct ip_addr *server)
     seL4_SetMR (1, NETSVC_PROTOCOL_UDP);
     seL4_SetMR (2, TIME_PORT);
     seL4_SetMR (3, 0);
+    int net_id = seL4_GetMR (0);
+    assert (net_id >= 0);
     // FIXME: implement this
     //seL4_SetMR (3, (seL4_Word)s[0]);  /* phew, this fits into u32 */
 
@@ -55,18 +57,20 @@ udp_time_get(const struct ip_addr *server)
     struct pawpaw_share* share = pawpaw_share_new ();
     assert (share);
 
-    msg = seL4_MessageInfo_new (0, 0, 1, 3);
+    msg = seL4_MessageInfo_new (0, 0, 1, 4);
     seL4_SetCap (0, share->cap);
     seL4_SetMR (0, NETSVC_SERVICE_SEND);
     seL4_SetMR (1, share->id);
-    seL4_SetMR (2, 0);
+    seL4_SetMR (2, net_id);
+    seL4_SetMR (3, 0);
     seL4_Call (net_ep, msg);
 
     /* FIXME: need a timeout - or not since it's a separate server */
     seL4_Wait (wait_ep, NULL);
 
-    msg = seL4_MessageInfo_new (0, 0, 0, 1);
+    msg = seL4_MessageInfo_new (0, 0, 0, 2);
     seL4_SetMR (0, NETSVC_SERVICE_DATA);
+    seL4_SetMR (1, net_id);
     seL4_Call (net_ep, msg);
 
     seL4_Word size = seL4_GetMR (1);
@@ -77,6 +81,7 @@ udp_time_get(const struct ip_addr *server)
 
     char* cbuf = result_share->buf;
     unsigned int utc1900_seconds = ntohl (*(u32_t*)(cbuf));  /* mmm, yum */
+    debug ("time: got time %u (since 1/1/1900)\n", utc1900_seconds);
 
     pawpaw_share_unmount (result_share);
     /* FIXME: should cleanup UDP client */

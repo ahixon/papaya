@@ -72,8 +72,9 @@
  */
 #define READDIR_BUF_SIZE   1024
 
-static struct udp_pcb *_nfs_pcb = NULL;
+static int _nfs_pcb = 0;    /* FIXME: not a PCB, just an network id; rename */
 seL4_CPtr net_ep = 0;
+seL4_CPtr msg_ep = 0;
 
 void 
 nfs_timeout(void)
@@ -85,14 +86,18 @@ enum rpc_stat
 nfs_mount(const char * dir, fhandle_t *pfh)
 {
     assert(_nfs_pcb);
-    return mountd_mount(&_nfs_pcb->remote_ip, dir, pfh);
+    //return mountd_mount(&_nfs_pcb->remote_ip, dir, pfh);
+    /* FIXME: what about handling specific remote IPs */
+    return mountd_mount (NULL, dir, pfh);
 }
 
 enum rpc_stat
 nfs_print_exports(void)
 {
     assert(_nfs_pcb);
-    return mountd_print_exports(&_nfs_pcb->remote_ip);
+    /* FIXME: what about handling specific remote IPs */
+    //return mountd_print_exports(&_nfs_pcb->remote_ip);
+    return mountd_print_exports(NULL);
 }
 
 /******************************************

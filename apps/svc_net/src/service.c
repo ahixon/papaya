@@ -18,6 +18,7 @@
 #include <network.h>
 
 seL4_CPtr async_ep;
+int last_id = 0;    /* FIXME: in future, should be bitfield */
 
 int netsvc_register (struct pawpaw_event* evt);
 int netsvc_read (struct pawpaw_event* evt);
@@ -26,8 +27,8 @@ int netsvc_write (struct pawpaw_event* evt);
 struct pawpaw_eventhandler_info handlers[4] = {
     {   netsvc_register,    3, HANDLER_REPLY   },      // net register svc
     {   0,  0,  0   },      // net unregister svc
-    {   netsvc_read,        0,  HANDLER_REPLY   },      /* optionally needs to accept a buffer */
-    {   netsvc_write,       2,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },      /* optionally needs to accept a buffer */
+    {   netsvc_read,        1,  HANDLER_REPLY   },      /* optionally needs to accept a buffer */
+    {   netsvc_write,       3,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },      /* optionally needs to accept a buffer */
     // net state query
     // debug stuff here (ie benchmark)
 };
@@ -46,6 +47,7 @@ struct saved_data {
     seL4_CPtr badge;
     seL4_CPtr cap;
     void* pcb;
+    unsigned int id;    /* ID of registered event thing */
 
     struct saved_data* next;
 };
@@ -56,7 +58,7 @@ struct saved_data*
 get_handler (struct pawpaw_event* evt) {
     struct saved_data* saved = data_head;
     while (saved) {
-        if (saved->badge == evt->badge) {
+        if (saved->badge == evt->badge && saved->id == evt->args[0]) {
             break;
         }
 
@@ -71,23 +73,15 @@ recv_handler (void* _client_badge, struct udp_pcb* pcb,
                     struct pbuf *p, struct ip_addr* ipaddr, u16_t unused2) {
 
     printf ("net: received data of size 0x%x\n", p->len);
-    seL4_Word badge = (seL4_Word)_client_badge;
-    /* keep the data around for when they ask for it */
-    struct saved_data* saved = data_head;
-    while (saved) {
-        if (saved->badge == badge) {
-            break;
-        }
-
-        saved = saved->next;
-    }
-
-    assert (saved);
-
+    struct saved_data *saved = (struct saved_data*)_client_badge;
+    assert (saved); /* FIXME: need to make sure that if we remove client that
+                       we don't try to access invalid memory since we'll have
+                       freed it */
+    
     if (!saved->share) {
         /* FIXME: not atomic */
         saved->share = pawpaw_share_new ();
-        printf ("net: making new buffer for badge %d, had ID 0x%x @ %p\n", badge, saved->share->id, saved->share->buf);
+        printf ("net: making new buffer for badge %d, had ID 0x%x @ %p\n", saved->badge, saved->share->id, saved->share->buf);
         assert (saved->share);
 
         /* backing data for ringbuffer */
@@ -109,7 +103,8 @@ recv_handler (void* _client_badge, struct udp_pcb* pcb,
     pbuf_free (p);
 
     /* and tell the client */
-    seL4_Notify (saved->cap, 0);
+    printf ("got data for ID 0x%x\n", saved->id);
+    seL4_Notify (saved->cap, saved->id);
 }
 
 int netsvc_write (struct pawpaw_event* evt) {
@@ -121,7 +116,8 @@ int netsvc_write (struct pawpaw_event* evt) {
         return PAWPAW_EVENT_UNHANDLED;
     }
 
-    int len = evt->args[0];
+    int len = evt->args[1];
+    printf ("net: sending len 0x%x\n", len);
 
     struct pbuf *p;
     p = pbuf_alloc (PBUF_TRANSPORT, len, PBUF_REF);
@@ -200,8 +196,6 @@ int netsvc_register (struct pawpaw_event* evt) {
             return PAWPAW_EVENT_UNHANDLED;
         }
 
-        printf ("svc_net: registered a UDP handler on port %u\n", evt->args[1]);
-        udp_recv (pcb, &recv_handler, (void*)owner);
 
         /* register the thing */
         struct saved_data* saved = malloc (sizeof (struct saved_data));
@@ -212,13 +206,19 @@ int netsvc_register (struct pawpaw_event* evt) {
         saved->badge = owner;
         saved->cap = client_cap;
         saved->pcb = pcb;
+        saved->id = last_id;
+        last_id++;
 
         saved->next = data_head;
         data_head = saved;
+        
+        /* FIXME: check error */
+        udp_recv (pcb, &recv_handler, saved);
+        printf ("svc_net: registered a UDP handler on port %u, id = 0x%x\n", evt->args[1], saved->id);
 
         /* tell client was OK */
         evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
-        seL4_SetMR (0, 0);
+        seL4_SetMR (0, saved->id);
 
         return PAWPAW_EVENT_NEEDS_REPLY;
     } else {

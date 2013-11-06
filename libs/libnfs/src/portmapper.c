@@ -3,6 +3,8 @@
 #include "pbuf_helpers.h"
 
 #include <assert.h>
+#include <stdlib.h>
+#include <sel4/sel4.h>
 
 #define DEBUG_PMAP 1
 #ifdef DEBUG_PMAP
@@ -22,10 +24,10 @@
 
 #define PMAPPROC_GETPORT 3
 
-
 static void
 getport_cb(void *callback, uintptr_t token, struct pbuf *pbuf)
 {
+    //debug ("*** hello from getport_cb\n");
     struct rpc_reply_hdr reply_hdr;
     uint32_t *port = (uint32_t*)token;
     int pos;
@@ -33,6 +35,7 @@ getport_cb(void *callback, uintptr_t token, struct pbuf *pbuf)
     if(rpc_read_hdr(pbuf, &reply_hdr, &pos)){
         *port = 0;
     }else{
+        debug ("getport_cb: reading port...\n");
         pb_readl(pbuf, port, &pos);
     }
 }
@@ -40,14 +43,15 @@ getport_cb(void *callback, uintptr_t token, struct pbuf *pbuf)
 int 
 portmapper_getport(const struct ip_addr *server, uint32_t prog, uint32_t vers)
 {
-    int had_handler = false;
+    int handler_id = -1;
+
     struct pbuf *pbuf;
     int pos;
     uint32_t port;
     int err;
 
-    had_handler = rpc_new_udp(server, PMAP_PORT, PORT_ANY);
-    assert(had_handler);
+    handler_id = rpc_new_udp(server, PMAP_PORT, PORT_ANY);
+    assert (handler_id >= 0);
 
     debug("Getting port\n");
     /* Initialise the request packet */
@@ -61,7 +65,8 @@ portmapper_getport(const struct ip_addr *server, uint32_t prog, uint32_t vers)
     pb_writel(pbuf, 0, &pos);
 
     /* Make the call */
-    err = rpc_call(pbuf, pos, rpc_pcb, &getport_cb, NULL, (uintptr_t)&port);
+    debug ("Doing blocking RPC call\n");
+    err = rpc_call(pbuf, pos, handler_id, &getport_cb, NULL, (uintptr_t)&port);
     if(err){
         debug("Portmapper: RPC failed\n");
         return -1;

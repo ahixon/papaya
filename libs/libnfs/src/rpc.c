@@ -10,7 +10,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+
+#include <sel4/sel4.h>
 #include <pawpaw.h>
+#include <network.h>
 
 #define DEBUG_RPC 1
 #ifdef DEBUG_RPC
@@ -18,6 +21,9 @@
 #else
 #define debug(x...)
 #endif
+
+extern seL4_CPtr msg_ep;
+extern seL4_CPtr net_ep;
 
 /************************************************************
  *  Constants
@@ -88,9 +94,6 @@ enum auth_flavor {
     /* and more to be defined */
 };
 
-
-
-
 /************************************************************
  *  Helpers
  ***********************************************************/
@@ -104,27 +107,51 @@ pbuf_new(u16_t length)
 }
 
 static inline enum rpc_stat
-my_udp_send(struct udp_pcb* pcb, struct pbuf *pbuf)
+my_udp_send(int connection_id, struct pbuf *pbuf)
 {
-    int err;
-    struct pbuf *p;
-    /* LWIP does not preserve the pbuf so make a copy first */
-    p = pbuf_new(pbuf->tot_len);
-    if(p == NULL){
+    /* FIXME: should use same share to recv? or share pool */
+    struct pawpaw_share* share = pawpaw_share_new ();
+    assert (share);
+
+    struct pbuf *p = pbuf_new(pbuf->tot_len);
+    if(p == NULL) {
         return RPCERR_NOBUF;
     }
+
     assert(!pbuf_copy(p, pbuf));
-    err = udp_send(pcb, p);
-    pbuf_free(p);
-    switch(err){
-    case ERR_MEM:
-        return RPCERR_NOMEM;
-    case ERR_RTE:
-        return RPCERR_COMM;
-    case ERR_OK:
-        return RPC_OK;
+
+    /* read data out of pbuf into our regular buffer
+     * TODO: yes, this is inefficient, but it means i don't have to re-write
+     * all the pbuf stuff that this code uses... */
+    /* FIXME: make sure we don't overrun our buffer! */
+    struct pbuf *q;
+    int offset = 0;
+    for (q = p; q != NULL; q = q->next) {
+        char* data = q->payload;
+        memcpy (share->buf + offset, data, q->len);
+        for (int i = 0; i < q->len && i < 500; i++) {
+            printf ("out_data[%d] = 0x%x\n", offset + i, ((char*)(share->buf))[offset + i]);
+        }
+        offset += q->len;
     }
-    return err;
+
+    debug ("loaded pbuf into cap, sending to svc_net (len 0x%x)...\n", offset);
+    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 4);
+    seL4_SetCap (0, share->cap);
+    seL4_SetMR (0, NETSVC_SERVICE_SEND);
+    seL4_SetMR (1, share->id);
+    seL4_SetMR (2, connection_id);
+    seL4_SetMR (3, p->tot_len);
+    seL4_Call (net_ep, msg);
+
+    debug ("got result %d\n", seL4_GetMR (0));
+    if (seL4_GetMR (0) == 0) {
+        return RPC_OK;
+    } else {
+        return RPCERR_COMM;
+    }
+
+    /* pbuf gets freed on successful recv or failure */
 }
 
 /************************************************************
@@ -160,7 +187,7 @@ get_xid(void)
  ***********************************************************/
 
 struct rpc_queue {
-    struct udp_pcb *pcb;
+    int conn_id;
     struct pbuf *pbuf;
     xid_t xid;
     int timeout;
@@ -188,7 +215,7 @@ rpc_timeout(int ms)
         q_item->timeout += ms;
         if (q_item->timeout > RETRANSMIT_DELAY_MS) {
             debug("rpc_timeout: Retransmission of 0x%08x\n", q_item->xid);
-            if(my_udp_send(q_item->pcb, q_item->pbuf)){
+            if(my_udp_send(q_item->conn_id, q_item->pbuf)){
                 /* Try again later */
             }else{
                 q_item->timeout = 0;
@@ -199,7 +226,7 @@ rpc_timeout(int ms)
 
 
 static void
-add_to_queue(struct pbuf *pbuf, struct udp_pcb* pcb, 
+add_to_queue(struct pbuf *pbuf, int conn_id,
          void (*func)(void *, uintptr_t, struct pbuf *),
          void *callback, uintptr_t arg)
 {
@@ -212,7 +239,8 @@ add_to_queue(struct pbuf *pbuf, struct udp_pcb* pcb,
     q_item->next = NULL;
     q_item->pbuf = pbuf;
     q_item->xid = extract_xid(pbuf);
-    q_item->pcb = pcb;
+    debug ("queue: adding to queue with xid 0x%x\n", q_item->xid);
+    q_item->conn_id = conn_id;
     q_item->timeout = 0;
     q_item->func = func;
     q_item->arg = arg;
@@ -233,6 +261,7 @@ add_to_queue(struct pbuf *pbuf, struct udp_pcb* pcb,
 static struct rpc_queue *
 get_from_queue(xid_t xid)
 {
+    debug ("queue: asking to fetch xid 0x%x\n", xid);
     struct rpc_queue *tmp, *last = NULL;
 
     for (tmp = queue; tmp != NULL && tmp->xid != xid; tmp = tmp->next) {
@@ -254,8 +283,9 @@ get_from_queue(xid_t xid)
  *** RPC transport
  **********************************/
 
-static void
-my_recv(void *arg, struct udp_pcb *upcb, struct pbuf *p,
+/* FIXME: owner app should call this on receiving message */
+int
+my_recv(void *arg, int upcb, struct pbuf *p,
     struct ip_addr *addr, u16_t port)
 {
     xid_t xid;
@@ -263,24 +293,27 @@ my_recv(void *arg, struct udp_pcb *upcb, struct pbuf *p,
     (void)port;
 
     xid = extract_xid(p);
+    debug("my_recv: had xid 0x%x\n", xid);
 
     q_item = get_from_queue(xid);
 
-    debug("Recieved a reply for xid: %u (%d) %p\n", xid, p->len, q_item);
+    debug("Received a reply for xid: %u (%d) %p\n", xid, p->len, q_item);
     if (q_item != NULL){
         assert(q_item->func);
         q_item->func(q_item->callback, q_item->arg, p);
         /* Clean up the queue item */
         pbuf_free(q_item->pbuf);
         free(q_item);
+        return true;
     }
     /* Done with the incoming packet so free it */
     pbuf_free(p);
+    return false;
 }
 
 
 enum rpc_stat
-rpc_send(struct pbuf *pbuf, int len, struct udp_pcb *pcb, 
+rpc_send(struct pbuf *pbuf, int len, int pcb,
      void (*func)(void *, uintptr_t, struct pbuf *), 
      void *callback, uintptr_t token)
 {
@@ -311,20 +344,20 @@ rpc_call_cb(void *callback, uintptr_t token, struct pbuf *pbuf)
     _mutex_release(call_arg->mutex);
 }
 
+/* TODO: rename rpc_call-> rpc_call_blocking or something to emphasise non-async */
 enum rpc_stat
-rpc_call(struct pbuf *pbuf, int len, struct udp_pcb *pcb, 
+rpc_call(struct pbuf *pbuf, int len, int handler_id, 
      void (*func)(void *, uintptr_t, struct pbuf *), 
      void *callback, uintptr_t token)
 {
     struct rpc_call_arg call_arg;
-    struct rpc_queue *q_item;
-    int time_out;
+    //struct rpc_queue *q_item;
+    //int time_out;
     enum rpc_stat stat;
-    xid_t xid;
+    //xid_t xid;
 
     /* If we give up early, we must ensure that the argument remains in memory
      * just in case the packet comes in later */
-    assert(pcb);
     assert(pbuf);
 
     /* GeneratrSend the thing with the unlock frunction as a callback */
@@ -335,14 +368,18 @@ rpc_call(struct pbuf *pbuf, int len, struct udp_pcb *pcb,
     _mutex_acquire(call_arg.mutex);
 
     /* Make the call */
-    xid = extract_xid(pbuf);
-    stat = rpc_send(pbuf, pbuf->tot_len, pcb, &rpc_call_cb, NULL, 
+    //xid = extract_xid(pbuf);
+    debug ("doing rpc_send...\n");
+    stat = rpc_send(pbuf, pbuf->tot_len, handler_id, &rpc_call_cb, NULL, 
                    (uintptr_t)&call_arg);
     if(stat){
+        debug ("=> failed with err %d\n", stat);
         return stat;
     }
 
-    /* Wait for the response */
+    /* Wait for the response here instead of the main loop doing it */
+    /* FIXME: what about timeout */
+#if 0
     time_out = RETRANSMIT_DELAY_MS * (CALL_RETRIES + 1);
     while(time_out >= 0){
         _usleep(CALL_TIMEOUT_MS * 1000);
@@ -354,7 +391,38 @@ rpc_call(struct pbuf *pbuf, int len, struct udp_pcb *pcb,
         rpc_timeout(CALL_TIMEOUT_MS);
         time_out -= CALL_TIMEOUT_MS;
     }
+#endif
+    seL4_Wait (msg_ep, NULL);
+    int id = seL4_GetMR (0);    /* FIXME: might be ORed */
+    debug ("got reply on conn %d\n", id);
 
+    /* ok had data, go fetch it */
+    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 2);
+    seL4_SetMR (0, NETSVC_SERVICE_DATA);
+    seL4_SetMR (1, id);
+
+    debug ("asking for data for connection %d\n", id);
+    seL4_Call (net_ep, msg);
+    seL4_Word size = seL4_GetMR(0);
+    debug ("had 0x%x bytes data\n", size);
+
+    struct pawpaw_share* result_share = pawpaw_share_mount (pawpaw_event_get_recv_cap ());
+    assert (result_share);
+
+    /* create pbuf: FIXME maybe need a local copy rather than ref? */
+    struct pbuf* recv_pbuf = pbuf_alloc (PBUF_TRANSPORT, size, PBUF_REF);
+    assert (recv_pbuf);
+    recv_pbuf->payload = result_share->buf;
+    assert (recv_pbuf->tot_len == size);
+
+    /* handle it */
+    //debug ("calling recv function\n");
+    /* FIXME: unmount share after recv */
+    return my_recv (NULL, id, recv_pbuf, NULL, 0) == true;
+
+    //return 0;
+
+#if 0
     /* If we get here, we have failed. Data is on the stack so make sure 
      * we remove references from the queue */
     q_item = get_from_queue(xid);
@@ -363,6 +431,7 @@ rpc_call(struct pbuf *pbuf, int len, struct udp_pcb *pcb,
     free(q_item);
     _mutex_destroy(call_arg.mutex);
     return RPCERR_COMM;
+#endif
 }
 
 
@@ -373,6 +442,12 @@ rpc_call(struct pbuf *pbuf, int len, struct udp_pcb *pcb,
 int
 init_rpc(const struct ip_addr *server)
 {
+    /* FIXME: make this async EP instead to get rid of hack - huhh??? */
+    msg_ep = pawpaw_create_ep ();
+    if (!msg_ep) {
+        return false;
+    }
+
     uint32_t time;
     time = udp_time_get(server);
     seed_xid(time);
@@ -386,7 +461,7 @@ rpc_new_udp(const struct ip_addr *server, int remote_port,
     seL4_MessageInfo_t msg;
 
     msg = seL4_MessageInfo_new (0, 0, 1, 4);
-    seL4_SetCap (0, wait_ep);        /* FIXME: make this async EP instead to get rid of hack */
+    seL4_SetCap (0, msg_ep);
     seL4_SetMR (0, NETSVC_SERVICE_REGISTER);
     seL4_SetMR (1, NETSVC_PROTOCOL_UDP);
     seL4_SetMR (2, remote_port);    /* FIXME: what about binding local port */
@@ -395,7 +470,7 @@ rpc_new_udp(const struct ip_addr *server, int remote_port,
     //seL4_SetMR (3, (seL4_Word)s[0]);  /* phew, this fits into u32 */
 
     seL4_Call (net_ep, msg);
-    return seL4_GetMR (0) == 0;
+    return seL4_GetMR (0);
 
 #if 0
     struct udp_pcb* ret;

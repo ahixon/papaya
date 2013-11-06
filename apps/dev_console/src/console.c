@@ -21,6 +21,7 @@
 struct pawpaw_cbuf* console_buffer;
 seL4_CPtr service_ep = 0;
 seL4_CPtr net_ep = 0;
+int net_id = -1;
 
 int vfs_open (struct pawpaw_event* evt);
 int vfs_read (struct pawpaw_event* evt);
@@ -83,8 +84,9 @@ void interrupt_handler (struct pawpaw_event* evt) {
     printf ("console: net had data for us, fetching...\n");
     pawpaw_event_get_recv_cap ();   /* FIXME: investigate why we need this - otherwise points to old share */
 
-    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 1);
+    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 2);
     seL4_SetMR (0, NETSVC_SERVICE_DATA);
+    seL4_SetMR (1, net_id);
     seL4_Call (net_ep, msg);
 
     seL4_Word size = seL4_GetMR (1);
@@ -158,11 +160,12 @@ int vfs_read (struct pawpaw_event* evt) {
 int vfs_write (struct pawpaw_event* evt) {
     assert (evt->share);
     
-    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 3);
+    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 4);
     seL4_SetCap (0, evt->share->cap);
     seL4_SetMR (0, NETSVC_SERVICE_SEND);
     seL4_SetMR (1, evt->share->id);
-    seL4_SetMR (2, evt->args[0]);
+    seL4_SetMR (2, net_id);
+    seL4_SetMR (3, evt->args[0]);
 
     /* FIXME: should be write? or not really in this case since it's fast enough */
     seL4_Call (net_ep, msg);
@@ -204,7 +207,8 @@ int main (void) {
 
     printf ("console: registering with svc_net\n");
     seL4_Call (net_ep, msg);
-    assert (seL4_GetMR (0) == 0);
+    net_id = seL4_GetMR (0);
+    assert (net_id >= 0);
 
     /* we never need to free this */
     char* buf = malloc (sizeof (char) * CONSOLE_BUF_SIZE);

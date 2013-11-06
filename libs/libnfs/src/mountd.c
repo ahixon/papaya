@@ -36,7 +36,7 @@
  *** Helpers
  ******************************************/
 
-static struct udp_pcb* 
+static int
 mnt_new_udp(const struct ip_addr *server)
 {
     int port = portmapper_getport(server, MNT_NUMBER, MNT_VERSION);
@@ -84,7 +84,7 @@ enum rpc_stat
 mountd_print_exports(const struct ip_addr *server)
 {
     struct mountd_exports_token token;
-    struct udp_pcb *mnt_pcb;
+    int mnt_pcb;
     struct pbuf *pbuf;
     int pos;
     int err;
@@ -100,7 +100,7 @@ mountd_print_exports(const struct ip_addr *server)
     /* Make the call */
     err = rpc_call(pbuf, pos, mnt_pcb, &mountd_print_exports_cb, NULL, 
                     (uintptr_t)&token);
-    udp_remove(mnt_pcb);
+    /* FIXME: free our connection */
 
     /* Process response */
     if(err){
@@ -155,7 +155,7 @@ enum rpc_stat
 mountd_mount(const struct ip_addr *server, const char *dir, fhandle_t *pfh)
 {
     struct mountd_mnt_token token;
-    struct udp_pcb *mnt_pcb;
+    int mnt_pcb;
     struct pbuf *pbuf;
     int pos;
     enum rpc_stat stat;
@@ -167,7 +167,8 @@ mountd_mount(const struct ip_addr *server, const char *dir, fhandle_t *pfh)
     /* Construct the call */
     pbuf = rpcpbuf_init(MNT_NUMBER, MNT_VERSION, MNTPROC_MNT, &pos);
     if(pbuf == NULL){
-        udp_remove(mnt_pcb);
+        //udp_remove(mnt_pcb);
+        /* FIXME: cleanup UDP client allocation */
         return RPCERR_NOBUF;
     }
 
@@ -177,7 +178,8 @@ mountd_mount(const struct ip_addr *server, const char *dir, fhandle_t *pfh)
     token.pfh = pfh;
     token.stat = RPC_OK;
     stat = rpc_call(pbuf, pos, mnt_pcb, &mountd_mount_cb, NULL, (uintptr_t)&token);
-    udp_remove(mnt_pcb);
+    //udp_remove(mnt_pcb);
+    /* FIXME: cleanup UDP client allocation */
 
     /* Process the returned value */
     if (stat != RPC_OK) {
