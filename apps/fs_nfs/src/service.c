@@ -251,7 +251,7 @@ int vfs_read (struct pawpaw_event* evt) {
 
     enum rpc_stat res = nfs_read (&(handle->fh), handle->offset, amount, vfs_read_cb, handle);
     current_event = evt;
-    printf ("read was %d\n", res);
+    //printf ("read was %d\n", res);
     return PAWPAW_EVENT_HANDLED_SAVED;
 }
 
@@ -271,7 +271,7 @@ int vfs_write (struct pawpaw_event* evt) {
 
     enum rpc_stat res = nfs_write (&(handle->fh), handle->offset, amount, evt->share->buf, vfs_write_cb, handle);
     current_event = evt;
-    printf ("write was %d\n", res);
+    //printf ("write was %d\n", res);
     return PAWPAW_EVENT_HANDLED_SAVED;
 }
 
@@ -313,11 +313,11 @@ int
 my_recv(void *arg, int upcb, struct pbuf *p,
     struct ip_addr *addr, u16_t port);
 
-#define debug(x...) printf( x )
+//#define debug(x...) printf( x )
+#define debug(x...)
 extern seL4_CPtr net_ep;
 
 void interrupt_handler (struct pawpaw_event* evt) {
-    printf ("fs_nfs: got interrupt\n");
 
     /* do some shit - bring this and the code in rpc_call together */
     int id = seL4_GetMR (0);    /* FIXME: might be ORed */

@@ -72,7 +72,7 @@ static void
 recv_handler (void* _client_badge, struct udp_pcb* pcb, 
                     struct pbuf *p, struct ip_addr* ipaddr, u16_t unused2) {
 
-    printf ("net: received data of size 0x%x\n", p->len);
+    //printf ("net: received data of size 0x%x\n", p->len);
     struct saved_data *saved = (struct saved_data*)_client_badge;
     assert (saved); /* FIXME: need to make sure that if we remove client that
                        we don't try to access invalid memory since we'll have
@@ -103,7 +103,7 @@ recv_handler (void* _client_badge, struct udp_pcb* pcb,
     pbuf_free (p);
 
     /* and tell the client */
-    printf ("got data for ID 0x%x\n", saved->id);
+    //printf ("got data for ID 0x%x\n", saved->id);
     seL4_Notify (saved->cap, saved->id);
 }
 
@@ -117,7 +117,7 @@ int netsvc_write (struct pawpaw_event* evt) {
     }
 
     int len = evt->args[1];
-    printf ("net: sending len 0x%x\n", len);
+    //printf ("net: sending len 0x%x\n", len);
 
     struct pbuf *p;
     p = pbuf_alloc (PBUF_TRANSPORT, len, PBUF_REF);
@@ -154,13 +154,13 @@ int netsvc_read (struct pawpaw_event* evt) {
     evt->reply = seL4_MessageInfo_new (0, 0, 1, 3);
     seL4_SetCap (0, saved->share->cap);
 
-    printf ("net: reading out of buf belonging to conn 0x%x\n", saved->id);
+    //printf ("net: reading out of buf belonging to conn 0x%x\n", saved->id);
     seL4_SetMR (0, saved->share->id);
     seL4_SetMR (1, pawpaw_cbuf_count (saved->buffer));
     seL4_SetMR (2, 0);  /* no more buffers - if they ask again we can nuke the old one */
 
     /* copy it all in */
-    printf ("net: reading into buf ID 0%x @ %p\n", saved->share->id, saved->share->buf);
+    //printf ("net: reading into buf ID 0%x @ %p\n", saved->share->id, saved->share->buf);
     pawpaw_cbuf_read (saved->buffer, saved->share->buf, pawpaw_cbuf_count (saved->buffer));
     //printf ("net: is now %s\n", saved->share->buf);
 
@@ -171,7 +171,7 @@ int netsvc_register (struct pawpaw_event* evt) {
     assert (seL4_MessageInfo_get_extraCaps (evt->msg)  == 1);
     seL4_CPtr client_cap = pawpaw_event_get_recv_cap ();
     seL4_Word owner = evt->badge;
-    
+
     evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
 
     seL4_Word type = evt->args[0];

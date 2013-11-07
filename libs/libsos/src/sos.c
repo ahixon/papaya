@@ -172,7 +172,6 @@ int write(fildes_t file, const char *buf, size_t nbyte) {
     seL4_SetMR (1, fh->share->id);
     seL4_SetMR (2, nbyte);
 
-    sos_debug_print ("sos: doing write\n", strlen ("sos: doing write\n"));
     seL4_Call (fh->cap, msg);
     int wrote = seL4_GetMR (0);
 

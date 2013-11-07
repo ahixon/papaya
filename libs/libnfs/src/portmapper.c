@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <sel4/sel4.h>
 
-#define DEBUG_PMAP 1
+//#define DEBUG_PMAP 1
 #ifdef DEBUG_PMAP
 #define debug(x...) printf(x)
 #else

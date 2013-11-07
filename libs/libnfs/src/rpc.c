@@ -15,7 +15,7 @@
 #include <pawpaw.h>
 #include <network.h>
 
-#define DEBUG_RPC 1
+//#define DEBUG_RPC 1
 #ifdef DEBUG_RPC
 #define debug(x...) printf( x )
 #else
