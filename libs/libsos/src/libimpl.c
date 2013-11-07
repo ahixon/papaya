@@ -29,7 +29,7 @@ size_t sos_write(void *vData, long int position, size_t count, void *handle) {
     }
 
     assert (handles[handleid] >= 0);
-    return write (handles[handleid], vData, count);
+    return write (handles[handleid], vData + position, count);
 }
 
 size_t sos_read(void *vData, long int position, size_t count, void *handle) {

@@ -266,6 +266,7 @@ int main(void) {
     while (!done) {
         if (new) {
             printf("$ ");
+            fflush (stdout);
         }
         new = 0;
         found = 0;
