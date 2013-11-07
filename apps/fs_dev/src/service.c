@@ -62,15 +62,18 @@ int vfs_open (struct pawpaw_event* evt) {
     }
 
     if (!ret) {
-        printf ("fs_dev: no such file\n");
-        return PAWPAW_EVENT_UNHANDLED;
+        evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+        seL4_SetMR (0, -1);
+        return PAWPAW_EVENT_NEEDS_REPLY;
     }
 
     seL4_MessageInfo_t underlying_msg = seL4_MessageInfo_new (0, 0, 0, 3);
     seL4_SetMR (0, VFS_OPEN);
     if (evt->args[0] & FM_EXEC) {
         printf ("fs_dev: can't execute devices?\n");
-        return PAWPAW_EVENT_UNHANDLED;
+        evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+        seL4_SetMR (0, -1);
+        return PAWPAW_EVENT_NEEDS_REPLY;
     }
 
     seL4_SetMR (1, evt->args[0]);   /* file mode */
@@ -81,15 +84,17 @@ int vfs_open (struct pawpaw_event* evt) {
     seL4_MessageInfo_t reply = seL4_Call (ret, underlying_msg);
 
     /* and tell VFS layer */
-    assert (seL4_MessageInfo_get_extraCaps (reply) == 1);
-    seL4_CPtr dev_fd_cap = pawpaw_event_get_recv_cap ();
-    printf ("fs_dev: got cap 0x%x, replying to VFS\n", dev_fd_cap);
+    if (seL4_MessageInfo_get_extraCaps (reply) == 1) {
+        seL4_CPtr dev_fd_cap = pawpaw_event_get_recv_cap ();
+        printf ("fs_dev: got cap 0x%x, replying to VFS\n", dev_fd_cap);
 
-
-
-    evt->reply = seL4_MessageInfo_new (0, 0, 1, 1);
-    seL4_SetMR (0, 0);
-    seL4_SetCap (0, dev_fd_cap);
+        evt->reply = seL4_MessageInfo_new (0, 0, 1, 1);
+        seL4_SetMR (0, 0);
+        seL4_SetCap (0, dev_fd_cap);
+    } else {
+        evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+        seL4_SetMR (0, -1);
+    }
 
     evt->flags |= PAWPAW_EVENT_NO_UNMOUNT;  /* for VFS */
     return PAWPAW_EVENT_NEEDS_REPLY;

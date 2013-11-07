@@ -4,5 +4,6 @@
 #define VFS_OPEN			(3)
 #define VFS_READ			(4)
 #define VFS_WRITE			(5)
+#define VFS_CLOSE			(6)
 
-#define VFS_NUM_EVENTS		(6)
+#define VFS_NUM_EVENTS		(7)

@@ -290,7 +290,7 @@ int vfs_open (struct pawpaw_event* evt) {
         
         seL4_SetMR (0, VFS_OPEN);
         seL4_SetMR (1, node->fs->share->id);
-        seL4_SetMR (2, evt->args[1]);
+        seL4_SetMR (2, evt->args[0]);
         seL4_SetMR (3, evt->badge); /* owner */
 
         /* forward the reply */
@@ -304,12 +304,16 @@ int vfs_open (struct pawpaw_event* evt) {
         seL4_MessageInfo_t fs_reply = seL4_Call (node->fs->cap, lookup_msg);
         //seL4_Word status = seL4_GetMR (0);
         assert (seL4_MessageInfo_get_capsUnwrapped (fs_reply) == 0);
-        if (seL4_MessageInfo_get_extraCaps (fs_reply) >= 1) {
+        if (seL4_MessageInfo_get_extraCaps (fs_reply) == 1) {
             /* SINCE I CAN'T FORWARD CAPS THANKS SEL4?????????? */
+            printf ("vfs: fs reported open success - had cap\n");
             evt->reply = seL4_MessageInfo_new (0, 0, 1, 1);
             seL4_SetCap (0, pawpaw_event_get_recv_cap());
+            seL4_SetMR (0, 0);
         } else {
+            printf ("vfs: fs reported open failed - no cap\n");
             evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+            seL4_SetMR (0, -1);
         }
         //seL4_SetMR (0, status);
         /* don't need to set MR 0 since we use it from result of last call */

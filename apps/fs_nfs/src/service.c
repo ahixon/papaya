@@ -48,6 +48,7 @@ struct ventry* entries;
 
 int vfs_open (struct pawpaw_event* evt);
 int vfs_read (struct pawpaw_event* evt);
+int vfs_close (struct pawpaw_event* evt);
 
 struct pawpaw_eventhandler_info handlers[VFS_NUM_EVENTS] = {
     {   0,  0,  0   },      //              //
@@ -55,6 +56,8 @@ struct pawpaw_eventhandler_info handlers[VFS_NUM_EVENTS] = {
     {   0,  0,  0   },      //              //
     {   vfs_open,           3,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },  // shareid, replyid, mode - replies with EP to file (badged version of listen cap)
     {   vfs_read,           2,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },      //              //
+    {   0,  0,  0   },      //              //
+    {   vfs_close,          0,  HANDLER_REPLY },
 };
 
 struct pawpaw_event_table handler_table = { VFS_NUM_EVENTS, handlers, "nfs" };
@@ -75,8 +78,6 @@ int last_handle_id = 0; /* FIXME: need bitmap */
 struct pawpaw_event* current_event = NULL;  /* FIXME: yuck, need hashtable otherwise could race */
 
 void vfs_lookup_cb (uintptr_t token, enum nfs_stat status, fhandle_t *fh, fattr_t *fattr) {
-    current_event->reply = seL4_MessageInfo_new (0, 0, 1, 1);
-
     if (status == NFS_OK) {
         printf ("** nfs lookup success\n");
 
@@ -102,9 +103,11 @@ void vfs_lookup_cb (uintptr_t token, enum nfs_stat status, fhandle_t *fh, fattr_
         assert (their_cap > 0);
         assert (err == 0);
 
+        current_event->reply = seL4_MessageInfo_new (0, 0, 1, 1);
         seL4_SetCap (0, their_cap);
         seL4_SetMR (0, 0);
     } else {
+        current_event->reply = seL4_MessageInfo_new (0, 0, 0, 1);
         printf ("** nfs lookup failed, had error = %d\n", status);
         seL4_SetMR (0, -1);
     }
@@ -126,7 +129,7 @@ void vfs_read_cb (uintptr_t token, enum nfs_stat status, fattr_t *fattr, int cou
         handle->offset += count;
     } else {
         printf ("** nfs read failed, had error = %d\n", status);
-        seL4_SetMR (0, (int)-1);
+        seL4_SetMR (0, -1);
     }
 
     seL4_Send (current_event->reply_cap, current_event->reply);
@@ -180,75 +183,24 @@ int vfs_open (struct pawpaw_event* evt) {
     printf ("lookup was %d\n", res);
     current_event = evt;
     return PAWPAW_EVENT_HANDLED_SAVED;
+}
 
-    /*assert (seL4_MessageInfo_get_extraCaps (evt->msg) == 1);
-    seL4_CPtr requestor = pawpaw_event_get_recv_cap ();*/
-
-#if 0
-    seL4_CPtr ret = 0;
-    struct ventry* entry = entries;
-
-    while (entry) {
-        if (strcmp (entry->name, evt->share->buf) == 0) {
-            ret = entry->vnode;
-            break;
-        }
-
-        entry = entry->next;
+int vfs_close (struct pawpaw_event* evt) {
+    struct open_handle* handle = handle_lookup (evt->badge);
+    if (!handle) {
+        printf ("nfs: could not find filehandle for given badge 0x%x\n", evt->badge);
+        evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+        seL4_SetMR (0, -1);
+        return PAWPAW_EVENT_NEEDS_REPLY;
     }
 
-    if (!ret) {
-        printf ("fs_dev: no such file\n");
-        return PAWPAW_EVENT_UNHANDLED;
-    }
-
-    seL4_MessageInfo_t underlying_msg = seL4_MessageInfo_new (0, 0, 0, 3);
-    seL4_SetMR (0, VFS_OPEN);
-    if (evt->args[0] & FM_EXEC) {
-        printf ("fs_dev: can't execute devices?\n");
-        return PAWPAW_EVENT_UNHANDLED;
-    }
-
-    seL4_SetMR (1, evt->args[0]);   /* file mode */
-    seL4_SetMR (2, evt->args[1]);   /* owner badge */
-
-    /* could be Call */
-    printf ("calling %d\n", ret);
-    seL4_MessageInfo_t reply = seL4_Call (ret, underlying_msg);
-
-    /* attach the FD cap to our reply */
-    /*seL4_MessageInfo_t requestor_msg = seL4_MessageInfo_new (0, 0, 1, 1);
-    seL4_SetMR (0, 0);
-
-    seL4_CPtr dev_fd_cap = pawpaw_event_get_recv_cap ();
-    printf ("OK sending back to %d\n", requestor);
-    seL4_SetCap (0, dev_fd_cap);
-
-    seL4_Send (requestor, requestor_msg);*/
-
-    //printf ("fs_dev: finally telling VFS how we went\n");
-
-    /* and tell the VFS layer how we went (for caching) */
-    /*seL4_MessageInfo_t reply = seL4_MessageInfo_new (0, 0, 0, 1);
-    if (ret) {
-        seL4_SetMR (0, 0);  // file OK
-    } else {
-        seL4_SetMR (0, 1);  // file not OK
-    }
-
-    seL4_Reply (reply);
-    pawpaw_cspace_free_slot (resp_cap);*/
-
-    /* and tell VFS layer */
-    assert (seL4_MessageInfo_get_extraCaps (reply) == 1);
-    seL4_CPtr dev_fd_cap = pawpaw_event_get_recv_cap ();
-
-    evt->reply = seL4_MessageInfo_new (0, 0, 1, 1);
-    seL4_SetCap (0, dev_fd_cap);
+    /* so, there's no nfs_close... */
+    evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
     seL4_SetMR (0, 0);
     return PAWPAW_EVENT_NEEDS_REPLY;
-#endif
-    return PAWPAW_EVENT_UNHANDLED;
+
+    /* FIXME: remove from fd list + free */
+    /* FIXME: what about race on current event - ie do a SEND read, then close, then input comes in */
 }
 
 seL4_CPtr dev_ep = 0;

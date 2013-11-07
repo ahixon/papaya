@@ -1,10 +1,11 @@
+#include <sel4/sel4.h>
+#include <sos.h>
+
+#include <stdlib.h>
 #include <stdio.h>
+
 #include <stdint.h>
 #include <string.h>
-
-#include <sel4/sel4.h>
-
-#include <sos.h>
 
 #include <pawpaw.h>
 #include <syscalls.h>
@@ -13,8 +14,19 @@
 #include <timer.h>
 
 seL4_CNode vfs_ep = 0;
-struct pawpaw_share* vfs_share = NULL;
-struct pawpaw_share* data_share = NULL;
+
+struct fhandle {
+    struct pawpaw_share* share;
+    fildes_t fd;
+    seL4_CPtr cap;
+
+    struct fhandle* next;
+};
+
+fildes_t last_fd = 0;          /* FIXME: should be bitmap */
+struct fhandle* open_list = NULL;    /* FIXME: should be hashmap */
+
+struct fhandle* lookup_fhandle (fildes_t file);
 
 /* FIXME: what if the VFS service dies and then restarts? endpoint will have changed */
 fildes_t open(const char *path, fmode_t mode) {
@@ -24,79 +36,118 @@ fildes_t open(const char *path, fmode_t mode) {
 		vfs_ep = pawpaw_service_lookup ("svc_vfs");
 	}
 
-	/* if this is our initial open, create a shared buffer between this thread
-	 * and the the VFS service to pass through filenames */
-	if (!vfs_share) {
-		vfs_share = pawpaw_share_new ();
-		if (!vfs_share) {
-			sos_debug_print ("failed to make new share\n", strlen("failed to make a new share\n"));
-			return -1;
-		}
+	struct pawpaw_share* share = pawpaw_share_new ();
+	if (!share) {
+		//sos_debug_print ("failed to make new share\n", strlen("failed to make a new share\n"));
+		return -1;
 	}
 
-	msg = seL4_MessageInfo_new (0, 0, 1, 3);
-    seL4_SetCap (0, vfs_share->cap);
+    struct fhandle* h = malloc (sizeof (struct fhandle));
+    if (!h) {
+        pawpaw_share_unmount (share);
+        return -1;
+    }
 
-	strcpy (vfs_share->buf, path);
-    /*sos_debug_print ("sos: opening ", strlen("sos: opening "));
-    sos_debug_print (vfs_share->buf, strlen(vfs_share->buf));
-    //sos_debug_print (" on ", 4);
-    //sos_debug_print (vfs_share->id + '0', 1);
-    sos_debug_print ("\n", 1);*/
+	msg = seL4_MessageInfo_new (0, 0, 1, 3);
 
     seL4_CPtr recv_cap = pawpaw_cspace_alloc_slot ();
+    if (!recv_cap) {
+        pawpaw_share_unmount (share);
+        free (h);
+        sos_debug_print ("sos: no recv_cap\n", strlen ("sos: no recv_cap\n"));
+        return -1;
+    }
     seL4_SetCapReceivePath (PAPAYA_ROOT_CNODE_SLOT, recv_cap, PAPAYA_CSPACE_DEPTH);
 
+    seL4_SetCap (0, share->cap);
+	strcpy (share->buf, path);
     seL4_SetMR (0, VFS_OPEN);
-    seL4_SetMR (1, vfs_share->id);
+    seL4_SetMR (1, share->id);
     seL4_SetMR (2, mode);
 
     seL4_MessageInfo_t reply = seL4_Call (vfs_ep, msg);
-    //pawpaw_share_unmount (vfs_share);
 
-    if (seL4_MessageInfo_get_extraCaps (reply) == 1) {
-    	return (fildes_t)recv_cap;
+    if (seL4_MessageInfo_get_extraCaps (reply) >= 1) {
+        h->share = share;
+        h->fd = last_fd;
+        last_fd++;
+        h->cap = recv_cap;
+
+        /* add to list */
+        h->next = open_list;
+        open_list = h;
+
+        return h->fd;
     } else {
-    	pawpaw_cspace_free_slot (recv_cap);
+        sos_debug_print ("sos: open failed\n", strlen ("sos: open failed\n"));
+        free (h);
+        //pawpaw_share_unmount (share);
+    	//pawpaw_cspace_free_slot (recv_cap);
     	//return seL4_GetMR (0);
         return -1;
     }    
 }
 
 int close(fildes_t file) {
-    //pawpaw_cspace_free_slot ((seL4_CPtr)file);
-	return -1;
+    struct fhandle* fh = lookup_fhandle (file);
+    if (!fh) {
+        sos_debug_print ("fd lookup failed\n", strlen ("fd lookup failed\n"));
+        return -1;
+    }
+
+    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 1);
+    seL4_SetMR (0, VFS_CLOSE);
+    seL4_Call (fh->cap, msg);
+    if (seL4_GetMR (0) == 0) {
+        //pawpaw_cspace_free_slot (fh->cap);
+        /* should DELETE the slot, then free */
+        //pawpaw_share_unmount (fh->share);
+
+        /* FIXME: fix up list */
+        //free (fh);
+        return 0;
+    } else {
+	   return -1;
+    }
 }
 
-int read(fildes_t file, char *buf, size_t nbyte) {
+struct fhandle* lookup_fhandle (fildes_t file) {
+    struct fhandle* h = open_list;
+    while (h) {
+        if (h->fd == file) {
+            return h;
+        }
+
+        h = h->next;
+    }
+
+    return NULL;
+}
+
+int read (fildes_t file, char *buf, size_t nbyte) {
 	if (nbyte >= (1 << 12)) {
+        sos_debug_print ("buf too big\n", strlen ("buf too big\n"));
 		return -1;		/* FIXME: crappy limitation */
     }
 
-    /* FIXME: in the future, associate locally for FD */
-    if (!data_share) {
-        data_share = pawpaw_share_new ();
-        if (!data_share) {
-            return -1;
-        }
+    struct fhandle* fh = lookup_fhandle (file);
+    if (!fh) {
+        sos_debug_print ("fd lookup failed\n", strlen ("fd lookup failed\n"));
+        return -1;
     }
-
+    
 	seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 3);
-    pawpaw_share_attach (data_share);
-
+    seL4_SetCap (0, fh->share->cap);
 	seL4_SetMR (0, VFS_READ);
-    seL4_SetMR (1, data_share->id);
+    seL4_SetMR (1, fh->share->id);
     seL4_SetMR (2, nbyte);
 
-    seL4_Call ((seL4_CPtr)file, msg);
+    seL4_Call (fh->cap, msg);
     int read = seL4_GetMR (0);
 
     if (read > 0) {
-        memcpy (buf, data_share->buf, read);
+        memcpy (buf, fh->share->buf, read);
     }
-
-    // unmount needs notifier OR keep onto IDs until all unmounted
-    //pawpaw_share_unmount (fd_share);
 
     return read;
 }
@@ -106,32 +157,24 @@ int write(fildes_t file, const char *buf, size_t nbyte) {
         return -1;      /* FIXME: crappy limitation */
     }
 
-    /* FIXME: in the future, associate locally for FD */
-    if (!data_share) {
-        data_share = pawpaw_share_new ();
-        if (!data_share) {
-            return -1;
-        }
+    struct fhandle* fh = lookup_fhandle (file);
+    if (!fh) {
+        sos_debug_print ("fd lookup failed\n", strlen ("fd lookup failed\n"));
+        return -1;
     }
 
-    memcpy (data_share->buf, buf, nbyte);
-    /*sos_debug_print ("SOS: writing: '", strlen("SOS: writing: '"));
-    sos_debug_print (fd_share->buf, nbyte);
-    sos_debug_print ("'\n", 2);*/
+    memcpy (fh->share->buf, buf, nbyte);
 
     seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 3);
-    pawpaw_share_attach (data_share);
-    //seL4_SetCap (0, fd_share->cap);
+    seL4_SetCap (0, fh->share->cap);
 
     seL4_SetMR (0, VFS_WRITE);
-    seL4_SetMR (1, data_share->id);
+    seL4_SetMR (1, fh->share->id);
     seL4_SetMR (2, nbyte);
 
-    seL4_Call ((seL4_CPtr)file, msg);
-    int wrote = seL4_GetMR (1);
-
-    // unmount needs notifier OR keep onto IDs until all unmounted
-    //pawpaw_share_unmount (data_share);
+    sos_debug_print ("sos: doing write\n", strlen ("sos: doing write\n"));
+    seL4_Call (fh->cap, msg);
+    int wrote = seL4_GetMR (0);
 
     return wrote;
 }
