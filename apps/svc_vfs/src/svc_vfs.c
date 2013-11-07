@@ -298,18 +298,21 @@ int vfs_open (struct pawpaw_event* evt) {
         //seL4_SetCap (0, evt->reply_cap);
 
         /* FIXME: need a callback ID - should be Send instead */
-        pawpaw_event_get_recv_cap();        /* XXX: investigate why we need this */
+        //pawpaw_event_get_recv_cap();        /* XXX: investigate why we need this */
         
 
         seL4_MessageInfo_t fs_reply = seL4_Call (node->fs->cap, lookup_msg);
+        //seL4_Word status = seL4_GetMR (0);
         assert (seL4_MessageInfo_get_capsUnwrapped (fs_reply) == 0);
-        assert (seL4_MessageInfo_get_extraCaps (fs_reply) >= 1);
-
-        /* SINCE I CAN'T FORWARD CAPS THANKS SEL4?????????? */
-        evt->reply = seL4_MessageInfo_new (0, 0, 1, 1);
-        /* gonna forward MR 0 */
-        seL4_SetCap (0, pawpaw_event_get_recv_cap());
-        seL4_SetMR (0, 0);
+        if (seL4_MessageInfo_get_extraCaps (fs_reply) >= 1) {
+            /* SINCE I CAN'T FORWARD CAPS THANKS SEL4?????????? */
+            evt->reply = seL4_MessageInfo_new (0, 0, 1, 1);
+            seL4_SetCap (0, pawpaw_event_get_recv_cap());
+        } else {
+            evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+        }
+        //seL4_SetMR (0, status);
+        /* don't need to set MR 0 since we use it from result of last call */
     } else {
         /* path failure - use orig_filename since other gets mangled */
         printf ("vfs: path failure for '%s'\n", orig_filename);

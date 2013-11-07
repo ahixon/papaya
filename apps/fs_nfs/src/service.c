@@ -59,6 +59,18 @@ struct pawpaw_eventhandler_info handlers[VFS_NUM_EVENTS] = {
 
 struct pawpaw_event_table handler_table = { VFS_NUM_EVENTS, handlers, "nfs" };
 
+struct open_handle {
+    fhandle_t fh;
+    seL4_Word id;
+    int offset;
+    /*seL4_Word badge;*/
+
+    struct open_handle* next;
+};
+
+struct open_handle* handles = NULL;
+int last_handle_id = 0; /* FIXME: need bitmap */
+
 //fhandle_t *last_handle = NULL;
 struct pawpaw_event* current_event = NULL;  /* FIXME: yuck, need hashtable otherwise could race */
 
@@ -66,11 +78,26 @@ void vfs_lookup_cb (uintptr_t token, enum nfs_stat status, fhandle_t *fh, fattr_
     current_event->reply = seL4_MessageInfo_new (0, 0, 1, 1);
 
     if (status == NFS_OK) {
+        printf ("** nfs lookup success\n");
+
+        struct open_handle* handle = malloc (sizeof (struct open_handle));
+        assert (handle);
+
+        memcpy (&handle->fh, fh, sizeof (fhandle_t));
+        handle->id = last_handle_id;
+        handle->offset = 0;
+        /*handle->badge = evt->badge;*/
+        last_handle_id++;
+
+        /* add to handle list - XXX: should be hashtable */
+        handle->next = handles;
+        handles = handle;
+
         seL4_CPtr their_cap = pawpaw_cspace_alloc_slot();
         int err = seL4_CNode_Mint (
             PAPAYA_ROOT_CNODE_SLOT, their_cap,  PAPAYA_CSPACE_DEPTH,
             PAPAYA_ROOT_CNODE_SLOT, service_ep, PAPAYA_CSPACE_DEPTH,
-            seL4_AllRights, seL4_CapData_Badge_new ((uint32_t)fh->data));
+            seL4_AllRights, seL4_CapData_Badge_new (handle->id));
         /* XXX: hack that assumes fh->data is 32 bits - which it is */
         assert (their_cap > 0);
         assert (err == 0);
@@ -79,22 +106,6 @@ void vfs_lookup_cb (uintptr_t token, enum nfs_stat status, fhandle_t *fh, fattr_
         seL4_SetMR (0, 0);
     } else {
         printf ("** nfs lookup failed, had error = %d\n", status);
-        seL4_SetMR (0, status * -1);
-    }
-
-    seL4_Send (current_event->reply_cap, current_event->reply);
-
-    /* and free */
-    pawpaw_event_dispose (current_event);
-    current_event = NULL;
-}
-
-void vfs_read_cb (uintptr_t token, enum nfs_stat status, fattr_t *fattr, int count, void* data) {
-    if (status == NFS_OK) {
-        memcpy (current_event->share->buf, data, count);
-        seL4_SetMR (0, count);
-    } else {
-        printf ("** nfs read failed, had error = %d\n", status);
         seL4_SetMR (0, -1);
     }
 
@@ -105,16 +116,55 @@ void vfs_read_cb (uintptr_t token, enum nfs_stat status, fattr_t *fattr, int cou
     current_event = NULL;
 }
 
+void vfs_read_cb (uintptr_t token, enum nfs_stat status, fattr_t *fattr, int count, void* data) {
+    current_event->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+    if (status == NFS_OK) {
+        memcpy (current_event->share->buf, data, count);
+        seL4_SetMR (0, count);
+
+        struct open_handle* handle = (struct open_handle*)token;
+        handle->offset += count;
+    } else {
+        printf ("** nfs read failed, had error = %d\n", status);
+        seL4_SetMR (0, (int)-1);
+    }
+
+    seL4_Send (current_event->reply_cap, current_event->reply);
+
+    /* and free */
+    pawpaw_event_dispose (current_event);
+    current_event = NULL;
+}
+
+struct open_handle*
+handle_lookup (/*seL4_Word badge, */seL4_Word id) {
+    struct open_handle* handle = handles;
+    while (handle) {
+        if (/*handle->badge == badge && */handle->id == id) {
+            return handle;
+        }
+
+        handle = handle->next;
+    }
+
+    return NULL;
+}
+
 int vfs_read (struct pawpaw_event* evt) {
     size_t amount = evt->args[0];
     assert (evt->share);
 
-    fhandle_t *fh = malloc (sizeof (fhandle_t));
-    assert (fh);
-    //fh->data = (char*)evt->badge;
-    memcpy (fh->data, &(evt->badge), 32);  /* XXX: i am too tired for this shit */
+    struct open_handle* handle = handle_lookup (evt->badge);
+    if (!handle) {
+        printf ("nfs: could not find filehandle for given badge 0x%x\n", evt->badge);
+        evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+        seL4_SetMR (0, -1);
+        return PAWPAW_EVENT_NEEDS_REPLY;
+    }
 
-    enum rpc_stat res = nfs_read (fh, 0, amount, vfs_read_cb, 0);
+    /* FIXME: check if opened for reading */
+
+    enum rpc_stat res = nfs_read (&(handle->fh), handle->offset, amount, vfs_read_cb, handle);
     current_event = evt;
     printf ("read was %d\n", res);
     return PAWPAW_EVENT_HANDLED_SAVED;

@@ -89,7 +89,7 @@ int read(fildes_t file, char *buf, size_t nbyte) {
     seL4_SetMR (2, nbyte);
 
     seL4_Call ((seL4_CPtr)file, msg);
-    int read = seL4_GetMR (1);
+    int read = seL4_GetMR (0);
 
     if (read > 0) {
         memcpy (buf, data_share->buf, read);

@@ -16,6 +16,7 @@
 #define DEV_REGISTER            21
 
 #define CONSOLE_BUF_SIZE        1024
+#define CONSOLE_PORT            26706
 //#define NETSVC_SERVICE_DATA     3
 
 struct pawpaw_cbuf* console_buffer;
@@ -144,8 +145,8 @@ int vfs_read (struct pawpaw_event* evt) {
         //printf ("console: managed to read 0x%x bytes, sending back '%s'\n", read, evt->share->buf);
 
         evt->reply = seL4_MessageInfo_new (0, 0, 0, 2);
-        seL4_SetMR (0, evt->share->id);
-        seL4_SetMR (1, read);
+        //seL4_SetMR (0, evt->share->id);
+        seL4_SetMR (0, read);
     }
 
     //evt->flags |= PAWPAW_EVENT_UNMOUNT;
@@ -205,7 +206,7 @@ int main (void) {
     seL4_SetCap (0, async_ep);
     seL4_SetMR (0, NETSVC_SERVICE_REGISTER);
     seL4_SetMR (1, NETSVC_PROTOCOL_UDP);
-    seL4_SetMR (2, 26706);
+    seL4_SetMR (2, CONSOLE_PORT);
     seL4_SetMR (3, 0);
 
     printf ("console: registering with svc_net\n");
