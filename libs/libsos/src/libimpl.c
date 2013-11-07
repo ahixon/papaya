@@ -10,7 +10,7 @@
 
 #define CONSOLE_DEVICE  "/dev/console"
 #define NUM_DEFAULT_HANDLES 3
-fildes_t handles[NUM_DEFAULT_HANDLES] = {0};
+fildes_t handles[NUM_DEFAULT_HANDLES] = { -1, -1, -1 };
 
 size_t sos_write(void *vData, long int position, size_t count, void *handle) {
     unsigned int handleid = (int)handle;
@@ -23,12 +23,12 @@ size_t sos_write(void *vData, long int position, size_t count, void *handle) {
         return 0;
     }
 
-    if (handles[handleid] <= 0) {
+    if (handles[handleid] == -1) {
         /* haven't opened yet */
         handles[handleid] = open (CONSOLE_DEVICE, FM_WRITE);
     }
 
-    assert (handles[handleid] > 0);
+    assert (handles[handleid] >= 0);
     return write (handles[handleid], vData, count);
 }
 

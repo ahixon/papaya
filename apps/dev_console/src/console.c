@@ -117,7 +117,7 @@ int vfs_open (struct pawpaw_event* evt) {
 }
 
 void interrupt_handler (struct pawpaw_event* evt) {
-    printf ("console: net had data for us, fetching...\n");
+    //printf ("console: net had data for us, fetching...\n");
 
     seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 2);
     seL4_SetMR (0, NETSVC_SERVICE_DATA);
@@ -144,12 +144,13 @@ void interrupt_handler (struct pawpaw_event* evt) {
     pawpaw_cbuf_write (console_buffer, netshare->buf, size);
 
     /* FIXME: unmount? probably not since internal buffer */
+    //pawpaw_share_unmount (netshare_;)
 
     /* check if we had waiting client */
     if (current_reader && current_reader->current_event) {
         if (vfs_read (current_reader->current_event) == PAWPAW_EVENT_NEEDS_REPLY) {
             /* send it off */
-            printf ("console: sending queued event to client\n");
+            //printf ("console: sending queued event to client\n");
             seL4_Send (current_reader->current_event->reply_cap, current_reader->current_event->reply);
 
             /* and free */
@@ -185,14 +186,13 @@ int vfs_read (struct pawpaw_event* evt) {
     assert (evt->share);
 
     /* FIXME: could zero copy, but lazy */
-    printf ("console: wanted to read 0x%x bytes\n", amount);
-    printf ("console: buffer currently has %d, trying to read into %p\n", pawpaw_cbuf_count (console_buffer), evt->share->buf);
+    //printf ("console: wanted to read 0x%x bytes\n", amount);
+    //printf ("console: buffer currently has %d, trying to read into %p\n", pawpaw_cbuf_count (console_buffer), evt->share->buf);
     int read = pawpaw_cbuf_read (console_buffer, evt->share->buf, amount);
 
     if (read == 0) {
-        printf ("console: buffer was empty, waiting for interrupt..\n");
+        //printf ("console: buffer was empty, waiting for interrupt..\n");
         /* wait for more data */
-        /* FIXME: handle more than one reader */
 
         fh->current_event = evt;
         return PAWPAW_EVENT_HANDLED_SAVED;
