@@ -282,10 +282,11 @@ int vfs_open (struct pawpaw_event* evt) {
 
     if (remaining) {
         printf ("vfs: path success\n");
-        strcpy (node->fs->share->buf, remaining);
+        int offset = remaining - requested_filename;
+        strcpy (node->fs->share->buf, orig_filename + offset);
 
         /* pass the buck to the FS layer to see if it knows anything about the file */
-        printf ("vfs: asking filesystem '%s' about '%s'\n", node->fs->type, remaining);
+        printf ("vfs: asking filesystem '%s' about '%s'\n", node->fs->type, node->fs->share->buf);
         seL4_MessageInfo_t lookup_msg = seL4_MessageInfo_new (0, 0, 0, 4);
         
         seL4_SetMR (0, VFS_OPEN);

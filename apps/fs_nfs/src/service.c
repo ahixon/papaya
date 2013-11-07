@@ -36,18 +36,9 @@ fhandle_t mnt_point = { { 0 } };
 seL4_CPtr service_ep;
 seL4_CPtr nfs_async_ep;
 
-struct ventry {
-    char* name;
-    seL4_CPtr vnode;
-    int writing;
-
-    struct ventry* next;
-};
-
-struct ventry* entries;
-
 int vfs_open (struct pawpaw_event* evt);
 int vfs_read (struct pawpaw_event* evt);
+int vfs_write (struct pawpaw_event* evt);
 int vfs_close (struct pawpaw_event* evt);
 
 struct pawpaw_eventhandler_info handlers[VFS_NUM_EVENTS] = {
@@ -56,17 +47,35 @@ struct pawpaw_eventhandler_info handlers[VFS_NUM_EVENTS] = {
     {   0,  0,  0   },      //              //
     {   vfs_open,           3,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },  // shareid, replyid, mode - replies with EP to file (badged version of listen cap)
     {   vfs_read,           2,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },      //              //
-    {   0,  0,  0   },      //              //
+    {   vfs_write,          2,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },      //              //
     {   vfs_close,          0,  HANDLER_REPLY },
 };
 
 struct pawpaw_event_table handler_table = { VFS_NUM_EVENTS, handlers, "nfs" };
+
+
+/* should grab a stat.h */
+#define S_IRWXU 0000700         /* RWX mask for owner */
+#define S_IRUSR 0000400         /* R for owner */
+#define S_IWUSR 0000200         /* W for owner */
+#define S_IXUSR 0000100         /* X for owner */
+
+#define S_IRWXG 0000070         /* RWX mask for group */
+#define S_IRGRP 0000040         /* R for group */
+#define S_IWGRP 0000020         /* W for group */
+#define S_IXGRP 0000010         /* X for group */
+
+#define S_IRWXO 0000007         /* RWX mask for other */
+#define S_IROTH 0000004         /* R for other */
+#define S_IWOTH 0000002         /* W for other */
+#define S_IXOTH 0000001         /* X for other */
 
 struct open_handle {
     fhandle_t fh;
     seL4_Word id;
     int offset;
     /*seL4_Word badge;*/
+    int mode;
 
     struct open_handle* next;
 };
@@ -77,9 +86,9 @@ int last_handle_id = 0; /* FIXME: need bitmap */
 //fhandle_t *last_handle = NULL;
 struct pawpaw_event* current_event = NULL;  /* FIXME: yuck, need hashtable otherwise could race */
 
-void vfs_lookup_cb (uintptr_t token, enum nfs_stat status, fhandle_t *fh, fattr_t *fattr) {
+void vfs_create_cb (uintptr_t token, enum nfs_stat status, fhandle_t *fh, fattr_t *fattr) {
     if (status == NFS_OK) {
-        printf ("** nfs lookup success\n");
+        printf ("** nfs create success\n");
 
         struct open_handle* handle = malloc (sizeof (struct open_handle));
         assert (handle);
@@ -87,6 +96,7 @@ void vfs_lookup_cb (uintptr_t token, enum nfs_stat status, fhandle_t *fh, fattr_
         memcpy (&handle->fh, fh, sizeof (fhandle_t));
         handle->id = last_handle_id;
         handle->offset = 0;
+        handle->mode = current_event->args[0];
         /*handle->badge = evt->badge;*/
         last_handle_id++;
 
@@ -106,6 +116,59 @@ void vfs_lookup_cb (uintptr_t token, enum nfs_stat status, fhandle_t *fh, fattr_
         current_event->reply = seL4_MessageInfo_new (0, 0, 1, 1);
         seL4_SetCap (0, their_cap);
         seL4_SetMR (0, 0);
+    } else {
+        current_event->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+        printf ("** nfs create failed, had error = %d\n", status);
+        seL4_SetMR (0, -1);
+    }
+
+    seL4_Send (current_event->reply_cap, current_event->reply);
+
+    /* and free */
+    pawpaw_event_dispose (current_event);
+    current_event = NULL;
+}
+
+void vfs_lookup_cb (uintptr_t token, enum nfs_stat status, fhandle_t *fh, fattr_t *fattr) {
+    if (status == NFS_OK) {
+        printf ("** nfs lookup success\n");
+
+        struct open_handle* handle = malloc (sizeof (struct open_handle));
+        assert (handle);
+
+        memcpy (&handle->fh, fh, sizeof (fhandle_t));
+        handle->id = last_handle_id;
+        handle->offset = 0;
+        handle->mode = current_event->args[0];
+        /*handle->badge = evt->badge;*/
+        last_handle_id++;
+
+        /* add to handle list - XXX: should be hashtable */
+        handle->next = handles;
+        handles = handle;
+
+        seL4_CPtr their_cap = pawpaw_cspace_alloc_slot();
+        int err = seL4_CNode_Mint (
+            PAPAYA_ROOT_CNODE_SLOT, their_cap,  PAPAYA_CSPACE_DEPTH,
+            PAPAYA_ROOT_CNODE_SLOT, service_ep, PAPAYA_CSPACE_DEPTH,
+            seL4_AllRights, seL4_CapData_Badge_new (handle->id));
+        /* XXX: hack that assumes fh->data is 32 bits - which it is */
+        assert (their_cap > 0);
+        assert (err == 0);
+
+        current_event->reply = seL4_MessageInfo_new (0, 0, 1, 1);
+        seL4_SetCap (0, their_cap);
+        seL4_SetMR (0, 0);
+    } else if (status == NFSERR_NOENT && current_event->args[0] & FM_WRITE) {
+        /* create the file, then use that as the handle */
+        /* FIXME: when we handle mutliple path depths, use parent rather than
+         * root */
+
+        printf ("** nfs lookup said file does not exist, creating...\n");
+        sattr_t attributes = { S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP, -1, -1, -1, -1, -1 };
+        enum rpc_stat res = nfs_create (&mnt_point, current_event->share->buf, &attributes, vfs_create_cb, 0);
+        printf ("create was %d\n", res);
+        return;
     } else {
         current_event->reply = seL4_MessageInfo_new (0, 0, 0, 1);
         printf ("** nfs lookup failed, had error = %d\n", status);
@@ -129,6 +192,25 @@ void vfs_read_cb (uintptr_t token, enum nfs_stat status, fattr_t *fattr, int cou
         handle->offset += count;
     } else {
         printf ("** nfs read failed, had error = %d\n", status);
+        seL4_SetMR (0, -1);
+    }
+
+    seL4_Send (current_event->reply_cap, current_event->reply);
+
+    /* and free */
+    pawpaw_event_dispose (current_event);
+    current_event = NULL;
+}
+
+void vfs_write_cb (uintptr_t token, enum nfs_stat status, fattr_t *fattr, int count) {
+    current_event->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+    if (status == NFS_OK) {
+        seL4_SetMR (0, count);
+
+        struct open_handle* handle = (struct open_handle*)token;
+        handle->offset += count;
+    } else {
+        printf ("** nfs write failed, had error = %d\n", status);
         seL4_SetMR (0, -1);
     }
 
@@ -173,9 +255,31 @@ int vfs_read (struct pawpaw_event* evt) {
     return PAWPAW_EVENT_HANDLED_SAVED;
 }
 
+int vfs_write (struct pawpaw_event* evt) {
+    size_t amount = evt->args[0];
+    assert (evt->share);
+
+    struct open_handle* handle = handle_lookup (evt->badge);
+    if (!handle) {
+        printf ("nfs: could not find filehandle for given badge 0x%x\n", evt->badge);
+        evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+        seL4_SetMR (0, -1);
+        return PAWPAW_EVENT_NEEDS_REPLY;
+    }
+
+    /* FIXME: check if opened for writing */
+
+    enum rpc_stat res = nfs_write (&(handle->fh), handle->offset, amount, evt->share->buf, vfs_write_cb, handle);
+    current_event = evt;
+    printf ("write was %d\n", res);
+    return PAWPAW_EVENT_HANDLED_SAVED;
+}
+
 int vfs_open (struct pawpaw_event* evt) {
     assert (evt->share);
     printf ("fs_nfs: want to open '%s'\n", (char*)evt->share->buf);
+
+    /* FIXME: does not handle path names deeper than root level */
 
     char* fname = strdup (evt->share->buf);
     printf ("fs_nfs: using mount point 0x%x\n", mnt_point.data);
