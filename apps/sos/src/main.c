@@ -254,6 +254,8 @@ static void rootserver_init (seL4_CPtr* ipc_ep){
 
     /* find available memory */
     ut_find_memory (&low, &high);
+    //high = high / 1024 / 1024 / 1024;    /* XXX: half available memory for swapping tests */
+    high = low + (0x1000 * 1024 * 10);  /* 10 MB */
 
     /* Initialise the untyped memory allocator */
     ut_allocator_init (low, high);
@@ -264,7 +266,7 @@ static void rootserver_init (seL4_CPtr* ipc_ep){
     conditional_panic (err, "failed to initialise root CSpace\n");
 
     /* Initialise frametable */
-    frametable_init ();
+    frametable_init (low, high);
 
     /* Setup address space + pagetable for root server */
     cur_addrspace = addrspace_create (seL4_CapInitThreadPD);

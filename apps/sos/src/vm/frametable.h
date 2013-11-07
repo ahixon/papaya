@@ -35,7 +35,7 @@ struct frameinfo*
 frametable_get_frame (frameidx_t frame);
 
 void
-frametable_init (void);
+frametable_init (seL4_Word low_arg, seL4_Word high_arg);
 
 struct frameinfo*
 frame_new_from_untyped (seL4_Word untyped);

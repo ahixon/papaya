@@ -50,13 +50,14 @@ _frame_alloc_internal (vaddr_t prev) {
 }
 
 void
-frametable_init (void)
+frametable_init (seL4_Word low_arg, seL4_Word high_arg)
 {
     /* create free frame stack */
     //freeframe_init ();
 
     /* create allocated frametable for range [low, high) */
-    ut_find_memory (&low, &high);
+    low = low_arg;
+    high = high_arg;
 
     /* try to allocate a sequence of contiguous frames in the vspace */
     frametable = (struct frameinfo*)FRAMETABLE_VSTART;
