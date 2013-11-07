@@ -9,6 +9,7 @@
 #include <pawpaw.h>
 
 #include <vfs.h>
+#include <sos.h>
 
 //#define VFS_MOUNT               75
 #define DEV_LISTEN_CHANGES      20
@@ -16,7 +17,7 @@
 
 #define FILESYSTEM_NAME     "dev"
 
-#define FM_EXEC  1 /* XXX: from sos.h -> move into separate .h? */
+//#define FM_EXEC  1 /* XXX: from sos.h -> move into separate .h? */
 
 seL4_CPtr service_ep;
 
@@ -31,19 +32,31 @@ struct ventry {
 struct ventry* entries;
 
 int vfs_open (struct pawpaw_event* evt);
+int vfs_listdir (struct pawpaw_event* evt);
+int vfs_stat (struct pawpaw_event* evt);
 
 struct pawpaw_eventhandler_info handlers[VFS_NUM_EVENTS] = {
-    {   0,  0,  0   },      //              //
-    {   0,  0,  0   },      //   RESERVED   //
-    {   0,  0,  0   },      //              //
+    {   0,  0,  0   },      //  fs register info
+    {   0,  0,  0   },      //  fs register cap
+    {   0,  0,  0   },      //  mount
     {   vfs_open,           3,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },  // shareid, replyid, mode - replies with EP to file (badged version of listen cap)
-    {   0,  0,  0   },      //              //
+    {   0,  0,  0   },      //  read 
+    {   0,  0,  0   },      //  write
+    {   0,  0,  0   },      //  close
+    {   vfs_listdir,        3,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },      // shareid, index
+    {   vfs_stat,           1,  HANDLER_REPLY | HANDLER_AUTOMOUNT   }
 };
 
 struct pawpaw_event_table handler_table = { VFS_NUM_EVENTS, handlers, "fs_dev" };
 
 int vfs_open (struct pawpaw_event* evt) {
-    assert (evt->share);
+    if (!evt->share) {
+        printf ("vfs: missing share, open failure\n");
+        evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+        seL4_SetMR (0, -1);
+        return PAWPAW_EVENT_NEEDS_REPLY;
+    }
+
     printf ("fs_dev: want to open '%s'\n", (char*)evt->share->buf);
 
     /*assert (seL4_MessageInfo_get_extraCaps (evt->msg) == 1);
@@ -97,6 +110,75 @@ int vfs_open (struct pawpaw_event* evt) {
     }
 
     evt->flags |= PAWPAW_EVENT_NO_UNMOUNT;  /* for VFS */
+    return PAWPAW_EVENT_NEEDS_REPLY;
+}
+
+int vfs_listdir (struct pawpaw_event* evt) {
+    if (!evt->share) {
+        printf ("vfs: missing share, listdir failure\n");
+        evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+        seL4_SetMR (0, -1);
+        return PAWPAW_EVENT_NEEDS_REPLY;
+    }
+
+    int i = 0;
+    int read = -1;
+    struct ventry* entry = entries;
+    while (entry) {
+        if (i == evt->args[0]) {
+            read = strlen (entry->name);
+            if (read > evt->args[1]) {
+                read = evt->args[1];
+            }
+
+            memcpy (evt->share->buf, entry->name, read);
+            break;
+        }
+
+        i++;
+        entry = entry->next;
+    }
+
+    seL4_SetMR (0, read);
+    return PAWPAW_EVENT_NEEDS_REPLY;
+}
+
+int vfs_stat (struct pawpaw_event* evt) {
+    evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+
+    if (!evt->share) {
+        printf ("vfs: missing share, listdir failure\n");
+        seL4_SetMR (0, -1);
+        return PAWPAW_EVENT_NEEDS_REPLY;
+    }
+
+    char* cmp = evt->share->buf;
+
+    int success = -1;
+    struct ventry* entry = entries;
+    while (entry) {
+        printf ("vfs: stat comparing '%s' and '%s'\n", cmp, entry->name);
+        if (strcmp (cmp, entry->name) == 0) {
+            stat_t stat = {
+                ST_SPECIAL,
+                /* XXX: strictly speaking, should interrogate devices
+                 * to see what they support (ie read, write, readwrite), but 
+                 * use this as a safe default */
+                FM_READ | FM_WRITE,
+                0,  /* size */
+                0,  /* creation time */
+                0,  /* access time */
+            };
+
+            memcpy (evt->share->buf, &stat, sizeof (stat_t));
+            success = 0;
+            break;
+        }
+
+        entry = entry->next;
+    }
+
+    seL4_SetMR (0, success);
     return PAWPAW_EVENT_NEEDS_REPLY;
 }
 

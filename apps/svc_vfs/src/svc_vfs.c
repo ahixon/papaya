@@ -332,12 +332,72 @@ int vfs_open (struct pawpaw_event* evt) {
     return PAWPAW_EVENT_NEEDS_REPLY;
 }
 
+int vfs_stat (struct pawpaw_event* evt) {
+    if (!evt->share) {
+        printf ("vfs_stat: missing share\n");
+        return PAWPAW_EVENT_UNHANDLED;
+    }
+
+    struct fs_node* node = NULL;
+    char* remaining = NULL;
+
+    /* if the client changes this under us, weird stuff might happen so save it now */
+    ((char*)evt->share->buf)[0x1000 - 1] = '\0'; /* FIXME: yuck, const */
+    char* requested_filename = strdup (evt->share->buf);
+    char* orig_filename = strdup (requested_filename);
+    int best_depth = -1;
+
+    parse_pathname (requested_filename, requested_filename + strlen(requested_filename), fs_root, &node, &remaining, &best_depth, 0);
+
+    if (remaining) {
+        printf ("vfs: path success\n");
+        int offset = remaining - requested_filename;
+        strcpy (node->fs->share->buf, orig_filename + offset);
+
+        /* pass the buck to the FS layer to see if it knows anything about the file */
+        printf ("vfs: asking filesystem '%s' about '%s'\n", node->fs->type, node->fs->share->buf);
+        seL4_MessageInfo_t lookup_msg = seL4_MessageInfo_new (0, 0, 0, 2);
+        
+        seL4_SetMR (0, VFS_STAT);
+        seL4_SetMR (1, node->fs->share->id);
+        /*seL4_SetMR (2, evt->args[0]);
+        seL4_SetMR (3, evt->args[1]);*/
+
+        /* FIXME: need a callback ID - should be Send instead */
+        //pawpaw_event_get_recv_cap();        /* XXX: investigate why we need this */
+        
+
+        seL4_MessageInfo_t fs_reply = seL4_Call (node->fs->cap, lookup_msg);
+        int success = seL4_GetMR (0);
+        if (success == 0) {
+            memcpy (evt->share->buf, node->fs->share->buf, sizeof (stat_t));
+        }
+        evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+        seL4_SetMR (0, success);
+        //seL4_SetMR (0, read);   /* shouldn't need this, really */
+    } else {
+        /* path failure - use orig_filename since other gets mangled */
+        printf ("vfs: path failure for '%s'\n", orig_filename);
+        evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+        seL4_SetMR (0, -1);
+    }
+
+    free (requested_filename);
+    free (orig_filename);
+
+    return PAWPAW_EVENT_NEEDS_REPLY;
+}
+
 struct pawpaw_eventhandler_info handlers[VFS_NUM_EVENTS] = {
     {   fs_register_info,   1,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },
     {   fs_register_cap,    0,  HANDLER_REPLY                       },
     {   fs_mount,           1,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },
     {   vfs_open,           2,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },
-    {   0,  0,  0   },      //              //
+    {   0,  0,  0   },      //  read 
+    {   0,  0,  0   },      //  write
+    {   0,  0,  0   },      //  close
+    {   0,  0,  0   },      //{   vfs_listdir,        3,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },      //              //
+    {   vfs_stat,           1,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },      //              //
 };
 
 struct pawpaw_event_table handler_table = { VFS_NUM_EVENTS, handlers, "vfs" };

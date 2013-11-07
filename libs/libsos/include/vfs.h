@@ -5,5 +5,7 @@
 #define VFS_READ			(4)
 #define VFS_WRITE			(5)
 #define VFS_CLOSE			(6)
+#define VFS_LISTDIR			(7)
+#define VFS_STAT			(8)
 
-#define VFS_NUM_EVENTS		(7)
+#define VFS_NUM_EVENTS		(9)

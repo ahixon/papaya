@@ -178,12 +178,84 @@ int write(fildes_t file, const char *buf, size_t nbyte) {
     return wrote;
 }
 
-int getdirent(int pos, char *name, size_t nbyte) {
-	return -1;
+int getdirent (int pos, char *name, size_t nbyte) {
+	seL4_MessageInfo_t msg;
+
+    if (!vfs_ep) {
+        vfs_ep = pawpaw_service_lookup ("svc_vfs");
+    }
+
+    struct pawpaw_share* share = pawpaw_share_new ();
+    if (!share) {
+        return -1;
+    }
+
+    msg = seL4_MessageInfo_new (0, 0, 1, 4);
+
+    seL4_CPtr recv_cap = pawpaw_cspace_alloc_slot ();
+    if (!recv_cap) {
+        pawpaw_share_unmount (share);
+        return -1;
+    }
+
+    seL4_SetCapReceivePath (PAPAYA_ROOT_CNODE_SLOT, recv_cap, PAPAYA_CSPACE_DEPTH);
+
+    seL4_SetCap (0, share->cap);
+    strcpy (share->buf, name);
+    seL4_SetMR (0, VFS_LISTDIR);
+    seL4_SetMR (1, share->id);
+    seL4_SetMR (2, pos);
+    seL4_SetMR (3, nbyte);
+
+    seL4_Call (vfs_ep, msg);
+    int read = seL4_GetMR (0);
+    if (read >= 0) {
+        memcpy (name, share->buf, nbyte);
+        pawpaw_share_unmount (share);
+        return read;
+    } else {
+        pawpaw_share_unmount (share);
+        return -1;
+    }
 }
 
-int stat(const char *path, stat_t *buf) {
-	return -1;
+int stat (const char *path, stat_t *buf) {
+	seL4_MessageInfo_t msg;
+
+    if (!vfs_ep) {
+        vfs_ep = pawpaw_service_lookup ("svc_vfs");
+    }
+
+    struct pawpaw_share* share = pawpaw_share_new ();
+    if (!share) {
+        return -1;
+    }
+
+    memcpy (share->buf, path, strlen (path));
+
+    msg = seL4_MessageInfo_new (0, 0, 1, 2);
+
+    seL4_CPtr recv_cap = pawpaw_cspace_alloc_slot ();
+    if (!recv_cap) {
+        pawpaw_share_unmount (share);
+        return -1;
+    }
+
+    seL4_SetCapReceivePath (PAPAYA_ROOT_CNODE_SLOT, recv_cap, PAPAYA_CSPACE_DEPTH);
+
+    seL4_SetCap (0, share->cap);
+    strcpy (share->buf, path);
+    seL4_SetMR (0, VFS_STAT);
+    seL4_SetMR (1, share->id);
+
+    seL4_Call (vfs_ep, msg);
+    int status = seL4_GetMR (0);
+    if (status == 0) {
+        memcpy (buf, share->buf, sizeof (stat_t));
+    }
+
+    pawpaw_share_unmount (share);
+    return status;
 }
 
 /*************** PROCESS SYSCALLS ***************/
