@@ -14,7 +14,7 @@
 /* Your OS header file */
 #include <sos.h>
 
-#define BUF_SIZ   512
+#define BUF_SIZ   1024
 #define MAX_ARGS   32
 #define CONSOLE_DEVICE  "/dev/console"
 
