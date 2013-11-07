@@ -125,13 +125,13 @@ int pawpaw_event_process (struct pawpaw_event_table* table, struct pawpaw_event 
 
     /* event is valid, but no function handler defined */
     if (eh.func == 0) {
-        printf ("%s: junking incoming request 0x%x as function handler was NULL\n", __FUNCTION__, evt_id);
+        printf ("%s: %s: junking incoming request 0x%x as function handler was NULL\n", table->app_name, __FUNCTION__, evt_id);
         return PAWPAW_EVENT_UNHANDLED;
     }
 
    	/* bad argument count */
     if (argc != eh.argcount) {
-        printf ("%s: junking incoming request as argument count did not match\n", __FUNCTION__);
+        printf ("%s: %s: junking incoming request as argument count did not match\n", table->app_name, __FUNCTION__);
     	return PAWPAW_EVENT_INVALID;
     }
 
@@ -166,20 +166,20 @@ int pawpaw_event_process (struct pawpaw_event_table* table, struct pawpaw_event 
     }
 
     if (eh.flags & HANDLER_AUTOMOUNT) {
-        printf ("%s: mounting share from ID 0x%x\n", table->app_name, share_id);
-        evt->share = pawpaw_share_get (share_id);
 
-        if (!evt->share) {
-            if (seL4_MessageInfo_get_extraCaps (evt->msg) > 0) {
-                //printf ("%s: mounting share from cap\n", table->app_name);
-                evt->share = pawpaw_share_mount (recv_cap);
-                if (evt->share) {
-                    //printf ("\thad ID 0x%x\n", evt->share->id);
-                    pawpaw_share_set (evt->share);
-                }
+        if (seL4_MessageInfo_get_extraCaps (evt->msg) > 0) {
+            //printf ("%s: mounting share from cap\n", table->app_name);
+            evt->share = pawpaw_share_mount (recv_cap);
+            if (evt->share) {
+                //printf ("\thad ID 0x%x\n", evt->share->id);
+                pawpaw_share_set (evt->share);
+            }
 
-                pawpaw_event_new_recv_cap ();
-            } else {
+            pawpaw_event_new_recv_cap ();
+        } else {
+            printf ("%s: mounting share from ID 0x%x\n", table->app_name, share_id);
+            evt->share = pawpaw_share_get (share_id);
+            if (!evt->share) {
                 printf ("%s: share cap missing, even though was automount\n", __FUNCTION__);
                 evt->share = NULL;
             }

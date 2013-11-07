@@ -24,6 +24,7 @@
 
 extern seL4_CPtr msg_ep;
 extern seL4_CPtr net_ep;
+extern seL4_CPtr nfs_async_ep;
 
 /************************************************************
  *  Constants
@@ -139,8 +140,8 @@ my_udp_send(int connection_id, struct pbuf *pbuf)
 
 
     debug ("loaded pbuf into cap, sending to svc_net (len 0x%x)...\n", offset);
-    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 4);
-    seL4_SetCap (0, share->cap);
+    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, pawpaw_share_attach (share), 4);
+    //seL4_SetCap (0, share->cap);
     seL4_SetMR (0, NETSVC_SERVICE_SEND);
     seL4_SetMR (1, share->id);
     seL4_SetMR (2, connection_id);
@@ -397,7 +398,7 @@ rpc_call(struct pbuf *pbuf, int len, int handler_id,
         time_out -= CALL_TIMEOUT_MS;
     }
 #endif
-    seL4_Wait (msg_ep, NULL);
+    seL4_Wait (nfs_async_ep, NULL);
     int id = seL4_GetMR (0);    /* FIXME: might be ORed */
     debug ("got reply on conn %d\n", id);
 
@@ -455,12 +456,6 @@ rpc_call(struct pbuf *pbuf, int len, int handler_id,
 int
 init_rpc(const struct ip_addr *server)
 {
-    /* FIXME: make this async EP instead to get rid of hack - huhh??? */
-    msg_ep = pawpaw_create_ep ();
-    if (!msg_ep) {
-        return false;
-    }
-
     uint32_t time;
     time = udp_time_get(server);
     seed_xid(time);
@@ -474,7 +469,7 @@ rpc_new_udp(const struct ip_addr *server, int remote_port,
     seL4_MessageInfo_t msg;
 
     msg = seL4_MessageInfo_new (0, 0, 1, 4);
-    seL4_SetCap (0, msg_ep);
+    seL4_SetCap (0, nfs_async_ep);
     seL4_SetMR (0, NETSVC_SERVICE_REGISTER);
     seL4_SetMR (1, NETSVC_PROTOCOL_UDP);
     seL4_SetMR (2, remote_port);    /* FIXME: what about binding local port */

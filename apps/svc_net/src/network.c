@@ -28,14 +28,6 @@
 
 #define IRQ_BIT(irq) (1 << ((irq) & 0x1f))
 
-#ifndef SOS_NFS_DIR
-#  ifdef CONFIG_SOS_NFS_DIR
-#    define SOS_NFS_DIR CONFIG_SOS_NFS_DIR
-#  else
-#    define SOS_NFS_DIR "/var/tftpboot/alex"
-#  endif
-#endif
-
 #define ARP_PRIME_TIMEOUT_MS     1000
 #define ARP_PRIME_RETRY_DELAY_MS   10
 
@@ -46,8 +38,6 @@ static struct net_irq {
 static int _nirqs = 0;
 
 static seL4_CPtr _irq_ep;
-
-fhandle_t mnt_point = { { 0 } };
 
 struct netif *_netif;
 

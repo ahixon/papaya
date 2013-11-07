@@ -171,7 +171,7 @@ int vfs_write (struct pawpaw_event* evt) {
 
 int main (void) {
     int err;
-    
+
     pawpaw_event_init ();
 
     service_ep = pawpaw_create_ep ();

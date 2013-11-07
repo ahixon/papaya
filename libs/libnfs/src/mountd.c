@@ -6,7 +6,7 @@
 #include <string.h>
 #include <assert.h>
 
-//#define DEBUG_MNT 1
+#define DEBUG_MNT 1
 #ifdef DEBUG_MNT
 #define debug(x...) printf(x)
 #else
@@ -36,12 +36,22 @@
  *** Helpers
  ******************************************/
 
+static int mnt_pcb = -1;
+
 static int
 mnt_new_udp(const struct ip_addr *server)
 {
-    int port = portmapper_getport(server, MNT_NUMBER, MNT_VERSION);
-    return rpc_new_udp(server, port, PORT_ROOT);
+    /* this is quite ineffient, getting the port all the time..
+     * let's just assume we never connect to another server */
+
+    if (mnt_pcb < 0) {
+        int port = portmapper_getport(server, MNT_NUMBER, MNT_VERSION);
+        mnt_pcb = rpc_new_udp(server, port, PORT_ROOT);
+    }
+
+    return mnt_pcb;
 }
+
 
 
 /******************************************
@@ -80,11 +90,11 @@ mountd_print_exports_cb(void* callback, uintptr_t token, struct pbuf *pbuf)
     }
 }
 
+
 enum rpc_stat
 mountd_print_exports(const struct ip_addr *server)
 {
     struct mountd_exports_token token;
-    int mnt_pcb;
     struct pbuf *pbuf;
     int pos;
     int err;
