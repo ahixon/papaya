@@ -25,11 +25,12 @@
 
 #include <autoconf.h>
 
-extern char _cpio_archive[];        /* FIXME: move this out of here, one day.. */
+extern char _cpio_archive[];
 extern seL4_CPtr rootserver_syscall_cap;
 
 #define BOOT_LIST       "boot.txt"
-#define BOOT_LIST_SEP   "\n"
+#define BOOT_LIST_LINE  "\n"
+#define BOOT_LIST_SEP   "="
 
 int boot_thread (void) {
     /* find our boot instructions */
@@ -40,29 +41,35 @@ int boot_thread (void) {
     conditional_panic (!bootlist, "failed to find boot list in CPIO archive\n");
     
     /* parse it */
-    char* line = strtok (bootlist, BOOT_LIST_SEP);
-    int linenum = 1;
+    char* line = strtok (bootlist, BOOT_LIST_LINE);
     while (line != NULL) {
         if (line[0] == '#') {
             /* was a comment, skip */
-            line = strtok (NULL, BOOT_LIST_SEP);
-            linenum++;
+            line = strtok (NULL, BOOT_LIST_LINE);
             continue;
         }
 
-        char* equals = strpbrk (line, "="BOOT_LIST_SEP);
-        if (*equals != '=') {
-            printf ("boot: syntax error on line %d of %s: missing '=' expected\n", linenum, BOOT_LIST);
-            //panic ("boot file syntax error");
-            line = strtok (NULL, BOOT_LIST_SEP);
-            linenum++;
+        char* equals = strpbrk (line, BOOT_LIST_SEP);
+        if (!equals) {
+            printf ("boot: syntax error in %s: missing '%s' expected, had '%s'\n", BOOT_LIST, BOOT_LIST_SEP, line);
+            line = strtok (NULL, BOOT_LIST_LINE);
             continue;
         }
-
-        char* type = equals + 1;
 
         *equals = '\0';
         char* app = line;
+        char* type = equals + 1;
+
+        if (strlen (type) == 0) {
+            printf ("boot: missing type for application %s\n", app);
+            panic ("missing boot application type");
+        }
+
+        if (strcmp (type, "boot") && strcmp (type, "sync") && strcmp (type, "async")) {
+            printf ("boot: invalid boot type '%s' for application %s\n", type, app);
+            panic ("invalid boot application type");
+        }
+
 
         printf ("Starting '%s' as %s...\n", app, type);
         thread_t thread = thread_create_from_cpio (app, rootserver_syscall_cap);
@@ -73,7 +80,10 @@ int boot_thread (void) {
 
         printf ("\tstarted with PID %d\n", thread->pid);
 
-        line = strtok (NULL, BOOT_LIST_SEP);
-        linenum++;
+        /* FIXME: wait for applications with 'sync' boot types */
+
+        line = strtok (NULL, BOOT_LIST_LINE);
     }
+
+    return 0;
 }
