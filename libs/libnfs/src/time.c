@@ -9,7 +9,7 @@
 #include <assert.h>
 
 
-#define DEBUG_TIME 1
+//#define DEBUG_TIME 1
 #ifdef DEBUG_TIME
 #define debug(x...) printf( x )
 #else

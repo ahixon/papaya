@@ -130,6 +130,8 @@ pagetable_kernel_map_page (struct pt_entry* pte, vaddr_t vaddr, struct as_region
     return !err;
 }
 
+extern thread_t current_thread;
+
 /* Fetches the PTE from the pagetable assocated with a virtual address. 
  * If it does not exist, it is created.
  *
@@ -213,21 +215,28 @@ page_map (addrspace_t as, struct as_region* region, vaddr_t vaddr) {
         }
 
         did_allocation = true;
-    }
+    }/* else {
+        printf ("already had frame, had refcount of %d\n", frame_get_refcount (entry->frame));
+        printf ("%s called us\n", current_thread->name);
+    }*/
     
-    err = cspace_ut_retype_addr(entry->frame->paddr,
-                                 seL4_ARM_SmallPageObject, seL4_PageBits,
-                                 cur_cspace, &entry->cap);
-    if (err != seL4_NoError) {
-        printf ("page_map: could not retype: %s\n", seL4_Error_Message (err));
-        if (did_allocation) {
-            /* only free if we did the allocation, otherwise leave for whoever */
-            frame_free (entry->frame);
-            entry->frame = NULL;
-        }
+    if (!entry->cap) {
+        err = cspace_ut_retype_addr(entry->frame->paddr,
+                                     seL4_ARM_SmallPageObject, seL4_PageBits,
+                                     cur_cspace, &(entry->cap));
+        if (err != seL4_NoError) {
+            printf ("page_map: could not retype: %s\n", seL4_Error_Message (err));
+            if (did_allocation) {
+                /* only free if we did the allocation, otherwise leave for whoever */
+                frame_free (entry->frame);
+                entry->frame = NULL;
+            }
 
-        return NULL;
-    }
+            return NULL;
+        }
+    }/* else {
+        printf ("already had cap\n");
+    }*/
 
     if (!pagetable_kernel_map_page (entry, vaddr, region, as)) {
         printf ("actual page map failed\n");
@@ -305,14 +314,21 @@ page_unmap (struct pt_entry* entry) {
 
         /* unmap + delete the cap to the page */
         if (entry->cap) {
-            seL4_ARM_Page_Unmap (entry->cap);   /* FIXME: do we need this? or does it break? */
+            seL4_ARM_Page_Unmap (entry->cap);
+            //seL4_ARM_Page_FlushCaches(entry->cap);
             cspace_delete_cap (cur_cspace, entry->cap);
+
+
+            entry->cap = 0;
         }
 
         /* "free" the frame - removes from refcount and only
          * actually releases underlying frame when it's zero. */
-        frame_free (entry->frame);
-        entry->frame = NULL;
+        if (entry->frame) {
+            frame_free (entry->frame);
+            entry->frame = NULL;
+        }
+
         return true;
     } else {
         return false;

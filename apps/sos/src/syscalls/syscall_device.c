@@ -44,13 +44,13 @@ int syscall_map_device (struct pawpaw_event* evt) {
     struct as_region* reg = as_define_region_within_range (current_thread->as,
         DEVICE_START, DEVICE_END, len, seL4_AllRights, REGION_GENERIC);
 
-    /* don't cache */
-    reg->attributes = 0;
-
     if (!reg) {
         seL4_SetMR (0, -1);
         return PAWPAW_EVENT_NEEDS_REPLY;
     }
+
+    /* don't cache */
+    reg->attributes = 0;
 
     paddr_t paddr = evt->args[0];
     vaddr_t end = reg->vbase + len;
@@ -61,11 +61,11 @@ int syscall_map_device (struct pawpaw_event* evt) {
         struct pt_entry* pte = page_fetch_entry (current_thread->as, reg->attributes, current_thread->as->pagetable, vaddr);
         assert (pte);
 
-        if (pte->frame) {
+        if (pte->cap || pte->frame) {
             /* free underlying frame - should flush cache, right? */
-            printf ("%s: vaddr 0x%x already allocated, freeing\n", __FUNCTION__, vaddr);
+            //printf ("%s: vaddr 0x%x already allocated, freeing\n", __FUNCTION__, vaddr);
             page_unmap (pte);
-            assert (!pte->frame);
+            assert (!pte->cap);
         }
 
         pte->frame = frame_new_from_untyped (paddr);
@@ -73,7 +73,7 @@ int syscall_map_device (struct pawpaw_event* evt) {
             printf ("%s: failed to allocate new untyped frame for vaddr 0x%x\n", __FUNCTION__, vaddr);
         }
 
-        struct frameinfo* map_frame = page_map (current_thread->as, reg, vaddr);
+        struct pt_entry* map_frame = page_map (current_thread->as, reg, vaddr);
         assert (map_frame);
 
         //printf ("%s: underlying frame for 0x%x is now 0x%x\n", __FUNCTION__, vaddr, paddr);
@@ -118,9 +118,9 @@ int syscall_alloc_dma (struct pawpaw_event* evt) {
         struct pt_entry* pte = page_fetch (current_thread->as->pagetable, vaddr);
         assert (pte);
 
-        if (pte->frame) {
+        if (pte->cap || pte->frame) {
             /* free underlying frame - should flush cache, right? */
-            //printf ("%s: vaddr 0x%x already allocated, freeing\n", vaddr);
+            //printf ("%s: vaddr 0x%x already allocated, freeing\n", __FUNCTION__, vaddr);
             page_unmap (pte);
             assert (!pte->frame);
         }
@@ -130,8 +130,11 @@ int syscall_alloc_dma (struct pawpaw_event* evt) {
             printf ("%s: failed to allocate new untyped frame for vaddr 0x%x\n", __FUNCTION__, vaddr);
         }
 
-        /*struct frame_info* map_frame = page_map (current_thread->as, reg, vaddr);
-        assert (map_frame);*/
+        struct pt_entry* map_frame = page_map (current_thread->as, reg, vaddr);
+        assert (map_frame);
+
+        /* GOD DAMN CACHES - FIXME: only do if we remapped */
+        seL4_ARM_Page_FlushCaches(map_frame->cap);
 
         //printf ("%s: underlying frame for 0x%x is now 0x%x\n", __FUNCTION__, vaddr, local_dma);
         local_dma += PAGE_SIZE;

@@ -6,7 +6,7 @@
 #include <string.h>
 #include <assert.h>
 
-#define DEBUG_MNT 1
+//#define DEBUG_MNT 1
 #ifdef DEBUG_MNT
 #define debug(x...) printf(x)
 #else
