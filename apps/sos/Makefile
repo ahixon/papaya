@@ -7,6 +7,7 @@ endif
 
 # Source files required to build the target
 CFILES   := $(patsubst $(SOURCE_DIR)/%,%,$(wildcard $(SOURCE_DIR)/src/*.c))
+CFILES   += $(patsubst $(SOURCE_DIR)/%,%,$(wildcard $(SOURCE_DIR)/src/boot/*.c))
 CFILES   += $(patsubst $(SOURCE_DIR)/%,%,$(wildcard $(SOURCE_DIR)/src/ut_manager/*.c))
 CFILES   += $(patsubst $(SOURCE_DIR)/%,%,$(wildcard $(SOURCE_DIR)/src/sys/*.c))
 CFILES   += $(patsubst $(SOURCE_DIR)/%,%,$(wildcard $(SOURCE_DIR)/src/syscalls/*.c))
@@ -27,7 +28,7 @@ include $(SEL4_COMMON)/common.mk
 ${COMPONENTS}:
 	false
 
-archive.o: ${COMPONENTS}
+archive.o: ${COMPONENTS} $(SOURCE_DIR)/src/boot/boot.txt
 	$(Q)mkdir -p $(dir $@)
 	echo "LINKING $@"
-	${COMMON_PATH}/files_to_obj.sh $@ _cpio_archive $^
+	${COMMON_PATH}/files_to_obj.sh $@ _cpio_archive $^ 

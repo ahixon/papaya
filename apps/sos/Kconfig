@@ -38,8 +38,3 @@ config SOS_NFS_DIR
     string "NFS directory"
     depends on APP_SOS
     default "/var/tftpboot/USER"
-
-config SOS_STARTUP_APP
-    string "Startup application name"
-    depends on APP_SOS
-    default "tty_test"

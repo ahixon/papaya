@@ -1,0 +1,36 @@
+# This file contains programs that are needed at boot time.
+# It is parsed by the boot thread (see boot/boot.c).
+#
+# Format is: <cpio_file>=<type>
+# where type is:
+#   async   - start the service, but don't wait for it to start
+#   sync    - start it, but wait for it to indicate that it has
+#             finished starting. If it fails to start, boot will
+#             not continue. WE DO NOT SUPPORT TIMEOUTS.
+#   boot    - this is the boot program. We still start this and
+#             terminate the boot process.
+#
+# Lines starting with a # are comments (obviously).
+#
+# Commands are executed in order, so if you have dependencies,
+# you can load them the required order, using the necessary
+# boot type.
+#
+# If a given program does not exist, boot will fail, with the
+# error reported on debug console (if available).
+
+dev_timer=sync
+
+svc_vfs=async
+svc_dev=async
+svc_net=async
+
+fs_nfs=async
+fs_dev=async
+
+# We need to ensure this finishes starting before starting 
+# our application, otherwise standard I/O will not be available
+dev_console=sync
+
+# finally, start the boot app
+sosh=boot

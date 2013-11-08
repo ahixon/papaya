@@ -21,6 +21,7 @@
 
 #include "thread.h"
 #include <badgemap.h>
+#include "boot/boot.h"
 
 #include <autoconf.h>
 
@@ -28,12 +29,6 @@
 #include <sys/debug.h>
 #include <sys/panic.h>
 
-#define MAPPER_STACK_SIZE 1024
-#define DMA_SIZE_BITS 22
-
-extern char _cpio_archive[];        /* FIXME: move this out of here, one day.. */
-
-const seL4_BootInfo* _boot_info;
 seL4_CPtr rootserver_syscall_cap;
 extern seL4_CPtr _badgemap_ep;
 seL4_Word dma_addr;
@@ -50,7 +45,6 @@ void print_resource_stats (void) {
     printf ("Root CNode free slots: 0x%x\n", cur_cspace->num_free_slots);
     ut_stats ();
     printf ("*********************************************\n\n");
-
 }
 
 struct pawpaw_eventhandler_info syscalls[NUM_SYSCALLS] = {
@@ -155,78 +149,23 @@ void syscall_loop (seL4_CPtr ep) {
         }
 
         default:
-            printf("Rootserver got an unknown message type\n");
+            printf ("Rootserver got an unknown message type\n");
         }
     }
 }
 
-
-static void print_bootinfo(const seL4_BootInfo* info) {
-    int i;
-
-    /* General info */
-    dprintf(1, "Info Page:  %p\n", info);
-    dprintf(1,"IPC Buffer: %p\n", info->ipcBuffer);
-    dprintf(1,"Node ID: %d (of %d)\n",info->nodeID, info->numNodes);
-    dprintf(1,"IOPT levels: %d\n",info->numIOPTLevels);
-    dprintf(1,"Init cnode size bits: %d\n", info->initThreadCNodeSizeBits);
-
-    /* Cap details */
-    dprintf(1,"\nCap details:\n");
-    dprintf(1,"Type              Start      End\n");
-    dprintf(1,"Empty             0x%08x 0x%08x\n", info->empty.start, info->empty.end);
-    dprintf(1,"Shared frames     0x%08x 0x%08x\n", info->sharedFrames.start, 
-                                                   info->sharedFrames.end);
-    dprintf(1,"User image frames 0x%08x 0x%08x\n", info->userImageFrames.start, 
-                                                   info->userImageFrames.end);
-    dprintf(1,"User image PTs    0x%08x 0x%08x\n", info->userImagePTs.start, 
-                                                   info->userImagePTs.end);
-    dprintf(1,"Untypeds          0x%08x 0x%08x\n", info->untyped.start, info->untyped.end);
-
-    /* Untyped details */
-    dprintf(1,"\nUntyped details:\n");
-    dprintf(1,"Untyped Slot       Paddr      Bits\n");
-    for (i = 0; i < info->untyped.end-info->untyped.start; i++) {
-        dprintf(1,"%3d     0x%08x 0x%08x %d\n", i, info->untyped.start + i,
-                                                   info->untypedPaddrList[i],
-                                                   info->untypedSizeBitsList[i]);
-    }
-
-    /* Device untyped details */
-    dprintf(1,"\nDevice untyped details:\n");
-    dprintf(1,"Untyped Slot       Paddr      Bits\n");
-    for (i = 0; i < info->deviceUntyped.end-info->deviceUntyped.start; i++) {
-        dprintf(1,"%3d     0x%08x 0x%08x %d\n", i, info->deviceUntyped.start + i,
-                                                   info->untypedPaddrList[i + (info->untyped.end - info->untyped.start)],
-                                                   info->untypedSizeBitsList[i + (info->untyped.end-info->untyped.start)]);
-    }
-
-    dprintf(1,"-----------------------------------------\n\n");
-
-    /* Print cpio data */
-    dprintf(1,"Parsing cpio data:\n");
-    dprintf(1,"--------------------------------------------------------\n");
-    dprintf(1,"| index |        name      |  address   | size (bytes) |\n");
-    dprintf(1,"|------------------------------------------------------|\n");
-    for(i = 0;; i++) {
-        unsigned long size;
-        const char *name;
-        void *data;
-
-        data = cpio_get_entry(_cpio_archive, i, &name, &size);
-        if(data != NULL){
-            dprintf(1,"| %3d   | %16s | %p | %12d |\n", i, name, data, size);
-        }else{
-            break;
-        }
-    }
-    dprintf(1,"--------------------------------------------------------\n");
-}
-
+/*
+ * Debug wrapper to interrogate untyped memory allocation
+ * XXX: debug only - remove me later! 
+ */
 seL4_Word cspace_ut_alloc_wrapper (int sizebits) {
     return ut_alloc (sizebits);
 }
 
+/*
+ * Debug wrapper to interrogate untyped memory allocation
+ * XXX: debug only - remove me later! 
+ */
 void cspace_ut_free_wrapper (seL4_Word addr, int sizebits) {
     ut_free (addr, sizebits);
 }
@@ -235,13 +174,13 @@ void cspace_ut_free_wrapper (seL4_Word addr, int sizebits) {
  * Initialisation of subsystems and resources required for Papaya.
  */
 static void rootserver_init (seL4_CPtr* ipc_ep){
+    seL4_BootInfo* _boot_info;
     seL4_Word low, high;
     int err;
 
     /* Retrieve boot info from seL4 */
     _boot_info = seL4_GetBootInfo ();
     conditional_panic (!_boot_info, "failed to retrieve boot info\n");
-    //print_bootinfo (_boot_info);
 
     /* Initialise the untyped sub system and reserve memory for DMA */
     err = ut_table_init (_boot_info);
@@ -254,8 +193,7 @@ static void rootserver_init (seL4_CPtr* ipc_ep){
 
     /* find available memory */
     ut_find_memory (&low, &high);
-    //high = high / 1024 / 1024 / 1024;    /* XXX: half available memory for swapping tests */
-    high = low + (0x1000 * 1024 * 10);  /* 10 MB */
+    high = low + (0x1000 * 1024 * 10);  /* XXX: artificially limit memory to 10 MB */
 
     /* Initialise the untyped memory allocator */
     ut_allocator_init (low, high);
@@ -297,7 +235,7 @@ static void rootserver_init (seL4_CPtr* ipc_ep){
     conditional_panic (err, "failed to retype syscall endpoint");
 
     /* Start internal badge map service */
-    thread_t badgemap_thread = thread_create_internal ("badgemap", mapper_main, MAPPER_STACK_SIZE);
+    thread_t badgemap_thread = thread_create_internal ("badgemap", mapper_main);
     conditional_panic (!badgemap_thread, "failed to start badgemap");
 
     /* Create specific EP for badge map communication (compared to syscall EP) */
@@ -317,19 +255,14 @@ int main (void) {
 
     /* initialise root server from whatever seL4 left us */
     rootserver_init (&rootserver_syscall_cap);
-    //printf ("Root server setup.\n");
-    // print_resource_stats ();
-
+    
     /* start the system boot thread - this will create all basic
      * services, and start the boot application when they're all
      * ready */    
-    thread_t booter = thread_create_internal ("svc_init", boot_thread, MAPPER_STACK_SIZE))
-    conditional_panic (!booter, "could not start svc_init\n");
+    thread_t booter = thread_create_internal ("svc_init", boot_thread);
+    conditional_panic (!booter, "could not start boot thread\n");
 
-    /* wait for IPC from <homestar>everyboooddddyyyyy</homestar> */
-    //dprintf (0, "Root server starting event loop...\n");
-    //print_resource_stats ();
-
+    /* and just listen for IPCs */
     dprintf (0, "Started.\n");
     syscall_loop (rootserver_syscall_cap);
 

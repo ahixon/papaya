@@ -23,6 +23,7 @@
 #include <assert.h>
 
 #define DEFAULT_PRIORITY		(0)
+#define INTERNAL_STACK_SIZE     1024    /* 1KB */
 
 void print_resource_stats (void);
 
@@ -456,13 +457,13 @@ thread_t thread_create_from_cpio (char* path, seL4_CPtr rootsvr_ep) {
 }
 
 thread_t
-thread_create_internal (char* name, void* initial_pc, unsigned int stack_size) {
+thread_create_internal (char* name, void* initial_pc) {
     thread_t thread = thread_create (name, cur_cspace, cur_addrspace);
     if (!thread) {
         return NULL;
     }
 
-    char* stack = malloc (stack_size);
+    char* stack = malloc (INTERNAL_STACK_SIZE);
     if (!stack) {
         thread_destroy (thread);
         return NULL;
@@ -470,7 +471,7 @@ thread_create_internal (char* name, void* initial_pc, unsigned int stack_size) {
 
     thread->static_stack = stack;
 
-    seL4_TCB_WritePCSP (thread->tcb_cap, true, (seL4_Word)initial_pc, (seL4_Word)&stack[stack_size]);
+    seL4_TCB_WritePCSP (thread->tcb_cap, true, (seL4_Word)initial_pc, (seL4_Word)&stack[INTERNAL_STACK_SIZE]);
     return thread;
 }
 

@@ -48,7 +48,7 @@ struct thread {
 
 thread_t thread_create_from_fs (char* path, seL4_CPtr rootsvr_ep);
 thread_t thread_create_from_cpio (char* path, seL4_CPtr rootsvr_ep);
-thread_t thread_create_internal (char* name, void* initial_pc, unsigned int stack_size);
+thread_t thread_create_internal (char* name, void* initial_pc);
 
 
 void thread_destroy (thread_t thread);
