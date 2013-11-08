@@ -16,8 +16,8 @@
 # you can load them the required order, using the necessary
 # boot type.
 #
-# If a given program does not exist, boot will fail, with the
-# error reported on debug console (if available).
+# If a given program does not exist, the error will be reported
+# on debug console (if available). Boot will continue.
 
 dev_timer=sync
 

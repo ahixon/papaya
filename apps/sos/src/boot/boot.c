@@ -34,14 +34,20 @@ extern seL4_CPtr rootserver_syscall_cap;
 
 int boot_thread (void) {
     /* find our boot instructions */
-    char* bootlist = NULL;
+    char *cpio_bootlist, *mem_bootlist;
     unsigned long size;
 
-    bootlist = cpio_get_file (_cpio_archive, BOOT_LIST, &size);
-    conditional_panic (!bootlist, "failed to find boot list in CPIO archive\n");
+    cpio_bootlist = cpio_get_file (_cpio_archive, BOOT_LIST, &size);
+    conditional_panic (!cpio_bootlist, "failed to find boot list in CPIO archive\n");
+
+    /* eugh.. in case we have no new lines at the end - also less chance of mangling CPIO */
+    mem_bootlist = malloc (size + 1);
+    conditional_panic (!mem_bootlist, "not enough memory to copy in bootlist\n");
+    memcpy (mem_bootlist, cpio_bootlist, size);
+    *(mem_bootlist + size) = '\0';  /* EOF the string */
     
     /* parse it */
-    char* line = strtok (bootlist, BOOT_LIST_LINE);
+    char* line = strtok (mem_bootlist, BOOT_LIST_LINE);
     while (line != NULL) {
         if (line[0] == '#') {
             /* was a comment, skip */
@@ -84,6 +90,8 @@ int boot_thread (void) {
 
         line = strtok (NULL, BOOT_LIST_LINE);
     }
+
+    free (mem_bootlist);
 
     return 0;
 }
