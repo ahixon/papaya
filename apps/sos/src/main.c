@@ -317,41 +317,20 @@ int main (void) {
 
     /* initialise root server from whatever seL4 left us */
     rootserver_init (&rootserver_syscall_cap);
-    printf ("Root server setup.\n");
+    //printf ("Root server setup.\n");
     // print_resource_stats ();
-    
-    /* boot up device filesystem & mount it */
-    assert (thread_create_from_cpio ("fs_dev", rootserver_syscall_cap));
 
-    /* boot up core services */
-    // thread_create_from_cpio ("svc_init", rootserver_syscall_cap);
-    printf ("Starting core services...\n");
-    assert (thread_create_from_cpio ("svc_vfs", rootserver_syscall_cap));
-    assert (thread_create_from_cpio ("svc_dev", rootserver_syscall_cap));
-    assert (thread_create_from_cpio ("svc_net", rootserver_syscall_cap));
+    /* start the system boot thread - this will create all basic
+     * services, and start the boot application when they're all
+     * ready */    
+    thread_t booter = thread_create_internal ("svc_init", boot_thread, MAPPER_STACK_SIZE))
+    conditional_panic (!booter, "could not start svc_init\n");
 
-    assert (thread_create_from_cpio ("fs_nfs", rootserver_syscall_cap));
+    /* wait for IPC from <homestar>everyboooddddyyyyy</homestar> */
+    //dprintf (0, "Root server starting event loop...\n");
+    //print_resource_stats ();
 
-    /* start any devices services inside the CPIO archive */
-    dprintf (1, "Looking for device services linked into CPIO...\n");
-    unsigned long size;
-    char *name;
-    for (int i = 0; cpio_get_entry (_cpio_archive, i, (const char**)&name, &size); i++) {
-        if (strstr (name, "dev_") == name) {
-            thread_create_from_cpio (name, rootserver_syscall_cap);
-        }
-    }
-
-    /* finally, start the boot app */
-    dprintf (1, "Starting boot application \"%s\"...\n", CONFIG_SOS_STARTUP_APP);
-    thread_t boot_thread = thread_create_from_cpio (CONFIG_SOS_STARTUP_APP, rootserver_syscall_cap);
-    assert (boot_thread);
-    dprintf (1, "  started with PID %d\n", boot_thread->pid);
-
-    /* and wait for IPC */
-    dprintf (0, "Root server starting event loop...\n");
-    print_resource_stats ();
-
+    dprintf (0, "Started.\n");
     syscall_loop (rootserver_syscall_cap);
 
     return 0;   /* not reached */
