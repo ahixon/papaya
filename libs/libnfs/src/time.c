@@ -9,7 +9,7 @@
 #include <assert.h>
 
 
-//#define DEBUG_TIME 1
+#define DEBUG_TIME 1
 #ifdef DEBUG_TIME
 #define debug(x...) printf( x )
 #else
@@ -32,7 +32,7 @@ udp_time_get(const struct ip_addr *server)
 {
     seL4_MessageInfo_t msg;
 
-    seL4_CPtr wait_ep = pawpaw_create_ep ();
+    seL4_CPtr wait_ep = pawpaw_create_ep_async ();
     assert (wait_ep);
 
     /* Create a connection to the time server */
@@ -53,9 +53,13 @@ udp_time_get(const struct ip_addr *server)
         return 0;
     }
 
+    debug ("time: got result, making share\n");
+    
     /* now send empty packet to server to get time */
     struct pawpaw_share* share = pawpaw_share_new ();
     assert (share);
+
+    debug ("time: got share, sending data for service 0x%x\n", net_id);
 
     msg = seL4_MessageInfo_new (0, 0, 1, 4);
     seL4_SetCap (0, share->cap);
@@ -65,17 +69,23 @@ udp_time_get(const struct ip_addr *server)
     seL4_SetMR (3, 0);
     seL4_Call (net_ep, msg);
 
+    debug ("time: sent ok, WAITING ON EP for result\n");
+
     /* FIXME: need a timeout - or not since it's a separate server */
     seL4_Wait (wait_ep, NULL);
 
+    debug ("time: got result, asking netsvc for data\n");
     msg = seL4_MessageInfo_new (0, 0, 0, 2);
     seL4_SetMR (0, NETSVC_SERVICE_DATA);
     seL4_SetMR (1, net_id);
     seL4_Call (net_ep, msg);
 
+
     seL4_Word size = seL4_GetMR (1);
+    debug ("time: got 0x%x bytes\n", size);
     assert (size == 4); /* FIXME: is this OK to test for? */
 
+    debug ("time: mounting share for result\n");
     struct pawpaw_share* result_share = pawpaw_share_mount (pawpaw_event_get_recv_cap ());
     assert (result_share);
 

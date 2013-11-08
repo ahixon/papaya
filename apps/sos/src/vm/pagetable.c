@@ -1,30 +1,3 @@
-/* 
- * GIANT FIXME: ALL MALLOC IN THIS FILE SHOULD BE A VMALLOC (which we need to implement)
- *  really only diff is vmalloc would call all these functions but with a special addrspace and
- *  as->pagetable would be initialised in a special way (such that we use initial heap or vaddr that will never be unmapped)
- *
- * two level page table
- * top 20 bits for physical address, bottom for bit flags
- * 
- * original cap stored in frame table
- * create copy, and map into process vspace
- * only delete this original cap on free-ing the frame
- * 
- * if we need to map into SOS, then we map into special window region, copy data in/out, then unmap - DO NOT DELETE 
- * 
- * on deletion of page, just revoke on original cap - this will NOT delete the cap, but all children
- * FIXME: need to check that page is not shared in future (otherwise those mapped pages will have their cap deleted too - basically dangling pointer)
- *
- * by itself: cap for page directory
- * first section of pagetable: pointers to second level
- * second part:                pointers to seL4 page table objects
- * ^ REMEMBER TO HAVE THIS ALL IN FRAMES
- *
- * second level: as above, 20 bit physical addr/index + bit flags
- *
- * might be better to have second level pointer then page table object next to each other for cache access
- */
-
 #include <sel4/sel4.h>
 #include <assert.h>
 #include <string.h>
@@ -131,6 +104,8 @@ pagetable_kernel_install_pt (addrspace_t as, seL4_ARM_VMAttributes attributes, v
         if (err != seL4_DeleteFirst) {
             return 0;
         }
+
+        printf ("ignoring, since it was just a DeleteFirst...\n");
     }
 
     *pt_ret_addr = pt_addr;
@@ -138,31 +113,21 @@ pagetable_kernel_install_pt (addrspace_t as, seL4_ARM_VMAttributes attributes, v
 }
 
 /* 
- * Maps the page already created from the PTE (use page_map) into the kernel, using the region's
+ * Maps the cap associated with a PTE into the kernel, using the region's
  * permission and attributes.
  * 
- * Returns CPtr to page capability on success, 0 otherwise.
+ * Returns true on success, false otherwise.
 */
 int
-pagetable_kernel_map_page (vaddr_t vaddr, struct frameinfo* frame, struct as_region* region, addrspace_t as) {
-    int err;
-    seL4_Word dest_cap;
+pagetable_kernel_map_page (struct pt_entry* pte, vaddr_t vaddr, struct as_region* region, addrspace_t as) {
+    assert (pte->cap);
 
-    assert (frame);
-
-    dest_cap = cspace_copy_cap (cur_cspace, cur_cspace, frame->capability, seL4_AllRights);
-    assert (dest_cap);
-
-    //printf ("pagetable_kernel_map_page: mapping cap (originally 0x%x, copy is 0x%x) to vaddr 0x%x\n", frame_cap, dest_cap, vaddr);
-    //printf ("           perms = %d, attrib = %d, pagedir cap = 0x%x\n", region->permissions, region->attributes, as->pagedir_cap);
-    err = seL4_ARM_Page_Map(dest_cap, as->pagedir_cap, vaddr, region->permissions, region->attributes);
-
+    int err = seL4_ARM_Page_Map(pte->cap, as->pagedir_cap, vaddr, region->permissions, region->attributes);
     if (err) {
         printf ("pagetable_kernel_map_page: failed to map page: %s\n", seL4_Error_Message (err));
-        return 0;
     }
 
-    return dest_cap;
+    return !err;
 }
 
 /* Fetches the PTE from the pagetable assocated with a virtual address. 
@@ -210,8 +175,10 @@ page_fetch_entry (addrspace_t as, seL4_ARM_VMAttributes attributes, pagetable_t 
  * Allocates an underlying frame, and maps the page to that frame.
  * Should only be called once.
  */
-struct frameinfo*
+struct pt_entry*
 page_map (addrspace_t as, struct as_region* region, vaddr_t vaddr) {
+    int err;
+
     assert (as != NULL);
     assert (region != NULL);
 
@@ -220,6 +187,7 @@ page_map (addrspace_t as, struct as_region* region, vaddr_t vaddr) {
 
     struct pt_entry* entry = page_fetch_entry (as, region->attributes, pt, vaddr);
     if (!entry) {
+        printf ("%s: fetching PTE failed\n", __FUNCTION__);
         return NULL;
     }
 
@@ -230,6 +198,7 @@ page_map (addrspace_t as, struct as_region* region, vaddr_t vaddr) {
          * the we really shouldn't be calling page_map on the same address twice
          * and this indicates a bug, so if we return an error we can more easily
          * see who the calling function was. */
+        printf ("%s: page already allocated (that's OK, but you probably have a bug elsewhere)\n", __FUNCTION__);
         return NULL;
     }
     
@@ -244,12 +213,23 @@ page_map (addrspace_t as, struct as_region* region, vaddr_t vaddr) {
         }
 
         did_allocation = true;
-    } else {
-        //printf ("%s: vaddr 0x%x already had frame allocated\n", __FUNCTION__, vaddr);
     }
     
-    entry->cap = pagetable_kernel_map_page (vaddr, entry->frame, region, as);
-    if (!entry->cap) {
+    err = cspace_ut_retype_addr(entry->frame->paddr,
+                                 seL4_ARM_SmallPageObject, seL4_PageBits,
+                                 cur_cspace, &entry->cap);
+    if (err != seL4_NoError) {
+        printf ("page_map: could not retype: %s\n", seL4_Error_Message (err));
+        if (did_allocation) {
+            /* only free if we did the allocation, otherwise leave for whoever */
+            frame_free (entry->frame);
+            entry->frame = NULL;
+        }
+
+        return NULL;
+    }
+
+    if (!pagetable_kernel_map_page (entry, vaddr, region, as)) {
         printf ("actual page map failed\n");
         if (did_allocation) {
             /* only free if we did the allocation, otherwise leave for whoever */
@@ -262,7 +242,7 @@ page_map (addrspace_t as, struct as_region* region, vaddr_t vaddr) {
 
     entry->flags |= PAGE_ALLOCATED;
 
-    return entry->frame;
+    return entry;
 }
 
 /*
@@ -277,6 +257,7 @@ page_fetch (pagetable_t pt, vaddr_t vaddr) {
 
     struct pt_table* table = pt->entries[l1];
     if (!table) {
+        printf ("%s: failed - no page table @ L1 idx 0x%x\n", __FUNCTION__, l1);
         return NULL;
     }
 
@@ -323,13 +304,10 @@ page_unmap (struct pt_entry* entry) {
         entry->flags &= ~PAGE_ALLOCATED;
 
         /* unmap + delete the cap to the page */
-        if (!entry->cap) {
-            printf ("%s: frame %p was allocated but had no cap???\n", __FUNCTION__, entry->frame);
-            return false;
+        if (entry->cap) {
+            seL4_ARM_Page_Unmap (entry->cap);   /* FIXME: do we need this? or does it break? */
+            cspace_delete_cap (cur_cspace, entry->cap);
         }
-
-        seL4_ARM_Page_Unmap (entry->cap);   /* FIXME: do we need this? or does it break? */
-        cspace_delete_cap (cur_cspace, entry->cap);
 
         /* "free" the frame - removes from refcount and only
          * actually releases underlying frame when it's zero. */
@@ -353,6 +331,7 @@ page_map_shared (addrspace_t as_dst, struct as_region* reg_dst, vaddr_t dst,
     struct pt_entry* dst_entry = page_fetch_entry (as_dst, reg_dst->attributes, as_dst->pagetable, dst);
 
     if (!src_entry || !dst_entry) {
+        printf ("%s: missing source or dest PTE\n", __FUNCTION__);
         return NULL;
     }
 
@@ -364,7 +343,7 @@ page_map_shared (addrspace_t as_dst, struct as_region* reg_dst, vaddr_t dst,
     }
 
     if (!(src_entry->flags & PAGE_ALLOCATED) || !src_entry->frame) {
-        //printf ("%s: warning! source page wasn't allocated yet - allocating\n", __FUNCTION__);
+        /* FIXME: pass down swapping requirements down chain here */
         page_map (as_src, reg_src, src);
     }
 
@@ -378,9 +357,19 @@ page_map_shared (addrspace_t as_dst, struct as_region* reg_dst, vaddr_t dst,
     struct frameinfo* frame = dst_entry->frame;
     frame_set_refcount (frame, frame_get_refcount (frame) + 1);
 
-    /* map the dest page into the dest address space */
-    dst_entry->cap = pagetable_kernel_map_page (dst, dst_entry->frame, reg_dst, as_dst);
+    /* duplicate the kernel's page table entry */
+    //dst_entry->cap = pagetable_kernel_map_page (dst, dst_entry->frame, reg_dst, as_dst);
+    dst_entry->cap = cspace_copy_cap (cur_cspace, cur_cspace, src_entry->cap, seL4_AllRights);
     if (!dst_entry->cap) {
+        printf ("%s: copy cap for shared page failed\n", __FUNCTION__);
+        page_unmap (dst_entry);
+        return NULL;
+    }
+
+    /* and map that new PTE cap into the dest address space */
+    if (!pagetable_kernel_map_page (dst_entry, dst, reg_dst, as_dst)) {
+        printf ("%s: PTE kernel map failed\n", __FUNCTION__);
+        page_unmap (dst_entry);
         return NULL;
     }
 

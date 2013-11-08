@@ -13,7 +13,7 @@
 #include <pawpaw.h>
 
 
-//#define DEBUG_NFS 1
+#define DEBUG_NFS 1
 #ifdef DEBUG_NFS
 #define debug(x...) printf(x)
 #else

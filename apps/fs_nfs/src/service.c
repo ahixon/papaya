@@ -376,6 +376,7 @@ int main (void) {
     struct ip_addr gateway; /* TODO: should prime ARP table? */ 
     ipaddr_aton (CONFIG_SOS_GATEWAY,      &gateway);
 
+    printf ("NFS init...\n");
     if (nfs_init (&gateway) == RPC_OK) {
         nfs_print_exports ();
     } else {
@@ -383,12 +384,14 @@ int main (void) {
     }
 
     /* TODO: don't just mount the NFS dir, let the user pick! */
+    printf ("NFS mount...\n");
     if ((err = nfs_mount(SOS_NFS_DIR, &mnt_point))){
         printf("Error mounting path '%s', err = %d!\n", SOS_NFS_DIR, err);
         return 1;
     }
 
     /* now that we're "setup", register this filesystem with the VFS */
+    printf ("nfs: VFS lookup...\n");
     seL4_CPtr vfs_ep = pawpaw_service_lookup ("svc_vfs");
 
     seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 2);
@@ -402,6 +405,7 @@ int main (void) {
     seL4_SetMR (0, VFS_REGISTER_INFO);
     seL4_SetMR (1, newshare->id);
     pawpaw_share_attach (newshare);
+    printf ("nfs: Telling VFS to register\n");
     seL4_Call (vfs_ep, msg);    /* FIXME: would we ever need call? otherwise this is OK :) */
 
     /* now attach that cap - people can now mount us */
@@ -419,6 +423,7 @@ int main (void) {
     seL4_SetMR (0, VFS_MOUNT);
     seL4_SetMR (1, newshare->id);
 
+    printf ("nfs: mounting\n");
     seL4_Call (vfs_ep, msg);
 
     /* setup done, now listen to VFS or other people we've given our EP to */

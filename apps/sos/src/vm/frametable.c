@@ -123,7 +123,7 @@ frame_new_from_untyped (seL4_Word untyped) {
 
 struct frameinfo*
 frame_alloc_from_untyped (struct frameinfo* frame, seL4_Word untyped) {
-    seL4_CPtr frame_cap;
+    /*seL4_CPtr frame_cap;
     int err;
 
     err =  cspace_ut_retype_addr(untyped,
@@ -132,10 +132,10 @@ frame_alloc_from_untyped (struct frameinfo* frame, seL4_Word untyped) {
     if (err != seL4_NoError) {
         printf ("frame_alloc: could not retype: %s\n", seL4_Error_Message (err));
         return NULL;
-    }    
+    }*/   
 
     frame->flags |= FRAME_ALLOCATED;
-    frame->capability = frame_cap;
+    //frame->capability = frame_cap;
     frame->paddr = untyped;
     frame_set_refcount (frame, 1);
 
@@ -156,13 +156,13 @@ frame_free (struct frameinfo* fi) {
         return;
     }
 
-    if (cspace_revoke_cap (cur_cspace, fi->capability)) {
+    /*if (cspace_revoke_cap (cur_cspace, fi->capability)) {
         printf ("frame_free: failed to revoke cap\n");
     }
 
     if (cspace_delete_cap (cur_cspace, fi->capability)) {
         printf ("frame_free: could not delete cap\n");
-    }
+    }*/
 
     ut_free (fi->paddr, seL4_PageBits);
 
@@ -195,7 +195,8 @@ frametable_get_frame (frameidx_t frame) {
     return &frametable[frame];
 }
 
+/*
 seL4_CPtr
 frametable_fetch_cap (struct frameinfo* frame) {
     return frame->capability;
-}
+}*/

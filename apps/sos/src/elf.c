@@ -75,15 +75,16 @@ static int load_segment_into_vspace(addrspace_t dest_as,
         kvpage = PAGE_ALIGN(kdst);
 
         /* Map the page into the destination address space */
-        struct frameinfo* frame = as_map_page (dest_as, vpage);
-        if (!frame) {
+        struct pt_entry* page = as_map_page (dest_as, vpage);
+        if (!page) {
             panic ("failed to map into process addrspace");
         }
 
         /* Map the frame into SOS as well so we can copy into it */
         /* FIXME: WOULD BE MUCH NICER(!) if we just used cur_addrspace - 
          * you will need to create a region in main's init function */
-        sos_cap = frametable_fetch_cap (frame);
+        //sos_cap = frametable_fetch_cap (frame);
+        sos_cap = page->cap;
         conditional_panic (!sos_cap, "could not fetch cap from frametable");
 
         frame_cap = cspace_copy_cap (cur_cspace, cur_cspace, sos_cap, seL4_AllRights);

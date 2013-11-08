@@ -134,7 +134,7 @@ int syscall_share_mount (struct pawpaw_event* evt) {
     seL4_SetMR (2, 0);
 
     /* cool, now shared map the two */
-    //printf ("%s: mapping vaddr 0x%x in %s (share 0x%x) to 0x%x in %s\n", __FUNCTION__, other_reg->vbase, src_thread->name, id, share_reg->vbase, current_thread->name);
+    printf ("%s: mapping vaddr 0x%x in %s (share 0x%x) to 0x%x in %s\n", __FUNCTION__, other_reg->vbase, src_thread->name, id, share_reg->vbase, current_thread->name);
 
     struct pt_entry* pte = page_map_shared (current_thread->as, share_reg, share_reg->vbase,
         src_thread->as, other_reg, other_reg->vbase, false);

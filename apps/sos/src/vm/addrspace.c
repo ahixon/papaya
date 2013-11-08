@@ -131,7 +131,7 @@ addrspace_destroy (addrspace_t as) {
  * Returns NULL if the address is invalid, the page has already been mapped,
  * or some other error (ie OOM) occured while we were trying to map the page.
  */
-struct frameinfo*
+struct pt_entry*
 as_map_page (addrspace_t as, vaddr_t vaddr) {
     /* check if vaddr in a region */
     assert (as != NULL);

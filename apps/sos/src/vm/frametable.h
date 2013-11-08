@@ -17,7 +17,6 @@
 
 struct frameinfo {
     paddr_t paddr;
-    seL4_CPtr capability;	/* FIXME: do we need this?? */
     uint32_t flags;
 };
 

@@ -72,7 +72,7 @@ static void
 recv_handler (void* _client_badge, struct udp_pcb* pcb, 
                     struct pbuf *p, struct ip_addr* ipaddr, u16_t unused2) {
 
-    //printf ("net: received data of size 0x%x\n", p->len);
+    printf ("net: received data of size 0x%x\n", p->len);
     struct saved_data *saved = (struct saved_data*)_client_badge;
     assert (saved); /* FIXME: need to make sure that if we remove client that
                        we don't try to access invalid memory since we'll have
@@ -103,7 +103,7 @@ recv_handler (void* _client_badge, struct udp_pcb* pcb,
     pbuf_free (p);
 
     /* and tell the client */
-    //printf ("got data for ID 0x%x\n", saved->id);
+    printf ("got data for ID 0x%x\n", saved->id);
     seL4_Notify (saved->cap, saved->id);
 }
 
@@ -117,7 +117,7 @@ int netsvc_write (struct pawpaw_event* evt) {
     }
 
     int len = evt->args[1];
-    //printf ("net: sending len 0x%x\n", len);
+    printf ("net: sending len 0x%x\n", len);
 
     struct pbuf *p;
     p = pbuf_alloc (PBUF_TRANSPORT, len, PBUF_REF);
