@@ -12,10 +12,14 @@
 #include "ut_manager/ut.h"
 
 #include <elf/elf.h>
+#include <elf.h>
 #include "elf.h"
 
 #include "vm/vmem_layout.h"
-#include <cpio/cpio.h>
+#include <vfs.h>
+#include <sos.h>
+
+#include <services/services.h>
 
 #define verbose 5
 #include <sys/debug.h>
@@ -23,13 +27,12 @@
 #include <assert.h>
 
 #define DEFAULT_PRIORITY		(0)
-#define INTERNAL_STACK_SIZE     1024    /* 1KB */
+#define INTERNAL_STACK_SIZE     (64*1024)    /* 64KB ought to be enough for everybody */
 
 void print_resource_stats (void);
 
-/* The linker will link this symbol to the start address  *
- * of an archive of attached applications.                */
-extern char _cpio_archive[];
+extern seL4_CPtr _badgemap_ep;      /* XXX: move later */
+extern seL4_CPtr _fs_cpio_ep;      /* XXX: move later */
 
 thread_t threadlist[PID_MAX] = {0};
 
@@ -139,13 +142,13 @@ int thread_cspace_new_cnodes (thread_t thread, int num, seL4_CPtr* cnode) {
         alloc++;
     }
 
-    //printf ("%s: allocated %d contiguous slots\n", __FUNCTION__, alloc);
+    //printf ("%s: allocated %d contiguous slots (starting from %d)\n", __FUNCTION__, alloc, cap);
 
     *cnode = cap;
     return alloc;
 }
 
-static thread_t
+thread_t
 thread_alloc (void) {
     thread_t thread = malloc (sizeof (struct thread));
     if (!thread) {
@@ -169,6 +172,8 @@ thread_t thread_create (char* name, cspace_t *existing_cspace, addrspace_t exist
         thread_destroy (thread);
         return NULL;
     }
+
+    /* TODO: insert into threadlist here? */
 
     thread->pid = pid;
     thread->name = strdup (name);
@@ -199,26 +204,33 @@ thread_t thread_create (char* name, cspace_t *existing_cspace, addrspace_t exist
             thread_destroy (thread);
             return NULL;
         }
-
-        /* Map in IPC first off (since we need it for TCB configuration) */
-        as_define_region (thread->as, PROCESS_IPC_BUFFER, PAGE_SIZE, seL4_AllRights, REGION_IPC);
-        if (!as_map_page (thread->as, PROCESS_IPC_BUFFER)) {
-            printf ("%s: failed to map IPC\n", __FUNCTION__);
-            thread_destroy (thread);
-            return NULL;
-        }
     } else {
         thread->as = existing_addrspace;
         /* assume that if we already have an address space, then IPC should already be
          * mapped in */
     }
 
-    seL4_CPtr ipc_cap = as_get_page_cap (thread->as, PROCESS_IPC_BUFFER);
-    if (!ipc_cap) {
-        printf ("%s: failed to get IPC page cap\n", __FUNCTION__);
+    /* Map in IPC first off (since we need it for TCB configuration) */
+    struct as_region* ipc_reg = as_define_region_within_range (thread->as,
+            PROCESS_IPC_BUFFER, PROCESS_IPC_BUFFER_END, PAGE_SIZE, seL4_AllRights, REGION_IPC);
+
+    int status = PAGE_FAILED;
+    //struct pt_entry* page = page_map (thread->as, ipc_reg, ipc_reg->vbase);
+    /* FIXME: should actually have a callback since this may fail */
+    //printf ("trying with 0x%x in %p\n", ipc_reg->vbase, thread->as);
+    struct pt_entry* page = page_map (thread->as, ipc_reg, ipc_reg->vbase, &status, NULL, NULL);
+
+    assert (status == PAGE_SUCCESS);
+
+    if (!page) {
+        printf ("%s: failed to map IPC\n", __FUNCTION__);
         thread_destroy (thread);
         return NULL;
     }
+
+
+    assert (page->cap);
+    seL4_CPtr ipc_cap = page->cap;
 
     if (!existing_cspace) {
         /* Create thread's CSpace (which we will manage in-kernel - although they
@@ -240,7 +252,7 @@ thread_t thread_create (char* name, cspace_t *existing_cspace, addrspace_t exist
 
     int err = seL4_TCB_Configure(thread->tcb_cap, PAPAYA_SYSCALL_SLOT, DEFAULT_PRIORITY,
                              thread->croot->root_cnode, seL4_NilData,
-                             thread->as->pagedir_cap, seL4_NilData, PROCESS_IPC_BUFFER,
+                             thread->as->pagedir_cap, seL4_NilData, ipc_reg->vbase,
                              ipc_cap);
     if (err) {
         printf ("%s: failed to configure TCB: 0x%x\n", __FUNCTION__, err);
@@ -388,53 +400,98 @@ int thread_setup_default_caps (thread_t thread, seL4_CPtr rootsvr_ep) {
     return true;
 }
 
+/*
 int thread_rename (thread_t thread, char* name) {
     free (thread->name);
     thread->name = strdup (name);
 
     return (thread->name != NULL);
 }
+*/
 
-thread_t thread_create_from_fs (char* path, seL4_CPtr rootsvr_ep) {
-    return thread_create_from_cpio (path, rootsvr_ep);
-}
+thread_t thread_create_from_fs (char* name, char *file, seL4_CPtr file_cap, int file_size, seL4_CPtr rootsvr_ep) {
+    assert (file);
 
-thread_t thread_create_from_cpio (char* path, seL4_CPtr rootsvr_ep) {
-    char* elf_base;
-    unsigned long elf_size;
-
-    thread_t thread = thread_create (path, NULL, NULL);
+    thread_t thread = thread_create (name, NULL, NULL);
     if (!thread) {
+        printf ("%s: thread_create failed\n", __FUNCTION__);
         return NULL;
     }
 
     /* install caps that threads usually expect */
     if (!thread_setup_default_caps (thread, rootsvr_ep)) {
+        printf ("%s: could not setup default caps\n", __FUNCTION__);
         thread_destroy (thread);
         return NULL;
     }
 
-    /* FIXME: look up using read */
-    dprintf (1, "Starting \"%s\"...\n", path);
-    elf_base = cpio_get_file (_cpio_archive, path, &elf_size);
-    if (!elf_base) {
-        printf ("failed to get file from CPIO\n");
+    /* make sure we don't have some crafty file that tries to
+     * overrun our buffer, or isn't an ELF at all */
+
+    if (elf_checkFile (file)) {
+        printf ("%s: invalid ELF file\n", __FUNCTION__);
         thread_destroy (thread);
         return NULL;
     }
 
-    /* load the elf image */
-    if (elf_load (thread->as, elf_base)) {
+    //unsigned long sect_start = elf_getProgramHeaderOffset (file, 0);
+    unsigned long sect_end = elf_getProgramHeaderOffset (file, elf_getNumProgramHeaders (file) - 1);
+    
+    //unsigned long program_header_extent = sect_end - sect_start;
+    if (sect_end > PAGE_SIZE) {
+        /* program headers were too big for one read, not worth it */
+        printf ("%s: program headers did not all fit into one page, aborting\n", __FUNCTION__);
+        /*printf ("sect_start offset = 0x%x\n", sect_start);
+        printf ("header size = 0x%x bytes\n", program_header_extent);*/
+        printf ("sect_end = 0x%lx bytes\n", sect_end);
         thread_destroy (thread);
         return NULL;
     }
 
-    /* find where we put the stack */
-    struct as_region* stack = as_get_region_by_type (thread->as, REGION_STACK);
-    vaddr_t stack_top = stack->vbase + stack->size;
+    /* ok looks good should be able to read everything in */
+    seL4_Word entry_point = elf_getEntryPoint (file);
 
-    /*printf ("Thread's address space looks like:\n");
-    addrspace_print_regions (thread->as);*/
+    int num_headers = elf_getNumProgramHeaders (file);
+    for (int i = 0; i < num_headers; i++) {
+        unsigned long flags, segment_file_size, segment_size, vaddr, offset;
+
+        /* skip non-loadable segments (eg debugging data) */
+        if (elf_getProgramHeaderType (file, i) != PT_LOAD) {
+            continue;
+        }
+
+        /* fetch information about this segment */
+        /* FIXME: not page size, but actually just the amount we read previously eg small ELF files < 1KB? */
+        offset = elf_getProgramHeaderOffset (file, i);
+        printf ("OFFSET = 0x%lx\n", offset);
+        segment_file_size = elf_getProgramHeaderFileSize (file, i);
+        printf ("SEGMENT FILE SIZE = 0x%lx\n", segment_file_size);
+        segment_size = elf_getProgramHeaderMemorySize (file, i);
+        printf ("SEGMENT SIZE = 0x%lx\n", segment_size);
+        vaddr = elf_getProgramHeaderVaddr (file, i);
+        printf ("VADDR = 0x%lx\n", vaddr);
+        flags = elf_getProgramHeaderFlags (file, i);
+        printf ("FLAGS = 0x%lx\n", flags);
+
+        /* mmap the file */
+        dprintf(1, " * Loading segment %08x-->%08x\n", (int)vaddr, (int)(vaddr + segment_size));
+        if (!load_segment_into_vspace (thread->as, file_cap, offset, segment_size,
+            segment_file_size, vaddr, get_sel4_rights_from_elf (flags) & seL4_AllRights)) {
+            printf ("%s: failed to load segment 0x%x\n", __FUNCTION__, i);
+            thread_destroy (thread);
+            return NULL;
+        }
+    }
+
+    /* FIXME: free the opened file buf */
+
+    if (as_create_stack_heap (thread->as, NULL, NULL)) {
+        printf ("%s: failed to create stack + heap\n", __FUNCTION__);
+        thread_destroy (thread);
+        return NULL;
+    }
+
+    printf ("******** YO STACK = 0x%x\n", thread->as->stack_vaddr);
 
     /* install into threadlist before we start */
     threadlist_add (thread->pid, thread);
@@ -451,14 +508,93 @@ thread_t thread_create_from_cpio (char* path, seL4_CPtr rootsvr_ep) {
         end->next = thread;
     }
     
-    /* FINALLY, start the new process */
-    seL4_TCB_WritePCSP (thread->tcb_cap, true, elf_getEntryPoint(elf_base), stack_top);
+    /* finally, start the new process */
+    printf ("thread %s started\n", name);
+    seL4_TCB_WritePCSP (thread->tcb_cap, true, entry_point, thread->as->stack_vaddr);
+
+
     return thread;
 }
 
+thread_t thread_create_from_cpio (char* path, seL4_CPtr rootsvr_ep) {
+    /* FIXME: make common with syscall_share.c */
+    //printf ("Hi you wanted to start %s\n", path);
+    //printf ("Defining a region\n");
+    struct as_region* share_reg = as_define_region_within_range (cur_addrspace,
+            PROCESS_SCRATCH_START, PROCESS_SCRATCH_END, PAGE_SIZE, seL4_AllRights, REGION_SHARE);
+
+    assert (share_reg);
+
+    /* map straight away */
+    int status = PAGE_FAILED;
+    assert (page_map (cur_addrspace, share_reg, share_reg->vbase, &status, NULL, NULL));
+    assert (status != PAGE_FAILED);
+
+    /* badge with unique ID */
+    seL4_Word id = cid_next ();
+    //printf ("Adding to map\n");
+    maps_append (id, 0, share_reg->vbase);
+    /*seL4_CPtr their_cbox_cap = cspace_mint_cap (cur_cspace, cur_cspace,
+        _badgemap_ep, seL4_AllRights,
+        seL4_CapData_Badge_new (id));*/
+    /* FIXME: should keep this forever */
+
+    //printf ("M/emcpying\n");
+    memcpy ((char*)share_reg->vbase, path, strlen (path));
+
+    //printf ("New msg\n");
+    seL4_CPtr recv_cap = cspace_alloc_slot (cur_cspace);
+    assert (recv_cap);
+    seL4_SetCapReceivePath (cur_cspace->root_cnode, recv_cap, CSPACE_DEPTH);
+
+    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 3);
+    seL4_SetCap (0, _badgemap_ep);
+    seL4_SetMR (0, VFS_OPEN);
+    seL4_SetMR (1, id);
+    seL4_SetMR (2, FM_READ);
+
+    /* Call is OK here since it's an internal EP and we're going to
+     * be nice and quick */
+    // printf ("OK, calling\n");
+    seL4_MessageInfo_t reply = seL4_Call (_fs_cpio_ep, msg);
+
+    // printf ("got result...\n");
+    if (seL4_GetMR (0) != 0) {
+        printf ("%s: failed to open file\n", __FUNCTION__);
+        return NULL;
+    }
+
+    assert (seL4_MessageInfo_get_capsUnwrapped (reply) == 0);
+
+    if (seL4_MessageInfo_get_extraCaps (reply) != 1) {
+        /* could not find file */
+        printf ("%s: did not have cap\n", __FUNCTION__);
+        return NULL;
+    }
+
+    /* then, load in the first page worth of the file into kmem, so we
+     * can read the headers we need */
+
+    msg = seL4_MessageInfo_new (0, 0, 1, 3);
+    seL4_SetCap (0, _badgemap_ep);
+    seL4_SetMR (0, VFS_READ);
+    seL4_SetMR (1, id);
+    seL4_SetMR (2, PAGE_SIZE);
+    //seL4_SetMR (3, 0);  /* offset */
+
+    seL4_Call (recv_cap, msg);
+    if (seL4_GetMR (0) <= 0) {
+        printf ("%s: read was empty/failed\n", __FUNCTION__);
+        return NULL;
+    }
+
+    return thread_create_from_fs (path, (char*)share_reg->vbase, recv_cap, 0, rootsvr_ep);
+    /* FIXME: free shared buf page */
+}
+
 thread_t
-thread_create_internal (char* name, void* initial_pc) {
-    thread_t thread = thread_create (name, cur_cspace, cur_addrspace);
+thread_create_internal (char* name, cspace_t *existing_cspace, addrspace_t existing_addrspace, void* initial_pc) {
+    thread_t thread = thread_create (name, existing_cspace, existing_addrspace);
     if (!thread) {
         return NULL;
     }
@@ -470,6 +606,11 @@ thread_create_internal (char* name, void* initial_pc) {
     }
 
     thread->static_stack = stack;
+
+    /* install into threadlist before we start */
+    threadlist_add (thread->pid, thread);
+
+    /* DON'T add to running list to hide it */
 
     seL4_TCB_WritePCSP (thread->tcb_cap, true, (seL4_Word)initial_pc, (seL4_Word)&stack[INTERNAL_STACK_SIZE]);
     return thread;

@@ -18,6 +18,14 @@
 struct frameinfo {
     paddr_t paddr;
     uint32_t flags;
+
+    /* for mmaped files - this gets converted to a physical frame when
+     * we get a share (we essentially steal its frame + consume it) */
+    seL4_CPtr file;
+    int offset;
+
+    /* for paging queue */
+    struct frameinfo* next;
 };
 
 static inline int frame_get_refcount (struct frameinfo* fi) {

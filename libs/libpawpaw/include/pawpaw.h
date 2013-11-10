@@ -93,6 +93,7 @@ void pawpaw_event_init (void);
 void pawpaw_event_loop (struct pawpaw_event_table* table, void (*interrupt_func)(struct pawpaw_event* evt), seL4_CPtr ep);
 struct pawpaw_event* pawpaw_event_create (seL4_MessageInfo_t msg, seL4_Word badge);
 void pawpaw_event_dispose (struct pawpaw_event* evt);
+void pawpaw_event_free (struct pawpaw_event* evt);
 int pawpaw_event_process (struct pawpaw_event_table* table, struct pawpaw_event *evt, seL4_CPtr (*save_reply_func)(void));
 seL4_CPtr pawpaw_event_get_recv_cap (void);
 

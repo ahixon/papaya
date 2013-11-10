@@ -30,13 +30,19 @@ int syscall_thread_create (struct pawpaw_event* evt) {
     }
 
     printf ("thread %s asked to create thread with path '%s'\n", current_thread->name, thread_path);
-    thread_t child = thread_create_from_fs (thread_path, rootserver_syscall_cap);
+    /* FIXME: save event, open file, wait for cb, then read 1 byte out, then call:
+       thread_t thread_create_from_fs (char* name, char *file, seL4_CPtr file_cap, int file_size, seL4_CPtr rootsvr_ep)
+
+     */
+
+    /*thread_t child = thread_create_from_fs (thread_path, rootserver_syscall_cap);
     if (child) {
     	seL4_SetMR (0, child->pid);
     } else {
     	seL4_SetMR (0, -1);
-    }
+    }*/
 
+    seL4_SetMR (0, -1);
     return PAWPAW_EVENT_NEEDS_REPLY;
 }
 

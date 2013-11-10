@@ -55,3 +55,13 @@ revision 90
 cat\n
 hello\n
 via netcat
+
+====
+
+seL4_ARM_Page_FlushCaches (q->page->cap);
+
+killing thread 5 (sos_test)...
+seL4 failed assertion 'ptCte' at /fscratch/akroh/AOS/kernel/src/arch/arm/kernel/vspace.c:526 in function unmapPagePTE
+halting...
+
+don't set alloc flag on a page in PT and it does this

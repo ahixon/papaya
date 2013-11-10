@@ -384,6 +384,7 @@ as_create_stack_heap (addrspace_t as, struct as_region** stack, struct as_region
     cur_stack->vbase = as->stack_vaddr - STACK_SIZE;
 
     if (cur_stack && heap) {
+        /* FIXME: might be a bug here - tests pls */
         if (stack != NULL) {
             *stack = cur_stack;
         }

@@ -4,8 +4,9 @@
 
 #include <pawpaw.h>
 #include <syscalls.h>
+#include <assert.h>
 
-#define DEFAULT_SLOT_REQUEST_SIZE		(32)
+#define DEFAULT_SLOT_REQUEST_SIZE		(16)
 
 struct CNodeInfo {
 	seL4_CPtr ptr;
@@ -13,9 +14,9 @@ struct CNodeInfo {
 };
 
 /* Linked list pool of unallocated cspaces */
-struct CNodeInfo* unallocated;
+struct CNodeInfo* unallocated = NULL;
 
-seL4_CPtr pawpaw_request_cspace_slots (int num) {
+seL4_CPtr pawpaw_request_cspace_slots (int num, seL4_Word* count) {
 	seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 2);
     seL4_SetMR (0, SYSCALL_ALLOC_CNODES);
     seL4_SetMR (1, num);
@@ -23,6 +24,7 @@ seL4_CPtr pawpaw_request_cspace_slots (int num) {
     seL4_MessageInfo_t reply = seL4_Call (PAPAYA_SYSCALL_SLOT, msg);
 
     if (seL4_MessageInfo_get_label (reply) == seL4_NoError) {
+    	*count = seL4_GetMR (1);
     	return seL4_GetMR (0);
     } else {
     	return 0;
@@ -56,14 +58,9 @@ static int unallocated_push (seL4_CPtr cn) {
 	}
 
 	info->ptr = cn;
-
-	if (unallocated) {
-		info->next = unallocated;
-	} else {
-		info->next = NULL;
-	}
-
+	info->next = unallocated;
 	unallocated = info;
+	
 	return true;
 }
 
@@ -72,12 +69,12 @@ static int fill_unallocated_pool (int remaining) {
 	int i;
 
 	while (remaining > 0) {
-		seL4_CPtr slot_root = pawpaw_request_cspace_slots (remaining);
+		seL4_Word block_allocated = 0;
+		seL4_CPtr slot_root = pawpaw_request_cspace_slots (remaining, &block_allocated);
 		if (!slot_root) {
 			return 0;
 		}
 
-		seL4_Word block_allocated = seL4_GetMR (1);
 		if (block_allocated == 0) {
 			/* if root server gives us no more, stop trying */
 			break;
@@ -106,7 +103,12 @@ seL4_CPtr pawpaw_cspace_alloc_slot (void) {
 		}
 	}
 
-	return unallocated_pop ();
+	if (!unallocated) {
+		return 0;
+	}
+
+	seL4_CPtr ret = unallocated_pop ();
+	return ret;
 }
 
 void pawpaw_cspace_free_slot (seL4_CPtr cn) {

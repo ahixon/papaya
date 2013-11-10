@@ -1,6 +1,8 @@
+
 #ifndef __PAGETABLE_H__
 #define __PAGETABLE_H__
 
+#include <pawpaw.h>
 
 typedef struct pt_directory* pagetable_t;
 
@@ -18,7 +20,13 @@ typedef struct pt_directory* pagetable_t;
 #define PAGE_ALLOCATED      1
 #define PAGE_SHARED         2
 #define PAGE_COPY_ON_WRITE  4
-#define PAGE_RESERVED       8       /* if you define any more flags, you must increase flag bits in pt_entry struct */
+#define PAGE_SWAPPING       8
+#define PAGE_RESERVED       16       /* if you define any more flags, you must increase flag bits in pt_entry struct */
+
+#define PAGE_FAILED     0
+#define PAGE_SWAP_IN    1
+#define PAGE_SWAP_OUT   2
+#define PAGE_SUCCESS    3
 
 struct pt_entry {
     struct frameinfo* frame;
@@ -47,7 +55,8 @@ void
 pagetable_free (pagetable_t pt);
 
 struct pt_entry*
-page_map (struct addrspace * as, struct as_region * region, vaddr_t vaddr);
+page_map (addrspace_t as, struct as_region *region, vaddr_t vaddr, int *status,
+    void *cb, struct pawpaw_event* evt);
 
 int
 page_unmap (struct pt_entry* entry);

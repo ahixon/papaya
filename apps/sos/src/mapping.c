@@ -57,7 +57,7 @@ map_page(seL4_CPtr frame_cap, seL4_ARM_PageDirectory pd, seL4_Word vaddr,
     int err;
 
     /* Attempt the mapping */
-    //printf ("%s: LEGACY API - trying to map vaddr 0x%x\n", __FUNCTION__, vaddr);
+    printf ("%s: LEGACY API - trying to map vaddr 0x%x\n", __FUNCTION__, vaddr);
     err = seL4_ARM_Page_Map(frame_cap, pd, vaddr, rights, attr);
     if(err == seL4_FailedLookup){
         /* Assume the error was because we have no page table */

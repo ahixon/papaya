@@ -20,7 +20,7 @@
 #include <vm/frametable.h>
 
 #include "thread.h"
-#include <badgemap.h>
+#include <services/services.h>
 #include "boot/boot.h"
 
 #include <autoconf.h>
@@ -31,6 +31,8 @@
 
 seL4_CPtr rootserver_syscall_cap;
 extern seL4_CPtr _badgemap_ep;
+seL4_CPtr _fs_cpio_ep;      /* XXX: move later */
+extern seL4_CPtr _mmap_ep;
 seL4_Word dma_addr;
 
 seL4_CPtr save_reply_cap (void) {
@@ -73,6 +75,46 @@ struct pawpaw_event_table syscall_table = { NUM_SYSCALLS, syscalls, "sos" };
 
 thread_t current_thread;
 
+void syscall_event_dispose (struct pawpaw_event* evt) {
+    if (evt->reply_cap) {
+        cspace_delete_cap (cur_cspace, evt->reply_cap);
+    }
+
+    assert (!evt->share);
+
+    pawpaw_event_free (evt);
+}
+
+void swap_success (struct pawpaw_event* evt) {
+    printf ("!!! SWAP SUCCESS @ 0x%x !!!\n", evt->args[0]);
+
+    thread_t thread = evt->args[1];
+
+    /* print out the page contents */
+    struct pt_entry* page = page_fetch (thread->as->pagetable, evt->args[0]);
+    assert (page);
+
+    assert (page->cap);
+    seL4_CPtr cap = cspace_copy_cap (cur_cspace, cur_cspace, page->cap, seL4_AllRights);
+    assert (cap);
+
+    int err = map_page (cap, seL4_CapInitThreadPD,
+        FRAMEWINDOW_VSTART, seL4_AllRights, seL4_ARM_Default_VMAttributes);
+
+    printf ("err = %d\n", err);
+    assert (!err);
+
+    for (int i = 0; i < 48; i++) {
+        char* addr = FRAMEWINDOW_VSTART + i;
+        printf ("\t%08x\t%08x\n", evt->args[0] + i, *addr);
+    }
+
+    seL4_ARM_Page_Unmap (cap);
+
+    seL4_Send (evt->reply_cap, evt->reply);
+    syscall_event_dispose (evt);
+}
+
 void syscall_loop (seL4_CPtr ep) {
     while (1) {
         seL4_Word badge;
@@ -83,8 +125,11 @@ void syscall_loop (seL4_CPtr ep) {
         /* look for the thread associated with the syscall */
         thread_t thread = thread_lookup (badge);
         if (!thread) {
+            printf ("syscall: thread lookup for %d failed\n", badge);
             continue;
         }
+
+        //if (strcmp (thread->name, )
 
         current_thread = thread;
 
@@ -94,7 +139,7 @@ void syscall_loop (seL4_CPtr ep) {
             struct pawpaw_event* evt = pawpaw_event_create (message, badge);
             if (!evt) {
                 printf ("syscall: failed to create event\n");
-                pawpaw_event_dispose (evt);
+                syscall_event_dispose (evt);
                 break;
             }
 
@@ -103,13 +148,12 @@ void syscall_loop (seL4_CPtr ep) {
             switch (result) {
                 case PAWPAW_EVENT_NEEDS_REPLY:
                     seL4_Send (evt->reply_cap, evt->reply);
-                    pawpaw_event_dispose (evt); 
                     break;
                 case PAWPAW_EVENT_HANDLED:
-                    pawpaw_event_dispose (evt);
                     break;
                 case PAWPAW_EVENT_HANDLED_SAVED:
                     /* don't dispose event since it's still used somewhere */
+                    evt = NULL;
                     break;
                 case PAWPAW_EVENT_INVALID:
                 case PAWPAW_EVENT_UNHANDLED:
@@ -119,17 +163,61 @@ void syscall_loop (seL4_CPtr ep) {
                     break;
             }
 
+            /* free it if we need to */
+            if (evt) {
+                syscall_event_dispose (evt);
+            }
+
             break;
         }
 
         case seL4_VMFault:
-            if (!seL4_GetMR(2)) {
-                /* data fault; try to map in page */
-                if (as_map_page (thread->as, seL4_GetMR(1))) {
-                    /* restart calling thread now we have the page set */
-                    seL4_Reply (message);
+        {
+            //seL4_Word data_fault = !seL4_GetMR (2);
+            vaddr_t vaddr = seL4_GetMR (1);
+
+            /* align to page */
+            vaddr &= ~(PAGE_SIZE - 1);
+
+            /* find associated region, if any */
+            struct as_region* reg = as_get_region_by_addr (thread->as, vaddr);
+            if (reg) {
+                /* if we're mapping inside the stack region, update our "last used" stack
+                 * counter - stack grows downwards */
+                if (thread->as->special_regions[REGION_STACK] == reg) {
+                    if (vaddr < thread->as->stack_vaddr) {
+                        thread->as->stack_vaddr = vaddr;
+                    }
+                }
+
+                int status = PAGE_FAILED;
+                struct pawpaw_event* evt = pawpaw_event_create (message, badge);
+                if (!evt) {
+                    printf ("syscall: failed to create event\n");
+                    syscall_event_dispose (evt);
+                    thread_destroy (thread);
                     break;
                 }
+
+                evt->reply_cap = cspace_save_reply_cap (cur_cspace);
+                evt->reply = message;
+                evt->args = malloc (sizeof (seL4_Word) * 2);
+                evt->args[0] = vaddr;
+                evt->args[1] = thread;
+
+                if (page_map (thread->as, reg, vaddr, &status, swap_success, evt)) {
+                    /* restart calling thread now we have the page set */
+                    swap_success (evt);
+                    break;
+                }
+
+                if (status != PAGE_FAILED) {
+                    break;
+                }        
+
+                printf ("syscall: pagemap failed\n");
+            } else {
+                printf ("syscall: no such region for vaddr 0x%x\n", vaddr);
             }
 
             dprintf (0, "vm fault at 0x%08x, pc = 0x%08x, %s\n", seL4_GetMR(1),
@@ -140,11 +228,14 @@ void syscall_loop (seL4_CPtr ep) {
             thread_destroy (thread);
 
             break;
+        }
 
-        case seL4_CapFault:
+        case 42:
         {
-            char* msgs[4] = {"Invalid root", "Missing cap", "Depth mismatch", "Guard mismatch"};
-            printf ("cap fault, was because of: %s\n", msgs[seL4_GetMR (3)]);
+            void (*cb)(struct pawpaw_event *evt);
+            cb = seL4_GetMR (0);
+            printf ("** CALLBACK - running %p (0x%x)\n", cb, seL4_GetMR (1));
+            cb (seL4_GetMR (1));
             break;
         }
 
@@ -211,13 +302,14 @@ static void rootserver_init (seL4_CPtr* ipc_ep){
     conditional_panic (!cur_addrspace, "failed to create root server address space");
 
     /* and map in an IPC for internal services so that thread_create_internal works */
-    if (!as_define_region (cur_addrspace, PROCESS_IPC_BUFFER, PAGE_SIZE, seL4_AllRights, REGION_IPC)) {
-        panic ("failed to define IPC region for internal processes");
-    }
+    // struct as_region* ipc_reg = as_define_region (cur_addrspace, PROCESS_IPC_BUFFER, PAGE_SIZE, seL4_AllRights, REGION_IPC);
+    // if (!ipc_reg) {
+    //     panic ("failed to define IPC region for internal processes");
+    // }
 
-    if (!as_map_page (cur_addrspace, PROCESS_IPC_BUFFER)) {
-        panic ("failed to map IPC region for internal processes");
-    }
+    // if (!page_map (cur_addrspace, ipc_reg, PROCESS_IPC_BUFFER)) {
+    //     panic ("failed to map IPC region for internal processes");
+    // }
 
     /*if (!as_define_region (cur_addrspace, PROCESS_IPC_BUFFER, PAGE_SIZE, seL4_AllRights, REGION_IPC)) {
         panic ("failed to define IPC region for internal processes");
@@ -225,6 +317,15 @@ static void rootserver_init (seL4_CPtr* ipc_ep){
 
     /* Initialise PID and map ID generators */
     uid_init ();
+
+    thread_t main_thread = thread_alloc ();
+    conditional_panic (!main_thread, "failed to alloc main thread struct\n");
+    main_thread->name = "rootsvr";
+    main_thread->as = cur_addrspace;
+    main_thread->croot = cur_cspace;
+    main_thread->pid = pid_next ();
+    assert (main_thread->pid == 0);
+    threadlist_add (main_thread->pid, main_thread);
 
     /* Create synchronous endpoint for process syscalls via IPC */
     seL4_Word ep_addr = ut_alloc (seL4_EndpointBits);
@@ -235,7 +336,7 @@ static void rootserver_init (seL4_CPtr* ipc_ep){
     conditional_panic (err, "failed to retype syscall endpoint");
 
     /* Start internal badge map service */
-    thread_t badgemap_thread = thread_create_internal ("badgemap", mapper_main);
+    thread_t badgemap_thread = thread_create_internal ("badgemap", cur_cspace, cur_addrspace, mapper_main);
     conditional_panic (!badgemap_thread, "failed to start badgemap");
 
     /* Create specific EP for badge map communication (compared to syscall EP) */
@@ -245,6 +346,39 @@ static void rootserver_init (seL4_CPtr* ipc_ep){
                                 seL4_EndpointObject, seL4_EndpointBits,
                                 cur_cspace, &_badgemap_ep);
     conditional_panic (err, "failed to retype badgemap endpoint");
+
+
+    /* Create specific EP for badge map communication (compared to syscall EP) */
+    ep_addr = ut_alloc (seL4_EndpointBits);
+    conditional_panic (!ep_addr, "no memory for mmap endpoint");
+    err = cspace_ut_retype_addr (ep_addr, 
+                                seL4_EndpointObject, seL4_EndpointBits,
+                                cur_cspace, &_mmap_ep);
+    conditional_panic (err, "failed to retype mmap endpoint");
+
+    /* Start mmap svc */
+    thread_t mmap_thread = thread_create_internal ("mmap", cur_cspace, cur_addrspace, mmap_main);
+    conditional_panic (!mmap_thread, "failed to start mmap");
+
+    /* and do it for CPIO FS */
+    ep_addr = ut_alloc (seL4_EndpointBits);
+    conditional_panic (!ep_addr, "no memory for CPIO FS EP");
+
+    thread_t fs_cpio_thread = thread_create_internal ("fs_cpio", NULL, cur_addrspace, fs_cpio_main);
+    conditional_panic (!fs_cpio_thread, "failed to start fs_cpio");
+
+    /* XXX: racey, but #yolo */
+    thread_setup_default_caps (fs_cpio_thread, rootserver_syscall_cap);
+
+    err = cspace_ut_retype_addr (ep_addr, 
+                                seL4_EndpointObject, seL4_EndpointBits,
+                                cur_cspace, &_fs_cpio_ep);
+    conditional_panic (err, "failed to retype CPIO FS EP");
+
+    /* FIXME: move into thread.c somewhere */
+    cspace_free_slot (fs_cpio_thread->croot, PAPAYA_INITIAL_FREE_SLOT);
+    seL4_CPtr last_cap = cspace_copy_cap (fs_cpio_thread->croot, cur_cspace, _fs_cpio_ep, seL4_AllRights);
+    assert (last_cap == PAPAYA_INITIAL_FREE_SLOT);
 }
 
 /*
@@ -259,7 +393,7 @@ int main (void) {
     /* start the system boot thread - this will create all basic
      * services, and start the boot application when they're all
      * ready */    
-    thread_t booter = thread_create_internal ("svc_init", boot_thread);
+    thread_t booter = thread_create_internal ("svc_init", cur_cspace, cur_addrspace, boot_thread);
     conditional_panic (!booter, "could not start boot thread\n");
 
     /* and just listen for IPCs */

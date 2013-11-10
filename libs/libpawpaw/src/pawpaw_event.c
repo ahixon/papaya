@@ -90,10 +90,6 @@ void pawpaw_event_dispose (struct pawpaw_event* evt) {
 		pawpaw_cspace_free_slot (evt->reply_cap);
 	}
 
-	if (evt->args) {
-		free (evt->args);
-	}
-
     if (evt->share) {
         if (evt->flags & PAWPAW_EVENT_UNMOUNT) {
             printf ("%s: had share 0x%x @ %p, unmounting\n", evt->table->app_name, evt->share->id, evt->share->buf);
@@ -104,7 +100,19 @@ void pawpaw_event_dispose (struct pawpaw_event* evt) {
         }
     }
 
-	free (evt);
+	pawpaw_event_free (evt);
+}
+
+void pawpaw_event_free (struct pawpaw_event* evt) {
+    if (!evt) {
+        return;
+    }
+
+    if (evt->args) {
+        free (evt->args);
+    }
+
+    free (evt);
 }
 
 int pawpaw_event_process (struct pawpaw_event_table* table, struct pawpaw_event *evt, seL4_CPtr (*save_reply_func)(void)) {
@@ -166,7 +174,6 @@ int pawpaw_event_process (struct pawpaw_event_table* table, struct pawpaw_event 
     }
 
     if (eh.flags & HANDLER_AUTOMOUNT) {
-
         if (seL4_MessageInfo_get_extraCaps (evt->msg) > 0) {
             //printf ("%s: mounting share from cap\n", table->app_name);
             evt->share = pawpaw_share_mount (recv_cap);
@@ -189,8 +196,8 @@ int pawpaw_event_process (struct pawpaw_event_table* table, struct pawpaw_event 
     }
 
     /* ok call the event */
-    //printf ("%s: handling function id %d\n", table->app_name, evt_id);
+    printf ("%s: handling function id %d\n", table->app_name, evt_id);
     int res = eh.func (evt);
-    //printf ("%s: finished syscall\n", table->app_name);
+    printf ("%s: finished syscall\n", table->app_name);
     return res;
 }

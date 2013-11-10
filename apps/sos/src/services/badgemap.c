@@ -44,12 +44,13 @@ volatile seL4_CPtr _badgemap_ep = 0;
  */
 int mapper_main (void) {	
 	while (1) {
-		seL4_Word badge;
+		seL4_Word badge = 0;
 		seL4_Wait (_badgemap_ep, &badge);
 		badgemap_found = false;
 
 		/* FIXME: yuck linear search through list */
 		struct map* m = maps_head;
+		//printf ("badgemap: searching for 0x%x\n", badge);
 		while (m) {
 			if (m->idx == badge) {
 				seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 3);

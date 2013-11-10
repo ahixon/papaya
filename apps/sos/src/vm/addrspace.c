@@ -119,39 +119,3 @@ addrspace_destroy (addrspace_t as) {
 
     free (as);
 }
-
-/*
- * Maps the page which exists at the given virtual address into a process'
- * address space. Usually called when a VM fault occurs.
- * 
- * Note, this should only be called once per thread! seL4 or the hardware is
- * in charge of handling the TLB, so we don't have to worry about this. This
- * function merely registers the page <-> frame mapping with the kernel.
- *
- * Returns NULL if the address is invalid, the page has already been mapped,
- * or some other error (ie OOM) occured while we were trying to map the page.
- */
-struct pt_entry*
-as_map_page (addrspace_t as, vaddr_t vaddr) {
-    /* check if vaddr in a region */
-    assert (as != NULL);
-
-    /* align the vaddress to get the page-aligned address to map */
-    vaddr &= ~(PAGE_SIZE - 1);
-
-    struct as_region* reg = as_get_region_by_addr (as, vaddr);
-    if (!reg) {
-        return 0;
-    }
-
-    /* if we're mapping inside the stack region, update our "last used" stack
-     * counter - stack grows downwards */
-    if (as->special_regions[REGION_STACK] == reg) {
-        if (vaddr < as->stack_vaddr) {
-            as->stack_vaddr = vaddr;
-        }
-    }
-
-    /* finally, ask the pagetable to map the page in */
-    return page_map (as, reg, vaddr);
-}

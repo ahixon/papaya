@@ -9,7 +9,7 @@
 
 #include <vm/addrspace.h>
 
-#include <badgemap.h>
+#include <services/services.h>
 
 extern seL4_CPtr _badgemap_ep;
 extern short badgemap_found;
@@ -110,7 +110,8 @@ int syscall_share_mount (struct pawpaw_event* evt) {
     /* ensure the other region still exists */
     //printf ("%s: wanting to get source region for source vaddr 0x%x\n", __FUNCTION__, seL4_GetMR (1));
     //addrspace_print_regions (src_thread->as);
-    struct as_region* other_reg = as_get_region_by_addr (src_thread->as, seL4_GetMR (1));
+    seL4_Word src_vaddr = seL4_GetMR (1);
+    struct as_region* other_reg = as_get_region_by_addr (src_thread->as, src_vaddr);
     if (!other_reg) {
         printf ("%s: fetching source region failed\n", __FUNCTION__);
         evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
@@ -134,10 +135,10 @@ int syscall_share_mount (struct pawpaw_event* evt) {
     seL4_SetMR (2, 0);
 
     /* cool, now shared map the two */
-    printf ("%s: mapping vaddr 0x%x in %s (share 0x%x) to 0x%x in %s\n", __FUNCTION__, other_reg->vbase, src_thread->name, id, share_reg->vbase, current_thread->name);
+    printf ("%s: mapping vaddr 0x%x in %s (share 0x%x) to 0x%x in %s\n", __FUNCTION__, src_vaddr, src_thread->name, id, share_reg->vbase, current_thread->name);
 
     struct pt_entry* pte = page_map_shared (current_thread->as, share_reg, share_reg->vbase,
-        src_thread->as, other_reg, other_reg->vbase, false);
+        src_thread->as, other_reg, src_vaddr, false);
 
     if (!pte) {
         printf ("%s: map shared failed\n", __FUNCTION__);

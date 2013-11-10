@@ -73,8 +73,14 @@ int syscall_map_device (struct pawpaw_event* evt) {
             printf ("%s: failed to allocate new untyped frame for vaddr 0x%x\n", __FUNCTION__, vaddr);
         }
 
-        struct pt_entry* map_frame = page_map (current_thread->as, reg, vaddr);
-        assert (map_frame);
+        /*struct pt_entry* map_frame = page_map (current_thread->as, reg, vaddr);
+        assert (map_frame);*/
+
+        int status = PAGE_FAILED;
+        struct pt_entry* page = page_map (current_thread->as, reg, vaddr, &status, NULL, NULL);
+        /* FIXME: should be able to handle swap outs!!! */
+        assert (status == PAGE_SUCCESS);
+        assert (page);
 
         //printf ("%s: underlying frame for 0x%x is now 0x%x\n", __FUNCTION__, vaddr, paddr);
         paddr += PAGE_SIZE;
@@ -130,11 +136,18 @@ int syscall_alloc_dma (struct pawpaw_event* evt) {
             printf ("%s: failed to allocate new untyped frame for vaddr 0x%x\n", __FUNCTION__, vaddr);
         }
 
+        /*
         struct pt_entry* map_frame = page_map (current_thread->as, reg, vaddr);
         assert (map_frame);
+        */
+        int status = PAGE_FAILED;
+        struct pt_entry* page = page_map (current_thread->as, reg, vaddr, &status, NULL, NULL);
+        /* FIXME: should be able to handle swap outs!!! */
+        assert (status == PAGE_SUCCESS);
+        assert (page);
 
         /* GOD DAMN CACHES - FIXME: only do if we remapped */
-        seL4_ARM_Page_FlushCaches(map_frame->cap);
+        seL4_ARM_Page_FlushCaches(page->cap);
 
         //printf ("%s: underlying frame for 0x%x is now 0x%x\n", __FUNCTION__, vaddr, local_dma);
         local_dma += PAGE_SIZE;

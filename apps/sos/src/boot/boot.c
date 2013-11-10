@@ -38,7 +38,7 @@ int boot_thread (void) {
     unsigned long size;
 
     cpio_bootlist = cpio_get_file (_cpio_archive, BOOT_LIST, &size);
-    conditional_panic (!cpio_bootlist, "failed to find boot list in CPIO archive\n");
+    conditional_panic (!cpio_bootlist, "failed to find boot list '"BOOT_LIST"' in CPIO archive\n");
 
     /* eugh.. in case we have no new lines at the end - also less chance of mangling CPIO */
     mem_bootlist = malloc (size + 1);
