@@ -120,15 +120,17 @@ int syscall_alloc_dma (struct pawpaw_event* evt) {
 
     /* go through all the underlying pages + preallocate frames */
     for (vaddr_t vaddr = evt->args[0]; vaddr < end; vaddr += PAGE_SIZE) {
-        /* FIXME: should be page_fetch_entry? well probably not actually since user is mapping in already given region - BUT WHEN WE DEMAND LOAD STUFF THEN NO! */
-        struct pt_entry* pte = page_fetch (current_thread->as->pagetable, vaddr);
+        /* FIXME: don't use 0 - magic numbers suck. we just do this because we want no caching */
+        struct pt_entry* pte = page_fetch_entry (current_thread->as, 0, current_thread->as->pagetable, vaddr);
         assert (pte);
 
-        if (pte->cap || pte->frame) {
+        if (pte->cap || (pte->frame && pte->frame->paddr)) {
             /* free underlying frame - should flush cache, right? */
-            //printf ("%s: vaddr 0x%x already allocated, freeing\n", __FUNCTION__, vaddr);
+            printf ("%s: vaddr 0x%x already allocated, freeing\n", __FUNCTION__, vaddr);
             page_unmap (pte);
-            assert (!pte->frame);
+            if (pte->frame) {
+                assert (!pte->frame->paddr);
+            }
         }
 
         pte->frame = frame_new_from_untyped (local_dma);

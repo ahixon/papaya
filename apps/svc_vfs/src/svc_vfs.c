@@ -404,7 +404,11 @@ struct pawpaw_event_table handler_table = { VFS_NUM_EVENTS, handlers, "vfs" };
 
 int main (void) {
     /* install root node */
+    printf ("svc_vfs: installing root node\n");
     struct fs_node *root = malloc (sizeof (struct fs_node));
+    printf ("svc_vfs: root was: %p\n", root);
+    assert (root);
+
     root->dirname = "";
     root->fs = NULL;
     root->mounter_badge = 0;
@@ -414,14 +418,19 @@ int main (void) {
     fs_root = root;
 
     /* init event handler */
+    printf ("svc_vfs: calling pawpaw_event_init\n");
     pawpaw_event_init ();
 
     /* create our EP to listen on */
+    printf ("svc_vfs: creating synch EP\n");
     seL4_CPtr service_cap = pawpaw_create_ep ();
     assert (service_cap);
 
     /* register and listen */
+    printf ("svc_vfs: registering service\n");
     pawpaw_register_service (service_cap);
+
+    printf ("svc_vfs: started; listening for events\n");
     pawpaw_event_loop (&handler_table, NULL, service_cap);
     return 0;
 }

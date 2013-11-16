@@ -1,5 +1,6 @@
 #include <stdarg.h>
 #include <assert.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -31,3 +32,9 @@ void abort(void) {
         ; /* We don't return after this */
 }
 
+int
+fputc(int c, FILE *stream)
+{
+    seL4_DebugPutChar(c);
+    return 0;
+}

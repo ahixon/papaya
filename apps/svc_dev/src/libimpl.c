@@ -76,3 +76,10 @@ struct __file __stderr = {
 FILE *stdin = &__stdin;
 FILE *stdout = &__stdout;
 FILE *stderr = &__stderr;
+
+int
+fputc(int c, FILE *stream)
+{
+    seL4_DebugPutChar(c);
+    return 0;
+}

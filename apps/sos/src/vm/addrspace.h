@@ -5,6 +5,9 @@
 
 #include <vm/vm.h>
 
+//#define DEFAULT_ATTRIBUTES	seL4_ARM_Default_VMAttributes
+#define DEFAULT_ATTRIBUTES	seL4_ARM_Default_VMAttributes
+
 #define NUM_SPECIAL_REGION_TYPES	4
 typedef enum {
 	REGION_STACK,

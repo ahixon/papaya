@@ -105,15 +105,12 @@ addrspace_destroy (addrspace_t as) {
 
     if (as->pagedir_cap != seL4_CapInitThreadPD) {
         if (as->pagedir_cap) {
-            //printf ("deleting PD cap\n");
             cspace_delete_cap (cur_cspace, as->pagedir_cap);
-            //printf ("deleted\n");
         }
 
         if (as->pagedir_addr) {
-            //printf ("freeing pagedir physical mem\n");
-            ut_free (as->pagedir_addr, seL4_PageDirBits);
-            //printf ("done\n");
+            /* FIXME: seL4 bug? related to TCB binding bug */
+            //ut_free (as->pagedir_addr, seL4_PageDirBits);
         }
     }
 

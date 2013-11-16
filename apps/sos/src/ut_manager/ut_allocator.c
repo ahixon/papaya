@@ -430,12 +430,12 @@ void ut_free(seL4_Word addr, int sizebits){
 /* debugging */
 seL4_Word ut_alloc_debug (const char* func, const int lineno, int sizebits) {
     seL4_Word res = ut_alloc (sizebits);
-    //printf ("ut_alloc: %s:%d allocated 0x%x bits untyped @ 0x%x\n", func, lineno, sizebits, res);
+    printf ("ut_alloc: %s:%d allocated 0x%x bits untyped @ 0x%x\n", func, lineno, sizebits, res);
     return res;
 }
 
 void ut_free_debug (const char* func, const int lineno, seL4_Word addr, int sizebits) {
-    //printf ("ut_free: %s:%d freeing 0x%x bits @ paddr 0x%x\n", func, lineno, sizebits, addr);
+    printf ("ut_free: %s:%d freeing 0x%x bits @ paddr 0x%x\n", func, lineno, sizebits, addr);
     ut_free (addr, sizebits);
 }
 

@@ -30,6 +30,7 @@
 #include <sys/panic.h>
 
 seL4_CPtr rootserver_syscall_cap;
+seL4_CPtr rootserver_async_cap;
 extern seL4_CPtr _badgemap_ep;
 seL4_CPtr _fs_cpio_ep;      /* XXX: move later */
 extern seL4_CPtr _mmap_ep;
@@ -89,11 +90,16 @@ void swap_success (struct pawpaw_event* evt) {
     printf ("!!! SWAP SUCCESS @ 0x%x !!!\n", evt->args[0]);
 
     thread_t thread = evt->args[1];
+    assert (thread);
 
     /* print out the page contents */
     struct pt_entry* page = page_fetch (thread->as->pagetable, evt->args[0]);
     assert (page);
 
+    page->flags &= ~PAGE_SWAPPING;
+    page->flags |= PAGE_ALLOCATED;
+
+#if 0
     assert (page->cap);
     seL4_CPtr cap = cspace_copy_cap (cur_cspace, cur_cspace, page->cap, seL4_AllRights);
     assert (cap);
@@ -104,14 +110,44 @@ void swap_success (struct pawpaw_event* evt) {
     printf ("err = %d\n", err);
     assert (!err);
 
-    for (int i = 0; i < 48; i++) {
-        char* addr = FRAMEWINDOW_VSTART + i;
-        printf ("\t%08x\t%08x\n", evt->args[0] + i, *addr);
+    for (int i = 0; i < PAGE_SIZE; i += 0x10) {
+        printf ("%08x: ", evt->args[0] + i);
+
+        for (int j = 0; j < 0x10; j++) {
+            char* addr = FRAMEWINDOW_VSTART + i + j;
+            printf ("%02x", *addr);
+
+            if ((seL4_Word)addr % 2) {
+                printf (" ");
+            }
+        }
+
+        printf (" ");
+
+        /* and char rep */
+        for (int j = 0; j < 0x10; j++) {
+            char* addr = FRAMEWINDOW_VSTART + i + j;
+            if (*addr >= 0x20 && *addr <= 0x7e) {
+                printf ("%c", *addr);
+            } else {
+                printf (".");
+            }
+        }
+
+        printf ("\n");
     }
 
     seL4_ARM_Page_Unmap (cap);
+#endif
 
+    printf ("flushing caches...\n");
+    seL4_ARM_Page_FlushCaches (page->cap);
+
+    /* wake the thread up */
+    printf ("resuming thread..\n");
     seL4_Send (evt->reply_cap, evt->reply);
+
+    printf ("disposing..\n");
     syscall_event_dispose (evt);
 }
 
@@ -212,6 +248,7 @@ void syscall_loop (seL4_CPtr ep) {
                 }
 
                 if (status != PAGE_FAILED) {
+                    /* waiting for page to be swapped, mmap_svc will tell us */
                     break;
                 }        
 
@@ -224,18 +261,39 @@ void syscall_loop (seL4_CPtr ep) {
                     seL4_GetMR(0),
                     seL4_GetMR(2) ? "Instruction Fault" : "Data fault");
 
+            printf ("arch dependent = 0x%x\n", seL4_GetMR (3));
+
+            addrspace_print_regions (thread->as);
+            pagetable_dump (thread->as->pagetable);
+
             dprintf (0, "killing thread %d (%s)...\n", thread->pid, thread->name);
             thread_destroy (thread);
 
             break;
         }
 
-        case 42:
+        case seL4_Interrupt:
         {
+            printf ("** CALLBACK **\n");
+            /* ask mmap for next result in queue */
             void (*cb)(struct pawpaw_event *evt);
-            cb = seL4_GetMR (0);
-            printf ("** CALLBACK - running %p (0x%x)\n", cb, seL4_GetMR (1));
-            cb (seL4_GetMR (1));
+
+            seL4_MessageInfo_t req_msg = seL4_MessageInfo_new (0, 0, 0, 1);
+            do {
+                seL4_SetMR (0, MMAP_RESULT);
+                seL4_Call (_mmap_ep, req_msg);
+
+                cb = seL4_GetMR (0);
+                seL4_Word arg = seL4_GetMR (1);
+
+                if (cb != NULL && arg != 0) {
+                    printf ("calling %p (0x%x)\n", cb, arg);
+                    cb (arg);
+                } else {
+                    printf ("syscall: failed to get next done queue - cb = %p, arg = 0x%x\n", cb, arg);
+                }
+            } while (cb != NULL);
+
             break;
         }
 
@@ -264,7 +322,7 @@ void cspace_ut_free_wrapper (seL4_Word addr, int sizebits) {
 /*
  * Initialisation of subsystems and resources required for Papaya.
  */
-static void rootserver_init (seL4_CPtr* ipc_ep){
+static void rootserver_init (seL4_CPtr* ipc_ep, seL4_CPtr* async_ep) {
     seL4_BootInfo* _boot_info;
     seL4_Word low, high;
     int err;
@@ -284,7 +342,7 @@ static void rootserver_init (seL4_CPtr* ipc_ep){
 
     /* find available memory */
     ut_find_memory (&low, &high);
-    high = low + (0x1000 * 1024 * 10);  /* XXX: artificially limit memory to 10 MB */
+    high = low + (0x1000 * 1024 * 20);  /* XXX: artificially limit memory to 10 MB */
 
     /* Initialise the untyped memory allocator */
     ut_allocator_init (low, high);
@@ -335,6 +393,18 @@ static void rootserver_init (seL4_CPtr* ipc_ep){
                                 cur_cspace, ipc_ep);
     conditional_panic (err, "failed to retype syscall endpoint");
 
+    /* Create async EP for ourselves */
+    ep_addr = ut_alloc (seL4_EndpointBits);
+    conditional_panic (!ep_addr, "no memory for rootserver async EP");
+    err = cspace_ut_retype_addr (ep_addr, 
+                            seL4_AsyncEndpointObject, seL4_EndpointBits,
+                            cur_cspace, async_ep);
+    conditional_panic (err, "failed to retype rootserver async EP");
+
+    /* Bind so we can receive notifications on the one EP */
+    err = seL4_TCB_BindAEP (seL4_CapInitThreadTCB, *async_ep);
+    conditional_panic( err, "Failed to bind async EP to TCB");
+
     /* Start internal badge map service */
     thread_t badgemap_thread = thread_create_internal ("badgemap", cur_cspace, cur_addrspace, mapper_main);
     conditional_panic (!badgemap_thread, "failed to start badgemap");
@@ -346,7 +416,6 @@ static void rootserver_init (seL4_CPtr* ipc_ep){
                                 seL4_EndpointObject, seL4_EndpointBits,
                                 cur_cspace, &_badgemap_ep);
     conditional_panic (err, "failed to retype badgemap endpoint");
-
 
     /* Create specific EP for badge map communication (compared to syscall EP) */
     ep_addr = ut_alloc (seL4_EndpointBits);
@@ -388,7 +457,7 @@ int main (void) {
     dprintf (0, "\nPapaya starting...\n");
 
     /* initialise root server from whatever seL4 left us */
-    rootserver_init (&rootserver_syscall_cap);
+    rootserver_init (&rootserver_syscall_cap, &rootserver_async_cap);
     
     /* start the system boot thread - this will create all basic
      * services, and start the boot application when they're all

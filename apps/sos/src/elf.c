@@ -57,10 +57,11 @@ int load_segment_into_vspace(addrspace_t dest_as,
     unsigned long pos;
 
     pos = 0;
-    while (pos < segment_size) {
+    while (pos < file_size) {
         seL4_Word vpage = PAGE_ALIGN (dst);
 
-        struct pt_entry* page = page_fetch_entry (dest_as, seL4_ARM_Default_VMAttributes, dest_as->pagetable, vpage);
+        /* FIXME: should be region attributes? */
+        struct pt_entry* page = page_fetch_entry (dest_as, DEFAULT_ATTRIBUTES, dest_as->pagetable, vpage);
         if (!page) {
             printf ("%s: failed to fetch page for vaddr 0x%x\n", __FUNCTION__, vpage);
             return false;
@@ -72,21 +73,26 @@ int load_segment_into_vspace(addrspace_t dest_as,
             return false;
         }
 
-        printf ("elf: set frame info for 0x%x - file cap %d @ offset 0x%x\n", vpage, src, offset);
 
         /* mmap the page to the file */
+        int nbytes = PAGESIZE - (dst & PAGEMASK);
+
         page->frame->file = src;
-        page->frame->offset = offset;
+        page->frame->load_offset = dst - vpage;
+        page->frame->file_offset = offset;
+        
+        page->frame->load_length = MIN(nbytes, file_size - pos);
+        printf ("elf: set frame info for 0x%x - file cap %d @ offset 0x%x load offset 0x%x load len = 0x%x\n", vpage, src, offset, page->frame->load_offset, page->frame->load_length);
 
         /* FIXME: increment by nbytes or PAGE_SIZE */
-        //int nbytes = PAGESIZE - (dst & PAGEMASK);
-        /*offset += nbytes;
+        offset += nbytes;
         pos += nbytes;
-        dst += nbytes;*/
+        dst += nbytes;
 
-        offset += PAGE_SIZE - 0x680;
+
+        /*offset += PAGE_SIZE;
         pos += PAGE_SIZE;
-        dst += PAGE_SIZE;
+        dst += PAGE_SIZE;*/
     }
 
     return true;

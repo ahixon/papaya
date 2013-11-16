@@ -4,6 +4,11 @@
 #include <sel4/sel4.h>
 #include <uid.h>
 
+#define MMAP_REQUEST 	1
+#define MMAP_RESULT		2
+
+#define MMAP_IRQ		1
+
 int mapper_main (void);
 int mmap_main (void);
 int fs_cpio_main (void);

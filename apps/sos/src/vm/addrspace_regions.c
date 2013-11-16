@@ -123,7 +123,7 @@ as_define_region (addrspace_t as, vaddr_t vbase, size_t size, seL4_CapRights per
     reg->size = size;
     reg->permissions = permissions;
     reg->type = type;
-    reg->attributes = seL4_ARM_Default_VMAttributes;
+    reg->attributes = DEFAULT_ATTRIBUTES;
     reg->next = NULL;
     reg->linked = NULL;
     reg->owner = as;

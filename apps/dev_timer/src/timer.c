@@ -326,39 +326,39 @@ static void service_init (void) {
     int err;
 
     /* Try to register events on our IRQ */
-    //printf ("timer: registering IRQ\n");
+    printf ("timer: registering IRQ\n");
     handler = pawpaw_register_irq (IRQ_GPT);
     assert (handler);
 
-    //printf ("timer: creating async EP\n");
+    printf ("timer: creating async EP\n");
     seL4_CPtr async_ep = pawpaw_create_ep_async();
     assert (async_ep);
 
-    //printf ("timer: creating sync EP\n");
+    printf ("timer: creating sync EP\n");
     service_ep = pawpaw_create_ep ();
     assert (service_ep);
 
     /* now bind our async EP to our regular message EP (so we can receive msgs/signals) */
-    //printf ("timer: binding TCB and async EP\n");
+    printf ("timer: binding TCB and async EP\n");
     err = seL4_TCB_BindAEP (PAPAYA_TCB_SLOT, async_ep);
     assert (!err);
 
     /* awesome, now setup to receive interrupts on our async endpoint */
-    //printf ("timer: setting async EP to receive IRQ events\n");
+    printf ("timer: setting async EP to receive IRQ events\n");
     err = seL4_IRQHandler_SetEndpoint(handler, async_ep);
     assert (!err);
 
     /* map the GPT registers into memory */
-    //printf ("timer: mapping device registers\n");
+    printf ("timer: mapping device registers\n");
     regs = pawpaw_map_device (GPT_MEMMAP_BASE, GPT_MEMMAP_SIZE);
     assert (regs);
 
     /* and if anyone asks for us, tell them to use our endpoint */
-    //printf ("timer: registering service\n");
+    printf ("timer: registering service\n");
     err = pawpaw_register_service (service_ep);
     assert (err);
 
-    //printf ("timer: service setup done\n");
+    printf ("timer: service setup done\n");
     /* FIXME: register the device so we get /dev/timer0 !!! */
 }
 

@@ -148,11 +148,13 @@ frame_free (struct frameinfo* fi) {
 
     assert (fi->flags & FRAME_ALLOCATED);
 
-    int refcount = frame_get_refcount (fi);
+    unsigned int refcount = frame_get_refcount (fi);
+    printf ("%s: refcount for paddr 0x%x is %d\n", __FUNCTION__, fi->paddr, refcount);
     assert (refcount > 0);
     if (refcount > 1) {
         /* just reduce refcount, don't actually free yet */
         frame_set_refcount (fi, refcount - 1);
+        printf ("%s: refcount now %d\n", __FUNCTION__, frame_get_refcount (fi));
         return;
     }
 
@@ -164,6 +166,7 @@ frame_free (struct frameinfo* fi) {
         printf ("frame_free: could not delete cap\n");
     }*/
 
+    printf ("freeing since refcount was %u\n", refcount);
     ut_free (fi->paddr, seL4_PageBits);
 
     fi->flags &= ~FRAME_ALLOCATED;

@@ -8,6 +8,7 @@
 
 #include <vm/vm.h>
 #include <vm/addrspace.h>
+#include <services/services.h>
 
 #include "ut_manager/ut.h"
 
@@ -17,6 +18,7 @@
 #include "vm/vmem_layout.h"
 
 #include <assert.h>
+#include <sys/panic.h>
 #include <vfs.h>
 
 #include <cpio/cpio.h>
@@ -25,6 +27,7 @@
 
 seL4_CPtr _mmap_ep;
 extern seL4_CPtr _badgemap_ep;	/* XXX */
+extern seL4_CPtr rootserver_async_cap;
 
 struct mmap_queue_item {
 	struct pt_entry *page;
@@ -35,9 +38,9 @@ struct mmap_queue_item {
 };
 
 struct mmap_queue_item* mmap_queue = NULL;
+struct mmap_queue_item* done_queue = NULL;
 
 extern seL4_CPtr rootserver_syscall_cap;
-
 
 
 void mmap_item_dispose (struct mmap_queue_item *q);
@@ -49,28 +52,11 @@ mmap_queue_new (struct pt_entry* page, void* callback, struct pawpaw_event* evt)
 static int
 mmap_queue_schedule (int direction, vaddr_t vaddr, struct pt_entry* page, void* callback, struct pawpaw_event* evt);
 
-void mmap_item_success (struct mmap_queue_item* q) {
-	q->page->flags &= ~PAGE_SWAPPING;
-	q->page->flags |= PAGE_ALLOCATED;
-
-	/* FIXME: do we need this for ALL? */
-    seL4_ARM_Page_FlushCaches (q->page->cap);
-
-    /* call their callback */
-    /*if (q->cb) {
-    	q->cb (q->evt);
-    } else {
-    	printf ("%s: NULL callback\n", __FUNCTION__);
-    }*/
-
-    printf ("disposed\n");
-    mmap_item_dispose (q);
-}
-
 void mmap_item_dispose (struct mmap_queue_item *q) {
 	struct mmap_queue_item* v = mmap_queue;
     struct mmap_queue_item* prev = NULL;
     while (v) {
+    	printf ("trying to find previous..\n");
     	if (v->next == q) {
     		prev = v;
     		break;
@@ -86,15 +72,6 @@ void mmap_item_dispose (struct mmap_queue_item *q) {
     }
 
     free (q);
-}
-
-void mmap_item_fail (struct mmap_queue_item *q) {
-	seL4_SetMR (0, -1);
-	seL4_Call (q->evt->reply_cap, q->evt->reply);
-	//syscall_event_dipose (q->evt);
-	/* FIXME: call dispose */
-
-	mmap_item_dispose (q);
 }
 
 struct mmap_queue_item*
@@ -115,13 +92,62 @@ mmap_queue_new (struct pt_entry* page, void* callback, struct pawpaw_event* evt)
 	return q;
 }
 
-/* FIXME: think about checking the queue before deleting threads, otherwise race */
 
+/* FIXME: should be dictionary */
+struct seen_item {
+	seL4_CPtr cap;
+	seL4_Word id;
+	struct seen_item *next;
+};
+
+struct seen_item* regd_caps = NULL;
+
+/* FIXME: think about checking the queue before deleting threads, otherwise race */
 static int
 mmap_queue_schedule (int direction, vaddr_t vaddr, struct pt_entry* page, void* callback, struct pawpaw_event* evt) {
 	struct mmap_queue_item* q = mmap_queue_new (page, callback, evt);
 	if (!q) {
 		return false;
+	}
+
+	assert (page);
+	assert (page->frame);
+
+	seL4_CPtr cap;
+	struct seen_item *item = regd_caps;
+	while (item) {
+		printf ("trying to find previous async cap..\n");
+		if (item->cap == page->frame->file) {
+			break;
+		}
+
+		item = item->next;
+	}
+
+	if (!item) {
+		seL4_MessageInfo_t reg_msg = seL4_MessageInfo_new (0, 0, 1, 1);
+
+		/* FIXME: infoleak - don't use virtual addresses as ids */
+	    seL4_CPtr their_cap = cspace_mint_cap (
+	    	cur_cspace, cur_cspace, _mmap_ep, seL4_AllRights, seL4_CapData_Badge_new (page));
+
+	    assert (their_cap);
+
+		seL4_SetMR (0, VFS_REGISTER_CAP);
+		seL4_SetCap (0, their_cap);
+		printf ("mmap: registering cap\n");
+		seL4_Call (page->frame->file, reg_msg);
+		seL4_Word id = seL4_GetMR (0);
+		printf ("mmap: got new cap 0x%x\n", id);
+		assert (id > 0);
+
+		item = malloc (sizeof (struct seen_item));
+		assert (item);
+		item->cap = page->frame->file;
+		item->id = id;
+
+		item->next = regd_caps;
+		regd_caps = item;
 	}
 
 	if (direction == PAGE_SWAP_IN) {
@@ -138,29 +164,17 @@ mmap_queue_schedule (int direction, vaddr_t vaddr, struct pt_entry* page, void* 
 	    	cur_cspace, cur_cspace, _badgemap_ep, seL4_AllRights, seL4_CapData_Badge_new (id));
 	    assert (badge_cap);
 
-	    msg = seL4_MessageInfo_new (0, 0, 1, 5);
+	    msg = seL4_MessageInfo_new (0, 0, 1, 7);
 	    seL4_SetCap (0, badge_cap);
 	    seL4_SetMR (0, VFS_READ_OFFSET);
 	    seL4_SetMR (1, id);
-	    seL4_SetMR (2, PAGE_SIZE);
-	    seL4_SetMR (3, page->frame->offset);
-	    seL4_SetMR (4, 1);	/* async */
+	    seL4_SetMR (2, page->frame->load_length);
+	    seL4_SetMR (3, page->frame->file_offset);
+	    seL4_SetMR (4, page->frame->load_offset);
+	    seL4_SetMR (5, item->id);	/* async ID */
+	    seL4_SetMR (6, page);
 
-	    printf ("Calling file %d @ offset 0x%x\n", page->frame->file, page->frame->offset);
-	    seL4_Call (page->frame->file, msg);
-
-	    /* and give it our async cap */
-	    msg = seL4_MessageInfo_new (0, 0, 1, 0);
-
-	    /* FIXME: try not to create a zillion caps */
-	    /* FIXME: infoleak - don't use virtual addresses as ids */
-	    seL4_CPtr their_cap = cspace_mint_cap (
-	    	cur_cspace, cur_cspace, _mmap_ep, seL4_AllRights, seL4_CapData_Badge_new (page));
-
-	    assert (their_cap);
-
-	    seL4_SetCap (0, their_cap);
-	    //seL4_SetMR (0, VFS_READ_OFFSET + 1);	/* XXX define */
+	    printf ("Calling file %d @ offset 0x%x /w vm offset 0x%x\n", page->frame->file, page->frame->file_offset, page->frame->load_offset);
 	    seL4_Send (page->frame->file, msg);
 
 	    /* and we go back to waiting on our EP */
@@ -175,68 +189,88 @@ mmap_queue_schedule (int direction, vaddr_t vaddr, struct pt_entry* page, void* 
 	return true;
 }
 
-/* avoid the need for sync primitives */
+/* avoids the need for sync primitives */
 int
 mmap_swap (int direction, vaddr_t vaddr, struct pt_entry* page, void* callback, struct pawpaw_event* evt) {
-	seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 5);
-	seL4_SetMR (0, direction);
-	seL4_SetMR (1, vaddr);
-	seL4_SetMR (2, page);
-	seL4_SetMR (3, callback);
-	seL4_SetMR (4, evt);
+	seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 6);
 
-	printf ("Supposedly sending to mmap service...\n");
+	seL4_SetMR (0, MMAP_REQUEST);
+	seL4_SetMR (1, direction);
+	seL4_SetMR (2, vaddr);
+	seL4_SetMR (3, page);
+	seL4_SetMR (4, callback);
+	seL4_SetMR (5, evt);
+
+	/* note: cannot be a Call since svc_mmap might require the root server
+	 * to be free to handle some of its own requests, eg sbrk */
 	seL4_Send (_mmap_ep, msg);
-	//return seL4_GetMR (0);
+
 	return true;
 }
 
-
 /*
- * MMapper - makes disk stuff async
- *
- * on mmap in, sends page pointer, ID 
-	- main service should call callback on ID received
- * on mmap out (ie swap), sends ???, ID
- 	- main service should call callback on ID received
+ * mmap service 
  */
 int mmap_main (void) {
-	/*printf ("fs_cpio: starting\n");	
-    pawpaw_event_init ();*/
-
-	//pawpaw_event_loop (&handler_table, NULL, service_ep);
-
     while (1) {
     	seL4_Word badge = 0;
-    	printf ("###### mmap: waiting\n");
 		seL4_Wait (_mmap_ep, &badge);
 
 		if (badge == 0) {
 			/* request from rootsvr, handle it */
-			seL4_MessageInfo_t reply = seL4_MessageInfo_new (0, 0, 0, 1);
+			seL4_Word method = seL4_GetMR (0);
+			if (method == MMAP_REQUEST) {
+				/* i've got a nest of brackets, but no bird... */
+				mmap_queue_schedule (
+					seL4_GetMR (1), seL4_GetMR (2), seL4_GetMR (3),
+					seL4_GetMR (4), seL4_GetMR (5));
+			} else if (method == MMAP_RESULT) {
+				seL4_MessageInfo_t reply = seL4_MessageInfo_new (0, 0, 0, 2);
+				if (!done_queue) {
+					seL4_SetMR (0, 0);
+					seL4_SetMR (1, 0);
+				} else {
+					printf ("!! had item in done queue\n");
+					seL4_SetMR (0, done_queue->cb);
+					seL4_SetMR (1, done_queue->evt);
 
-			printf ("mmap: Received request from rootsvr\n");
+					struct mmap_queue_item* cur = done_queue;
+					done_queue = done_queue->next;
+					free (cur);
+				}
 
-			/* i've got a nest, but no bird... */
-			seL4_SetMR (0, mmap_queue_schedule (
-				seL4_GetMR (0), seL4_GetMR (1), seL4_GetMR (2),
-				seL4_GetMR (3), seL4_GetMR(4)));
-
-			seL4_Reply (reply);
+				seL4_Reply (reply);
+			} else {
+				panic ("unknown request from rootsvr\n");
+			}
 		} else {
+			/* response from filesystem */
+			seL4_Word amount = seL4_GetMR (0);
+			seL4_Word evt = seL4_GetMR (1);
+
+			/* find the matching mmap request */
 			struct mmap_queue_item* q = mmap_queue;
 			while (q) {
-				if (q->page == badge) {
-					printf ("mmap success\n");
-					printf ("received 0x%x bytes\n", seL4_GetMR (0));
-					seL4_MessageInfo_t msg = seL4_MessageInfo_new (42, 0, 0, 2);
+				printf ("trying to find matching request..\n");
+				if (q->page == evt) {
+					/* FIXME: this is inefficient, should just manipulate pointers */
+					struct mmap_queue_item* r = malloc (sizeof (struct mmap_queue_item));
+					if (!r) {
+						q = NULL;
+						break;
+					}
 
-					seL4_SetMR (0, q->cb);
-					seL4_SetMR (1, q->evt);
-					mmap_item_success (q);
+					r->page = q->page;
+					r->cb = q->cb;
+					r->evt = q->evt;
+					/* FIXME: need status flag for read >= 0 */
 
-					printf ("#### SENT TO ROOTSVR\n");
-					seL4_Send (rootserver_syscall_cap, msg);
+					/* free old */
+					mmap_item_dispose (q);
+
+					/* insert r into done */
+					r->next = done_queue;
+					done_queue = r;
 
 					break;
 				}
@@ -244,9 +278,11 @@ int mmap_main (void) {
 				q = q->next;
 			}
 
+			/* read finished, notify server if we found one */
 			if (q == NULL) {
-				/* read finished, notify server */
-				printf ("mmap: unknown badge %d - how did you get this number\n");
+				printf ("mmap: unknown badge 0x%x + ID 0x%x - how did you get this number\n", badge, evt);
+			} else {
+				seL4_Notify (rootserver_async_cap, MMAP_IRQ);
 			}
 		}
 	}

@@ -17,6 +17,7 @@ extern Header* _kr_malloc_freep;
 /* Increment heap by new_units, and return the start on success, NULL otherwise */
 Header*
 morecore (unsigned int new_units) {
+    printf ("** morecore\n");
 	void* cp;
 	Header* up;
 	int rounded_new_units;
@@ -42,6 +43,7 @@ void *sbrk(intptr_t increment) {
     seL4_Word old_1 = seL4_GetMR (1);
 
     /* do the syscall */
+    printf ("** doing sbrk\n");
     seL4_MessageInfo_t tag = seL4_MessageInfo_new(0, 0, 0, 2);
     seL4_SetMR (0, SYSCALL_SBRK);
     seL4_SetMR (1, increment);

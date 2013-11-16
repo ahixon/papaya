@@ -19,19 +19,19 @@
 # If a given program does not exist, the error will be reported
 # on debug console (if available). Boot will continue.
 
-sos_test=sync
-#dev_timer=sync
+#sos_test=sync
+dev_timer=sync
 
-#svc_vfs=async
-#svc_dev=async
-#svc_net=async
+svc_vfs=async
+svc_dev=async
+svc_net=async
 
-#fs_nfs=async
-#fs_dev=async
+fs_nfs=async
+fs_dev=async
 
 # We need to ensure this finishes starting before starting 
 # our application, otherwise standard I/O will not be available
-#dev_console=sync
+dev_console=sync
 
 # finally, start the boot app
-#sosh=boot
+sosh=boot

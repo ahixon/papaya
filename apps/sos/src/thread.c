@@ -265,6 +265,8 @@ thread_t thread_create (char* name, cspace_t *existing_cspace, addrspace_t exist
 
 void 
 thread_destroy (thread_t thread) {
+    assert (false); /* XXX: debug */
+
     if (thread->name) {
         free (thread->name);
     }
@@ -296,16 +298,21 @@ thread_destroy (thread_t thread) {
         //printf ("done\n");
     }
 
+#if 0
     /* lastly, free the address space ONLY if we're not rootsvr's */
     if (thread->as && thread->as != cur_addrspace) {
         /* will free underlying pages + frames */
         addrspace_destroy (thread->as);
     }
+#endif
 
     /* free any created resources (specifically, endpoints) */
     struct thread_resource *res = thread->resources;
     while (res) {
+#if 0
+        /* XXX: fucking fantastic, seL4... */
         ut_free (res->addr, res->size);
+#endif
 
         struct thread_resource *next = res->next;
         free (res);
@@ -450,6 +457,7 @@ thread_t thread_create_from_fs (char* name, char *file, seL4_CPtr file_cap, int 
 
     /* ok looks good should be able to read everything in */
     seL4_Word entry_point = elf_getEntryPoint (file);
+    printf ("ENTRY POINT = 0x%x\n", entry_point);
 
     int num_headers = elf_getNumProgramHeaders (file);
     for (int i = 0; i < num_headers; i++) {
@@ -483,15 +491,13 @@ thread_t thread_create_from_fs (char* name, char *file, seL4_CPtr file_cap, int 
         }
     }
 
-    /* FIXME: free the opened file buf */
+    /* FIXME: free the opened file buf ON THREAD DESTROY */
 
     if (as_create_stack_heap (thread->as, NULL, NULL)) {
         printf ("%s: failed to create stack + heap\n", __FUNCTION__);
         thread_destroy (thread);
         return NULL;
     }
-
-    printf ("******** YO STACK = 0x%x\n", thread->as->stack_vaddr);
 
     /* install into threadlist before we start */
     threadlist_add (thread->pid, thread);
@@ -534,31 +540,28 @@ thread_t thread_create_from_cpio (char* path, seL4_CPtr rootsvr_ep) {
     seL4_Word id = cid_next ();
     //printf ("Adding to map\n");
     maps_append (id, 0, share_reg->vbase);
-    /*seL4_CPtr their_cbox_cap = cspace_mint_cap (cur_cspace, cur_cspace,
+    seL4_CPtr their_cbox_cap = cspace_mint_cap (cur_cspace, cur_cspace,
         _badgemap_ep, seL4_AllRights,
-        seL4_CapData_Badge_new (id));*/
+        seL4_CapData_Badge_new (id));
     /* FIXME: should keep this forever */
 
-    //printf ("M/emcpying\n");
     memcpy ((char*)share_reg->vbase, path, strlen (path));
 
-    //printf ("New msg\n");
     seL4_CPtr recv_cap = cspace_alloc_slot (cur_cspace);
     assert (recv_cap);
     seL4_SetCapReceivePath (cur_cspace->root_cnode, recv_cap, CSPACE_DEPTH);
 
     seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 3);
-    seL4_SetCap (0, _badgemap_ep);
+    seL4_SetCap (0, their_cbox_cap);
     seL4_SetMR (0, VFS_OPEN);
     seL4_SetMR (1, id);
     seL4_SetMR (2, FM_READ);
 
     /* Call is OK here since it's an internal EP and we're going to
      * be nice and quick */
-    // printf ("OK, calling\n");
+    printf ("OK, asking VFS to open our file...\n");
     seL4_MessageInfo_t reply = seL4_Call (_fs_cpio_ep, msg);
 
-    // printf ("got result...\n");
     if (seL4_GetMR (0) != 0) {
         printf ("%s: failed to open file\n", __FUNCTION__);
         return NULL;
@@ -576,12 +579,13 @@ thread_t thread_create_from_cpio (char* path, seL4_CPtr rootsvr_ep) {
      * can read the headers we need */
 
     msg = seL4_MessageInfo_new (0, 0, 1, 3);
-    seL4_SetCap (0, _badgemap_ep);
+    seL4_SetCap (0, their_cbox_cap);
     seL4_SetMR (0, VFS_READ);
     seL4_SetMR (1, id);
     seL4_SetMR (2, PAGE_SIZE);
     //seL4_SetMR (3, 0);  /* offset */
 
+    printf ("ASKING TO READ FILE\n");
     seL4_Call (recv_cap, msg);
     if (seL4_GetMR (0) <= 0) {
         printf ("%s: read was empty/failed\n", __FUNCTION__);

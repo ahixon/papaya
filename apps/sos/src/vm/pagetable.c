@@ -44,8 +44,9 @@ pagetable_dump (pagetable_t pt) {
                 }
 
 
-                printf ("\t0x%03x: frame %p %s\n", j, entry.frame,
-                    entry.flags & PAGE_SHARED ? "SHARED" : "" );
+                vaddr_t vaddr = (i << PAGETABLE_L1_BITS) | (j << PAGETABLE_L2_BITS);
+                printf ("\t0x%03x: vaddr %08x frame %p paddr %08x %s %s\n", j, vaddr, entry.frame,
+                    entry.frame->paddr, entry.flags & PAGE_SHARED ? "SHARED" : "", entry.flags & PAGE_SWAPPING ? "SWAPPING" : "");
             }
         }
 
@@ -248,6 +249,12 @@ page_map (addrspace_t as, struct as_region *region, vaddr_t vaddr, int *status,
         return NULL;
     }
 
+    if (entry->flags & PAGE_SWAPPING) {
+        /* page being swapped at the moment, don't do anything */
+        printf ("%s: page still being swapped, not remapping\n", __FUNCTION__);
+        *status = PAGE_SWAPPING;
+        return NULL;
+    }
 
     printf ("mapping 0x%x\n", vaddr);
 
@@ -399,6 +406,7 @@ page_unmap (struct pt_entry* entry) {
         if (entry->cap) {
             seL4_ARM_Page_Unmap (entry->cap);
             //seL4_ARM_Page_FlushCaches(entry->cap);
+            cspace_revoke_cap (cur_cspace, entry->cap); /* FIXME: hmm */
             cspace_delete_cap (cur_cspace, entry->cap);
 
 
@@ -464,7 +472,10 @@ page_map_shared (addrspace_t as_dst, struct as_region* reg_dst, vaddr_t dst,
 
     /* update underlying frame refcount */
     struct frameinfo* frame = dst_entry->frame;
-    frame_set_refcount (frame, frame_get_refcount (frame) + 1);
+    unsigned int refcount = frame_get_refcount (frame);
+    printf ("refcount for paddr 0x%x was: %u\n", frame->paddr, refcount);
+    frame_set_refcount (frame, refcount + 1);
+    printf ("refcount now: %u\n", frame_get_refcount (frame));
 
     /* duplicate the kernel's page table entry */
     dst_entry->cap = cspace_copy_cap (

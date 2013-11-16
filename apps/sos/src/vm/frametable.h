@@ -22,7 +22,9 @@ struct frameinfo {
     /* for mmaped files - this gets converted to a physical frame when
      * we get a share (we essentially steal its frame + consume it) */
     seL4_CPtr file;
-    int offset;
+    int file_offset;
+    int load_offset;   /* FIXME: could fit in flags? */
+    int load_length;
 
     /* for paging queue */
     struct frameinfo* next;
