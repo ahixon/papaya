@@ -36,6 +36,8 @@ seL4_CPtr _fs_cpio_ep;      /* XXX: move later */
 extern seL4_CPtr _mmap_ep;
 seL4_Word dma_addr;
 
+seL4_CPtr swap_cap = 0;
+
 seL4_CPtr save_reply_cap (void) {
     seL4_CPtr reply_cap = cspace_save_reply_cap (cur_cspace);
     return reply_cap;

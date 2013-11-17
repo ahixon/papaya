@@ -23,6 +23,7 @@
 
 #include <cpio/cpio.h>
 #include <vfs.h>
+#include <sos.h>
 
 #include <autoconf.h>
 
@@ -46,6 +47,7 @@ extern seL4_CPtr rootserver_syscall_cap;
 
 int mount (char* mountpoint, char* fs);
 int parse_fstab (char* path);
+int open_swap (char* path);
 
 /* XXX: double rainbow^H^H^Hhack. can't get timer EP, nor should sleep */
 void sleep (int msec) {
@@ -118,6 +120,10 @@ int boot_thread (void) {
 
         } else if (type == BOOT_TYPE_CMD_SWAP) {
             /* handle setting up swap */
+            if (!open_swap (type_str)) {
+                printf ("boot: failed to open swap file '%s', swapping will not be available\n", type_str);
+                panic ("failed to open swap");  /* XXX: debug, no need to be panic */
+            }
         } else {
             if (strcmp (type_str, "async") == 0) {
                 type = BOOT_TYPE_ASYNC;
@@ -203,6 +209,50 @@ int mount (char* mountpoint, char* fs) {
     return seL4_GetMR (0) == 0;
 }
 
+extern seL4_CPtr swap_cap;
+
+int open_swap (char* path) {
+    printf ("opening '%s' ...\n", path);
+
+    if (!share_reg) {
+        share_reg = create_share_reg (&share_badge, &share_id);
+    }
+
+    int mp_len = strlen (path);
+    if (mp_len == 0) {
+        return false;
+    }
+
+    strcpy (share_reg->vbase, path);
+    *(char*)(share_reg->vbase + mp_len) = '\0';
+    
+    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 3);
+    seL4_SetCap (0, share_badge);
+    seL4_SetMR (0, VFS_OPEN);
+    seL4_SetMR (1, share_id);
+    seL4_SetMR (2, FM_READ | FM_WRITE);
+
+    /* XXX: should get service name from boot list */
+    seL4_CPtr service = service_lookup ("svc_vfs");
+    if (!service) {
+        printf ("failed to find VFS cap\n");
+        return false;
+    }
+
+    seL4_CPtr recv_cap = cspace_alloc_slot (cur_cspace);
+    assert (recv_cap);
+    seL4_SetCapReceivePath (cur_cspace->root_cnode, recv_cap, CSPACE_DEPTH);
+
+    seL4_MessageInfo_t reply = seL4_Call (service, msg);
+    if (seL4_MessageInfo_get_extraCaps (reply) != 1) {
+        printf ("%s: open failed\n", __FUNCTION__);
+        return false;
+    }
+
+    swap_cap = recv_cap;
+    return seL4_GetMR (0) == 0;
+}
+
 int parse_fstab (char* path) {
     char *cpio_fstab, *mem_fstab;
     unsigned long size;
@@ -247,11 +297,18 @@ int parse_fstab (char* path) {
         }
 
         *(opts)++ = '\0';
+
+        char* path = line;
+
+        line = strpbrk (opts, BOOT_LIST_LINE);
+        if (line) {
+            *(line)++ = '\0';
+        }
         
-        printf ("FSTYPE = %s, MOUNTPOINT = %s, OPTS = %s\n", fs_type, line, opts);
+        printf ("FSTYPE = %s, MOUNTPOINT = %s, OPTS = %s\n", fs_type, path, opts);
 
         /* try to actually mount it */
-        if (!mount (line, fs_type)) {
+        if (!mount (path, fs_type)) {
             status = false;
             break;
         }
@@ -260,7 +317,6 @@ int parse_fstab (char* path) {
 
         /* next yo */
         //line = strtok (NULL, BOOT_LIST_LINE);
-        line = strpbrk (line, BOOT_LIST_LINE);
         //printf ("strtok was OK, line now = %p\n", line);
     }
     printf ("done loading fstab\n");

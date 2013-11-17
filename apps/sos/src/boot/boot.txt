@@ -30,7 +30,7 @@ svc_vfs=sync
 svc_dev=async
 
 # NFS and dependencies
-svc_net=async
+svc_net=sync
 fs_nfs=sync
 
 fs_dev=sync
@@ -39,7 +39,7 @@ fs_dev=sync
 mount fstab.txt
 
 # Now that filesystems have been mounted, enable swapping
-#swap /swap.bin
+swap /swap.bin
 
 # We need to ensure this finishes starting before starting 
 # our application, otherwise standard I/O will not be available

@@ -2,13 +2,13 @@ Current TODO
 ============
 
 ~~ swap ~~
-* implement swap command for bootsvc and set internal cap
 * add created pages to frametable linked list + set flags as appropriate
 * write target page algorithm
 * mark buffers belonging to NFS, root server, VFS as 
 * use internal cap to read/write to swap file
 
 ~~ other ~~
+* implement share_vm syscall for actual bonus marks (whacky interface, but OK)
 * need async open for exec tasks
 	- will fix very ugly Yield hack in thread.c:548 (currently due to deadlock betweem mmap and main thread)
 
