@@ -1,0 +1,23 @@
+Current TODO
+============
+
+~~ swap ~~
+* implement swap command for bootsvc and set internal cap
+* add created pages to frametable linked list + set flags as appropriate
+* write target page algorithm
+* mark buffers belonging to NFS, root server, VFS as 
+* use internal cap to read/write to swap file
+
+~~ other ~~
+* need async open for exec tasks
+	- will fix very ugly Yield hack in thread.c:548 (currently due to deadlock betweem mmap and main thread)
+
+* use this async open for thread_create
+* reduce active shares in svc_net and dev_console
+	- create buffer pool, make most things use it
+	- this may require a bit more thought if there's other sucky activity
+
+* remove Yield hack in boot service and actually wait on magic endpoint for "sync" services to start
+
+* general cleanup + documentation
+* bug fixes for stuff on Bitbucket tracker
