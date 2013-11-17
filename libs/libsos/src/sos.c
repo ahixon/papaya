@@ -30,20 +30,28 @@ struct fhandle* lookup_fhandle (fildes_t file);
 
 /* FIXME: what if the VFS service dies and then restarts? endpoint will have changed */
 fildes_t open(const char *path, fmode_t mode) {
-	seL4_MessageInfo_t msg;
+    sos_debug_print ("sosh: about to open\n", strlen ("sosh: about to open\n"));
+
+    seL4_MessageInfo_t msg;
 
 	if (!vfs_ep) {
+        sos_debug_print ("sosh: looking up vfs\n", strlen ("sosh: looking up vfs\n"));
 		vfs_ep = pawpaw_service_lookup ("svc_vfs");
-	}
+	} else {
+        sos_debug_print ("sosh: vfs already found??? bug\n", strlen ("sosh: vfs already found??? bug\n"));
+    }
 
+    sos_debug_print ("sosh: creating new share\n", strlen ("sosh: creating new share\n"));
 	struct pawpaw_share* share = pawpaw_share_new ();
 	if (!share) {
-		//sos_debug_print ("failed to make new share\n", strlen("failed to make a new share\n"));
+		sos_debug_print ("failed to make new share\n", strlen("failed to make a new share\n"));
 		return -1;
 	}
 
+    sos_debug_print ("sosh: trying to malloc\n", strlen("sosh: trying to malloc\n"));
     struct fhandle* h = malloc (sizeof (struct fhandle));
     if (!h) {
+        sos_debug_print ("sosh: malloc failed\n", strlen("sosh: malloc failed\n"));
         pawpaw_share_unmount (share);
         return -1;
     }
@@ -54,7 +62,7 @@ fildes_t open(const char *path, fmode_t mode) {
     if (!recv_cap) {
         pawpaw_share_unmount (share);
         free (h);
-        sos_debug_print ("sos: no recv_cap\n", strlen ("sos: no recv_cap\n"));
+        sos_debug_print ("sosh: no recv_cap\n", strlen ("sosh: no recv_cap\n"));
         return -1;
     }
     seL4_SetCapReceivePath (PAPAYA_ROOT_CNODE_SLOT, recv_cap, PAPAYA_CSPACE_DEPTH);

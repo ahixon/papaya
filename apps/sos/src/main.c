@@ -87,7 +87,7 @@ void syscall_event_dispose (struct pawpaw_event* evt) {
 }
 
 void swap_success (struct pawpaw_event* evt) {
-    printf ("!!! SWAP SUCCESS @ 0x%x !!!\n", evt->args[0]);
+    //printf ("!!! SWAP SUCCESS @ 0x%x !!!\n", evt->args[0]);
 
     thread_t thread = evt->args[1];
     assert (thread);
@@ -99,7 +99,10 @@ void swap_success (struct pawpaw_event* evt) {
     page->flags &= ~PAGE_SWAPPING;
     page->flags |= PAGE_ALLOCATED;
 
-#if 0
+    if (strcmp (thread->name, "sosh") != 0) {
+        goto flush;
+    }
+
     assert (page->cap);
     seL4_CPtr cap = cspace_copy_cap (cur_cspace, cur_cspace, page->cap, seL4_AllRights);
     assert (cap);
@@ -138,16 +141,16 @@ void swap_success (struct pawpaw_event* evt) {
     }
 
     seL4_ARM_Page_Unmap (cap);
-#endif
 
-    printf ("flushing caches...\n");
+flush:
+    //printf ("flushing caches...\n");
     seL4_ARM_Page_FlushCaches (page->cap);
 
     /* wake the thread up */
     printf ("resuming thread..\n");
     seL4_Send (evt->reply_cap, evt->reply);
 
-    printf ("disposing..\n");
+    //printf ("disposing..\n");
     syscall_event_dispose (evt);
 }
 
@@ -241,9 +244,15 @@ void syscall_loop (seL4_CPtr ep) {
                 evt->args[0] = vaddr;
                 evt->args[1] = thread;
 
+                printf ("%s faulted on addr 0x%x\n", thread->name, vaddr);
+
+                /* FIXME: check if page is currently being mapped then dispose evt */
+
                 if (page_map (thread->as, reg, vaddr, &status, swap_success, evt)) {
                     /* restart calling thread now we have the page set */
-                    swap_success (evt);
+                    //swap_success (evt);
+                    seL4_Send (evt->reply_cap, evt->reply);
+                    syscall_event_dispose (evt);
                     break;
                 }
 
@@ -261,7 +270,7 @@ void syscall_loop (seL4_CPtr ep) {
                     seL4_GetMR(0),
                     seL4_GetMR(2) ? "Instruction Fault" : "Data fault");
 
-            printf ("arch dependent = 0x%x\n", seL4_GetMR (3));
+            printf ("AFSR = 0x%x\n", seL4_GetMR (3));
 
             addrspace_print_regions (thread->as);
             pagetable_dump (thread->as->pagetable);
@@ -274,7 +283,6 @@ void syscall_loop (seL4_CPtr ep) {
 
         case seL4_Interrupt:
         {
-            printf ("** CALLBACK **\n");
             /* ask mmap for next result in queue */
             void (*cb)(struct pawpaw_event *evt);
 
@@ -287,10 +295,9 @@ void syscall_loop (seL4_CPtr ep) {
                 seL4_Word arg = seL4_GetMR (1);
 
                 if (cb != NULL && arg != 0) {
-                    printf ("calling %p (0x%x)\n", cb, arg);
                     cb (arg);
                 } else {
-                    printf ("syscall: failed to get next done queue - cb = %p, arg = 0x%x\n", cb, arg);
+                    //printf ("syscall: failed to get next done queue - cb = %p, arg = 0x%x\n", cb, arg);
                 }
             } while (cb != NULL);
 

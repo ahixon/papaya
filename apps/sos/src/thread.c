@@ -265,8 +265,6 @@ thread_t thread_create (char* name, cspace_t *existing_cspace, addrspace_t exist
 
 void 
 thread_destroy (thread_t thread) {
-    assert (false); /* XXX: debug */
-
     if (thread->name) {
         free (thread->name);
     }
@@ -557,9 +555,12 @@ thread_t thread_create_from_cpio (char* path, seL4_CPtr rootsvr_ep) {
     seL4_SetMR (1, id);
     seL4_SetMR (2, FM_READ);
 
-    /* Call is OK here since it's an internal EP and we're going to
-     * be nice and quick */
     printf ("OK, asking VFS to open our file...\n");
+    /* XXX: holy shit no */
+    for (int i = 0; i < 1000; i++) {
+        seL4_Yield();
+    }
+
     seL4_MessageInfo_t reply = seL4_Call (_fs_cpio_ep, msg);
 
     if (seL4_GetMR (0) != 0) {

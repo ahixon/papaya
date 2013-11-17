@@ -4,17 +4,28 @@
 
 #include <pawpaw.h>
 #include <syscalls.h>
+#include <stdio.h>
 
 /*
  * http://www.youtube.com/watch?v=XhBSgCiaPDQ
  */
 
+extern union header  *_kr_malloc_freep;
+
 struct pawpaw_share* pawpaw_share_new (void) {
+	sos_debug_print ("pawpaw: hello from share_new\n", strlen ("pawpaw: hello from share_new\n"));
+
+    /*printf ("header addr = 0x%x\n", (unsigned int)&_kr_malloc_freep);
+    printf ("header points to = 0x%x\n", (unsigned int)_kr_malloc_freep);
+    printf ("header val = 0x%x\n", *(char*)_kr_malloc_freep);*/
+
 	struct pawpaw_share* share = malloc (sizeof (struct pawpaw_share));
 	if (!share) {
+		sos_debug_print ("pawpaw: malloc failed\n", strlen ("pawpaw: malloc failed\n"));
 		return NULL;
 	}
 
+	sos_debug_print ("pawpaw: malloc OK sending msg\n", strlen ("pawpaw: malloc OK sending msg\n"));
 	memset (share, 0, sizeof (struct pawpaw_share));
 
 	seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 1);

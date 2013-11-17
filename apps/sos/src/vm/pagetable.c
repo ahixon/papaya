@@ -256,10 +256,10 @@ page_map (addrspace_t as, struct as_region *region, vaddr_t vaddr, int *status,
         return NULL;
     }
 
-    printf ("mapping 0x%x\n", vaddr);
+    // printf ("mapping 0x%x\n", vaddr);
 
     if (!entry->frame) {
-        printf ("0x%x had no existing frame information allocated\n", vaddr);
+        // printf ("0x%x had no existing frame information allocated\n", vaddr);
         entry->frame = frame_new_from_untyped (0);
         if (!entry->frame) {
             printf ("%s: failed to create new frame\n", __FUNCTION__);
@@ -278,7 +278,7 @@ page_map (addrspace_t as, struct as_region *region, vaddr_t vaddr, int *status,
             return NULL;
         }*/
 
-        printf ("allocating physical mem for vaddr 0x%x\n", vaddr);
+        // printf ("allocating physical mem for vaddr 0x%x\n", vaddr);
         seL4_Word untyped = ut_alloc (seL4_PageBits);
         if (!untyped) {
             /* TODO: swapping goes here */
@@ -289,7 +289,7 @@ page_map (addrspace_t as, struct as_region *region, vaddr_t vaddr, int *status,
         
         entry->frame = frame_alloc_from_untyped (entry->frame, untyped);
     } else {
-        printf ("0x%x already had physical mem\n", entry->frame->paddr);
+        // printf ("0x%x already had physical mem\n", entry->frame->paddr);
     }
     
     if (!entry->cap) {
@@ -335,7 +335,7 @@ page_map (addrspace_t as, struct as_region *region, vaddr_t vaddr, int *status,
 
         return NULL;
     } else {
-        printf ("was not file backed\n");
+        // printf ("was not file backed\n");
     }
 
     entry->flags |= PAGE_ALLOCATED;

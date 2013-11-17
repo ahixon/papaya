@@ -56,7 +56,6 @@ void mmap_item_dispose (struct mmap_queue_item *q) {
 	struct mmap_queue_item* v = mmap_queue;
     struct mmap_queue_item* prev = NULL;
     while (v) {
-    	printf ("trying to find previous..\n");
     	if (v->next == q) {
     		prev = v;
     		break;
@@ -116,7 +115,6 @@ mmap_queue_schedule (int direction, vaddr_t vaddr, struct pt_entry* page, void* 
 	seL4_CPtr cap;
 	struct seen_item *item = regd_caps;
 	while (item) {
-		printf ("trying to find previous async cap..\n");
 		if (item->cap == page->frame->file) {
 			break;
 		}
@@ -230,7 +228,6 @@ int mmap_main (void) {
 					seL4_SetMR (0, 0);
 					seL4_SetMR (1, 0);
 				} else {
-					printf ("!! had item in done queue\n");
 					seL4_SetMR (0, done_queue->cb);
 					seL4_SetMR (1, done_queue->evt);
 
@@ -251,7 +248,6 @@ int mmap_main (void) {
 			/* find the matching mmap request */
 			struct mmap_queue_item* q = mmap_queue;
 			while (q) {
-				printf ("trying to find matching request..\n");
 				if (q->page == evt) {
 					/* FIXME: this is inefficient, should just manipulate pointers */
 					struct mmap_queue_item* r = malloc (sizeof (struct mmap_queue_item));

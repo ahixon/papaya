@@ -5,6 +5,7 @@
 //#include <unistd.h>            FIXME: sleep different definition??
 #include <sos.h>
 #include <pawpaw.h>
+#include <stdio.h>
 
 #include <sel4/sel4.h>
 

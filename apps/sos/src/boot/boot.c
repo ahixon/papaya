@@ -32,6 +32,18 @@ extern seL4_CPtr rootserver_syscall_cap;
 #define BOOT_LIST_LINE  "\n"
 #define BOOT_LIST_SEP   "="
 
+#define BOOT_TYPE_UNKNOWN   0
+#define BOOT_TYPE_ASYNC     1
+#define BOOT_TYPE_SYNC      2
+#define BOOT_TYPE_BOOT      4
+
+/* XXX: double rainbow^H^H^Hhack. can't get timer EP, nor should sleep */
+void sleep (int msec) {
+    for (int i = 0; i < msec * 100; i++) {
+        seL4_Yield();
+    }
+}
+
 int boot_thread (void) {
     /* find our boot instructions */
     char *cpio_bootlist, *mem_bootlist;
@@ -64,34 +76,57 @@ int boot_thread (void) {
 
         *equals = '\0';
         char* app = line;
-        char* type = equals + 1;
+        char* type_str = equals + 1;
 
-        if (strlen (type) == 0) {
+        if (strlen (type_str) == 0) {
             printf ("boot: missing type for application %s\n", app);
             panic ("missing boot application type");
         }
 
-        if (strcmp (type, "boot") && strcmp (type, "sync") && strcmp (type, "async")) {
-            printf ("boot: invalid boot type '%s' for application %s\n", type, app);
+        int type = BOOT_TYPE_UNKNOWN;
+        if (strcmp (type_str, "async") == 0) {
+            type = BOOT_TYPE_ASYNC;
+        } else if (strcmp (type_str, "boot") == 0) {
+            type = BOOT_TYPE_BOOT;
+        } else if (strcmp (type_str, "sync") == 0) {
+            type = BOOT_TYPE_SYNC;
+        } 
+
+        if (type == BOOT_TYPE_UNKNOWN) {
+            printf ("boot: invalid boot type '%s' for application %s\n", type_str, app);
             panic ("invalid boot application type");
         }
 
+        /* XXX: sleep a little first */
+        if (type == BOOT_TYPE_BOOT) {
+            printf ("boot app\n");
+            sleep (3000);
+        }
 
-        printf ("Starting '%s' as %s...\n", app, type);
+        printf ("Starting '%s' as %s...\n", app, type_str);
         thread_t thread = thread_create_from_cpio (app, rootserver_syscall_cap);
         if (!thread) {
             printf ("boot: failed to start '%s' - in CPIO archive?\n", app);
-            panic ("failed to start boot application");
+            if (type != BOOT_TYPE_BOOT) {
+                /* only panic if regular boot service */
+                panic ("failed to start boot application");
+            }
+        } else {
+            printf ("\tstarted with PID %d\n", thread->pid);
+
+            /* XXX: should wait for EP rather than sleeping */
+            if (type == BOOT_TYPE_SYNC) {
+                printf ("sync app\n");
+                sleep (3000);
+            } else if (type == BOOT_TYPE_BOOT && thread) {
+                printf ("boot: boot thread started, exiting bootsvc\n");
+                break;
+            }
         }
-
-        printf ("\tstarted with PID %d\n", thread->pid);
-
-        /* FIXME: wait for applications with 'sync' boot types */
 
         line = strtok (NULL, BOOT_LIST_LINE);
     }
 
     free (mem_bootlist);
-
     return 0;
 }
