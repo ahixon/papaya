@@ -10,6 +10,7 @@
 #include <vm/addrspace.h>
 
 #include <services/services.h>
+#include <assert.h>
 
 extern seL4_CPtr _badgemap_ep;
 extern short badgemap_found;
@@ -179,4 +180,27 @@ int syscall_share_unmount (struct pawpaw_event* evt) {
     //addrspace_print_regions (src_thread->as);
 
     return PAWPAW_EVENT_NEEDS_REPLY;
+}
+
+struct as_region* create_share_reg (seL4_CPtr *cap, seL4_Word *dest_id) {
+    struct as_region* share_reg = as_define_region_within_range (cur_addrspace,
+            PROCESS_SCRATCH_START, PROCESS_SCRATCH_END, PAGE_SIZE, seL4_AllRights, REGION_SHARE);
+
+    assert (share_reg);
+
+    /* map straight away */
+    int status = PAGE_FAILED;
+    assert (page_map (cur_addrspace, share_reg, share_reg->vbase, &status, NULL, NULL));
+    assert (status != PAGE_FAILED);
+
+    /* badge with unique ID */
+    seL4_Word id = cid_next ();
+    maps_append (id, 0, share_reg->vbase);
+    seL4_CPtr their_cbox_cap = cspace_mint_cap (cur_cspace, cur_cspace,
+        _badgemap_ep, seL4_AllRights,
+        seL4_CapData_Badge_new (id));
+
+    *cap = their_cbox_cap;
+    *dest_id = id;
+    return share_reg;
 }

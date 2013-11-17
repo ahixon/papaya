@@ -9,6 +9,8 @@
 #include <pawpaw.h>
 #include <copyinout.h>
 
+#include <syscalls/syscall_table.h>
+
 #include <assert.h>
 
 #define MAX_SERVICE_NAME    512
@@ -87,20 +89,9 @@ int syscall_service_find (struct pawpaw_event* evt) {
         return PAWPAW_EVENT_UNHANDLED;
     }
 
-    thread_t found_thread = NULL;
-    thread_t check_thread = threadlist_first();
-    while (check_thread) {
-        /* FIXME: shouldn't be comparing on thread name, rather name registered with */
-        if (strcmp (check_thread->name, service_name) == 0) {
-            found_thread = check_thread;
-            break;
-        }
-
-        check_thread = check_thread->next;
-    }
-
-    if (found_thread && found_thread->service_cap) {
-        seL4_CPtr client_cap = cspace_mint_cap(current_thread->croot, cur_cspace, found_thread->service_cap,
+    seL4_CPtr cap = service_lookup (service_name);
+    if (cap) {
+        seL4_CPtr client_cap = cspace_mint_cap(current_thread->croot, cur_cspace, cap,
             seL4_AllRights, seL4_CapData_Badge_new (current_thread->pid));
 
         seL4_SetMR (0, client_cap);
@@ -124,4 +115,24 @@ int syscall_service_find (struct pawpaw_event* evt) {
     }
     
     return PAWPAW_EVENT_NEEDS_REPLY;
+}
+
+seL4_CPtr service_lookup (char* service_name) {
+    thread_t found_thread = NULL;
+    thread_t check_thread = threadlist_first();
+    while (check_thread) {
+        /* FIXME: shouldn't be comparing on thread name, rather name registered with */
+        if (strcmp (check_thread->name, service_name) == 0) {
+            found_thread = check_thread;
+            break;
+        }
+
+        check_thread = check_thread->next;
+    }
+
+    if (found_thread && found_thread->service_cap) {
+        return found_thread->service_cap;
+    }
+
+    return 0;
 }

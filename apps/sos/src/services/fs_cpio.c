@@ -75,7 +75,9 @@ static int vfs_open (struct pawpaw_event* evt) {
     for (int i = 0; cpio_get_entry (
     	_cpio_archive, i, (const char**)&name, &size); i++) {
 
-    	if (strcmp (evt->share->buf, name) == 0) {
+    	int res = strcmp (evt->share->buf, name);
+    	printf ("comparing '%s' and '%s' = %d\n", evt->share->buf, name, res);
+    	if (res == 0) {
     		seL4_CPtr their_cap = pawpaw_cspace_alloc_slot ();
     		if (!their_cap) {
     			printf ("cpio: failed to alloc slot\n");

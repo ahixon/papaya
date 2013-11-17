@@ -39,4 +39,6 @@ int syscall_share_unmount (struct pawpaw_event* evt);
 
 int syscall_alloc_dma (struct pawpaw_event* evt);
 
+seL4_CPtr service_lookup (char* name);
+
 #endif

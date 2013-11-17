@@ -26,7 +26,7 @@
 
 # Core services
 dev_timer=sync
-svc_vfs=async
+svc_vfs=sync
 svc_dev=async
 
 # NFS and dependencies
@@ -36,7 +36,7 @@ fs_nfs=sync
 fs_dev=sync
 
 # Mount user filesystems
-#mount fstab.txt
+mount fstab.txt
 
 # Now that filesystems have been mounted, enable swapping
 #swap /swap.bin

@@ -258,7 +258,8 @@ int fs_mount (struct pawpaw_event* evt) {
     printf ("vfs: mounted fs '%s' to %s\n", fstype, mountpoint);
     free (fstype);
     free (orig_mountpoint);
-    evt->reply = seL4_MessageInfo_new (0, 0, 0, 0);
+    evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+    seL4_SetMR (0, 0);
 
     evt->flags |= PAWPAW_EVENT_NO_UNMOUNT;
     return PAWPAW_EVENT_NEEDS_REPLY;
@@ -407,7 +408,7 @@ int main (void) {
     printf ("svc_vfs: installing root node\n");
     struct fs_node *root = malloc (sizeof (struct fs_node));
     assert (root);
-    
+
     root->dirname = "";
     root->fs = NULL;
     root->mounter_badge = 0;

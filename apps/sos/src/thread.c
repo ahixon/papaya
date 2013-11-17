@@ -520,39 +520,28 @@ thread_t thread_create_from_fs (char* name, char *file, seL4_CPtr file_cap, int 
     return thread;
 }
 
+struct as_region* share_reg = NULL;
+seL4_CPtr share_badge = 0;
+seL4_Word share_id = 0;
+
 thread_t thread_create_from_cpio (char* path, seL4_CPtr rootsvr_ep) {
     /* FIXME: make common with syscall_share.c */
-    //printf ("Hi you wanted to start %s\n", path);
-    //printf ("Defining a region\n");
-    struct as_region* share_reg = as_define_region_within_range (cur_addrspace,
-            PROCESS_SCRATCH_START, PROCESS_SCRATCH_END, PAGE_SIZE, seL4_AllRights, REGION_SHARE);
+    if (!share_reg) {
+        share_reg = create_share_reg (&share_badge, &share_id);
+    }
 
-    assert (share_reg);
-
-    /* map straight away */
-    int status = PAGE_FAILED;
-    assert (page_map (cur_addrspace, share_reg, share_reg->vbase, &status, NULL, NULL));
-    assert (status != PAGE_FAILED);
-
-    /* badge with unique ID */
-    seL4_Word id = cid_next ();
-    //printf ("Adding to map\n");
-    maps_append (id, 0, share_reg->vbase);
-    seL4_CPtr their_cbox_cap = cspace_mint_cap (cur_cspace, cur_cspace,
-        _badgemap_ep, seL4_AllRights,
-        seL4_CapData_Badge_new (id));
-    /* FIXME: should keep this forever */
-
-    memcpy ((char*)share_reg->vbase, path, strlen (path));
+    int len = strlen (path);
+    memcpy ((char*)share_reg->vbase, path, len);
+    *(char*)(share_reg->vbase + len) = '\0';
 
     seL4_CPtr recv_cap = cspace_alloc_slot (cur_cspace);
     assert (recv_cap);
     seL4_SetCapReceivePath (cur_cspace->root_cnode, recv_cap, CSPACE_DEPTH);
 
     seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 3);
-    seL4_SetCap (0, their_cbox_cap);
+    seL4_SetCap (0, share_badge);
     seL4_SetMR (0, VFS_OPEN);
-    seL4_SetMR (1, id);
+    seL4_SetMR (1, share_id);
     seL4_SetMR (2, FM_READ);
 
     printf ("OK, asking VFS to open our file...\n");
@@ -580,9 +569,9 @@ thread_t thread_create_from_cpio (char* path, seL4_CPtr rootsvr_ep) {
      * can read the headers we need */
 
     msg = seL4_MessageInfo_new (0, 0, 1, 3);
-    seL4_SetCap (0, their_cbox_cap);
+    seL4_SetCap (0, share_badge);
     seL4_SetMR (0, VFS_READ);
-    seL4_SetMR (1, id);
+    seL4_SetMR (1, share_id);
     seL4_SetMR (2, PAGE_SIZE);
     //seL4_SetMR (3, 0);  /* offset */
 

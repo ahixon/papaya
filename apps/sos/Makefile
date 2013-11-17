@@ -29,7 +29,7 @@ include $(SEL4_COMMON)/common.mk
 ${COMPONENTS}:
 	false
 
-archive.o: ${COMPONENTS} $(SOURCE_DIR)/src/boot/boot.txt
+archive.o: ${COMPONENTS} $(SOURCE_DIR)/src/boot/boot.txt $(SOURCE_DIR)/src/boot/fstab.txt
 	$(Q)mkdir -p $(dir $@)
 	echo "LINKING $@"
 	${COMMON_PATH}/files_to_obj.sh $@ _cpio_archive $^ 

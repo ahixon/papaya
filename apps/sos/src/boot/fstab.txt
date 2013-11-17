@@ -1,0 +1,20 @@
+# Lines starting with # are comments
+# Fields should be separated by HARD TABS
+# Format is similar to /etc/fstab:
+#	<mountpoint>[TAB]<fstype>[TAB]options
+#
+# At the moment, options are not used by the VFS layer
+# (they ARE passed to the filesystem but nobody uses them yet)
+#
+# In the future, VFS services may need to be slightly redesigned to
+# support mounting block devices. Easiest way would be to launch a
+# new service thread with provided options as arguments.
+
+# FIXME: apparently order matters here
+/dev	dev	none
+/	nfs	none
+
+# TODO: assumes no mnt/cpio folder in NFS mountpoint
+# VFS should query all filesystems under that path and combine their
+# results
+#/mnt/cpio	cpio	readonly

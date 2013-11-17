@@ -415,17 +415,6 @@ int main (void) {
 
     seL4_Call (vfs_ep, msg);    /* FIXME: would we ever need call? otherwise this is OK :) */
 
-    /* XXX: mount device fs to / - svc_init should do this instead */
-    strcpy (newshare->buf, "/");
-    strcpy ((newshare->buf) + 2, FILESYSTEM_NAME);
-    
-    msg = seL4_MessageInfo_new (0, 0, 0, 2);
-    seL4_SetMR (0, VFS_MOUNT);
-    seL4_SetMR (1, newshare->id);
-
-    printf ("nfs: mounting\n");
-    seL4_Call (vfs_ep, msg);
-
     /* setup done, now listen to VFS or other people we've given our EP to */
     printf ("nfs: started\n");
     pawpaw_event_loop (&handler_table, interrupt_handler, service_ep);
@@ -441,7 +430,11 @@ int main (void) {
  * libnfs' rpc.c for checking if RPCs have timed out
  *
  * a much better way would be to get dev_timer to call
- * us back after 100 ms or whatever */
+ * us back after 100 ms or whatever 
+ *
+ * DOUBLE FIXME: we don't even do that(!) so packets might get lost
+ * but nice and easy now
+ */
 struct sync_ep_node {
     seL4_CPtr cap;
     //seL4_Word paddr;

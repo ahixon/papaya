@@ -272,19 +272,6 @@ int main (void) {
 
     seL4_Call (vfs_ep, msg);    /* FIXME: would we ever need call? otherwise this is OK :) */
 
-    /* mount device fs to /dev
-     * FIXME: would be nice if svc_init did this */
-    //printf ("")
-    printf ("fs_dev: mounting ourselves\n");
-    strcpy (newshare->buf, "/dev");
-    strcpy (newshare->buf + strlen("/dev") + 1, "dev");
-
-    msg = seL4_MessageInfo_new (0, 0, 0, 2);
-    seL4_SetMR (0, VFS_MOUNT);
-    seL4_SetMR (1, newshare->id);
-
-    seL4_Call (vfs_ep, msg);
-
     /* setup done, now listen to VFS or other people we've given our EP to */
     pawpaw_event_loop (&handler_table, interrupt_handler, service_ep);
 
