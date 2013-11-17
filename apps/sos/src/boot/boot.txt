@@ -38,6 +38,9 @@ fs_dev=sync
 # Mount user filesystems
 #mount fstab.txt
 
+# Now that filesystems have been mounted, enable swapping
+#swap /swap.bin
+
 # We need to ensure this finishes starting before starting 
 # our application, otherwise standard I/O will not be available
 dev_console=sync
@@ -47,3 +50,4 @@ dev_console=sync
 #/bin/sosh=boot
 #/mnt/cpio/sosh=boot
 sosh=boot
+#thrash=boot

@@ -406,9 +406,8 @@ int main (void) {
     /* install root node */
     printf ("svc_vfs: installing root node\n");
     struct fs_node *root = malloc (sizeof (struct fs_node));
-    printf ("svc_vfs: root was: %p\n", root);
     assert (root);
-
+    
     root->dirname = "";
     root->fs = NULL;
     root->mounter_badge = 0;

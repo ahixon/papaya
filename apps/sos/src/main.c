@@ -99,6 +99,7 @@ void swap_success (struct pawpaw_event* evt) {
     page->flags &= ~PAGE_SWAPPING;
     page->flags |= PAGE_ALLOCATED;
 
+#if 0
     if (strcmp (thread->name, "sosh") != 0) {
         goto flush;
     }
@@ -143,6 +144,9 @@ void swap_success (struct pawpaw_event* evt) {
     seL4_ARM_Page_Unmap (cap);
 
 flush:
+
+
+#endif
     //printf ("flushing caches...\n");
     seL4_ARM_Page_FlushCaches (page->cap);
 
@@ -349,7 +353,7 @@ static void rootserver_init (seL4_CPtr* ipc_ep, seL4_CPtr* async_ep) {
 
     /* find available memory */
     ut_find_memory (&low, &high);
-    high = low + (0x1000 * 1024 * 20);  /* XXX: artificially limit memory to 10 MB */
+    high = low + (0x1000 * 1024 * 1);  /* XXX: artificially limit memory to 10 MB */
 
     /* Initialise the untyped memory allocator */
     ut_allocator_init (low, high);
