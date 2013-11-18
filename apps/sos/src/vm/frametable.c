@@ -74,6 +74,9 @@ frametable_init (seL4_Word low_arg, seL4_Word high_arg)
     }
 }
 
+struct frameinfo* frame_head = NULL;
+struct frameinfo* frame_tail = NULL;
+
 struct frameinfo*
 frame_alloc (void)
 {
@@ -97,6 +100,18 @@ frame_alloc (void)
     if (!frame) {
         ut_free (untyped_addr, seL4_PageBits);
         return NULL;
+    }
+
+    /* add to frame queue */
+    if (frame_tail) {
+        frame_tail->next = frame;
+        frame->prev = frame_tail;
+    }
+
+    frame_tail = frame;
+
+    if (!frame_head) {
+        frame_head = frame;
     }
 
     allocated++;
@@ -171,6 +186,29 @@ frame_free (struct frameinfo* fi) {
 
     fi->flags &= ~FRAME_ALLOCATED;
     allocated--;
+
+    /* remove from frame queue */
+    if (!fi->next && !fi->prev) {
+        /* likely a loner + externally allocated */
+        //free (fi);
+        return;
+    }
+
+    if (frame_head == fi) {
+        frame_head = fi->next;
+    }
+
+    if (frame_tail == fi) {
+        frame_tail = fi->prev;
+    }
+
+    /* cut ourselves out */
+    if (fi->prev) {
+        fi->prev->next = fi->next;
+    }
+
+    fi->prev = NULL;
+    fi->next = NULL;
 }
 
 /* shouldn't really be used except for debugging */

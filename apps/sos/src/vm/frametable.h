@@ -28,6 +28,7 @@ struct frameinfo {
 
     /* for paging queue */
     struct frameinfo* next;
+    struct frameinfo* prev; /* needed to free things efficiently */
 };
 
 static inline int frame_get_refcount (struct frameinfo* fi) {
