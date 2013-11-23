@@ -4,27 +4,39 @@
 #include <sel4/sel4.h>
 #include "vm.h"
 
-#define FRAME_SIZE      (1 << seL4_PageBits)
-
-#define FRAME_ALLOCATED (1 << 31)
-#define FRAME_PINNED    (1 << 30)
-#define FRAME_CLEAN     (1 << 29)
-#define FRAME_DIRTY     (1 << 28)
-#define NUM_FRAME_FLAGS	(4)
+#define FRAME_FRAMETABLE    (1 << 31)   /* in frametable / "referenced" bit */
+#define FRAME_SWAPPING      (1 << 30)
+#define FRAME_PINNED        (1 << 29)
+#define FRAME_DIRTY         (1 << 28)   /* unused */
+#define FRAME_COPY_ON_WRITE (1 << 27)   /* unused, relevant iff refcount > 1 */
+#define NUM_FRAME_FLAGS     (5)
 
 #define FRAME_REFCOUNT_MAX	(1 << ((32 - NUM_FRAME_FLAGS)))
 #define FRAME_REFCOUNT_MASK	((1 << ((32 - NUM_FRAME_FLAGS) + 1)) - 1)
 
+#define IDX_PHYS(x) ((x - ft_low) >> seL4_PageBits)
+#define IDX_VIRT(x) ((x - FRAMEWINDOW_VSTART) >> seL4_PageBits)
+
+struct mmap {
+    seL4_CPtr file;     /* badged endpoint to open file */
+    int file_offset;
+    int load_offset;    /* offset of where to load into buffer */
+    int load_length;    /* how many bytes to read into buffer */
+};
+
 struct frameinfo {
-    paddr_t paddr;
     uint32_t flags;
 
-    /* for mmaped files - this gets converted to a physical frame when
-     * we get a share (we essentially steal its frame + consume it) */
-    seL4_CPtr file;
-    int file_offset;
-    int load_offset;   /* FIXME: could fit in flags? */
-    int load_length;
+    paddr_t paddr;
+    struct mmap* file;      /* not a union since although a page might be
+                               mapped in; if it's clean we can just junk it and
+                               not load from swap (and hence can't throw away
+                               mmaped file info) */
+
+    union {
+        struct pt_entry* page;
+        struct pagelist* pages; /* pages associated with this frame */
+    };
 
     /* for paging queue */
     struct frameinfo* next;
@@ -37,7 +49,9 @@ static inline int frame_get_refcount (struct frameinfo* fi) {
 
 #include <assert.h>
 static inline void frame_set_refcount (struct frameinfo* fi, int count) {
-	assert (count <= FRAME_REFCOUNT_MAX);	/* FIXME: shouldn't be an assert really.. */
+    /* FIXME: shouldn't be an assert really, nor belong here.. */
+	assert (count <= FRAME_REFCOUNT_MAX);
+
 	fi->flags = (fi->flags & ~FRAME_REFCOUNT_MASK) | count;
 }
 
@@ -67,9 +81,5 @@ frametable_fetch_cap (struct frameinfo* frame);
 
 void
 frametable_stats (void);
-
-void ft_test1(void);
-void ft_test2(void);
-void ft_test3(void);
 
 #endif

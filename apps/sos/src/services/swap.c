@@ -30,7 +30,8 @@ extern seL4_CPtr _badgemap_ep;	/* XXX */
 extern seL4_CPtr rootserver_async_cap;
 
 struct mmap_queue_item {
-	struct pt_entry *page;
+	//struct pt_entry *page;
+	struct frameinfo *frame;
 	void (*cb)(struct pawpaw_event *evt);
 	struct pawpaw_event *evt;
 
@@ -47,40 +48,40 @@ void mmap_item_dispose (struct mmap_queue_item *q);
 void mmap_item_success (struct mmap_queue_item* q);
 void mmap_item_fail (struct mmap_queue_item *q);
 struct mmap_queue_item*
-mmap_queue_new (struct pt_entry* page, void* callback, struct pawpaw_event* evt);
+mmap_queue_new (struct frameinfo* frame, void* callback, struct pawpaw_event* evt);
 
 static int
-mmap_queue_schedule (int direction, vaddr_t vaddr, struct pt_entry* page, void* callback, struct pawpaw_event* evt);
+mmap_queue_schedule (int direction, vaddr_t vaddr, struct frameinfo* frame, void* callback, struct pawpaw_event* evt);
 
 void mmap_item_dispose (struct mmap_queue_item *q) {
 	struct mmap_queue_item* v = mmap_queue;
-    struct mmap_queue_item* prev = NULL;
-    while (v) {
-    	if (v->next == q) {
-    		prev = v;
-    		break;
-    	}
+	struct mmap_queue_item* prev = NULL;
+	while (v) {
+		if (v->next == q) {
+			prev = v;
+			break;
+		}
 
-    	v = v->next;
-    }
+		v = v->next;
+	}
 
-    if (prev) {
-    	prev->next = q->next;
-    } else {
-    	mmap_queue = q->next;
-    }
+	if (prev) {
+		prev->next = q->next;
+	} else {
+		mmap_queue = q->next;
+	}
 
-    free (q);
+	free (q);
 }
 
 struct mmap_queue_item*
-mmap_queue_new (struct pt_entry* page, void* callback, struct pawpaw_event* evt) {
+mmap_queue_new (struct frameinfo *frame, void* callback, struct pawpaw_event* evt) {
 	struct mmap_queue_item* q = malloc (sizeof (struct mmap_queue_item));
 	if (!q) {
 		return NULL;
 	}
 
-	q->page = page;
+	q->frame = frame;
 	q->cb = callback;
 	q->evt = evt;
 
@@ -101,84 +102,128 @@ struct seen_item {
 
 struct seen_item* regd_caps = NULL;
 
-/* FIXME: think about checking the queue before deleting threads, otherwise race */
+extern seL4_CPtr swap_cap;
+seL4_Word swap_id = 0;
+
+/* FIXME: think about checking the queue before deleting threads, otherwise race
+	Following things need to happen:
+		- have refcount on thread for "outstanding swap requests"
+		- only delete the thread once this reaches 0
+			- thread deletion thus needs to be async /w wait queue
+			- same goes with thread creation i guess (different issue tho)
+ */
 static int
-mmap_queue_schedule (int direction, vaddr_t vaddr, struct pt_entry* page, void* callback, struct pawpaw_event* evt) {
-	struct mmap_queue_item* q = mmap_queue_new (page, callback, evt);
+mmap_queue_schedule (int direction, vaddr_t vaddr, struct frameinfo *frame, void* callback, struct pawpaw_event* evt) {
+	struct mmap_queue_item* q = mmap_queue_new (frame, callback, evt);
 	if (!q) {
 		return false;
 	}
 
-	assert (page);
-	assert (page->frame);
+	assert (frame->file);
+	assert (frame->file->file);
 
+	/* FIXME: seriously this needs work */
 	seL4_CPtr cap;
 	struct seen_item *item = regd_caps;
 	while (item) {
-		if (item->cap == page->frame->file) {
-			break;
+		if (item->cap == frame->file->file) {
+		   break;
 		}
 
-		item = item->next;
+	   item = item->next;
 	}
 
 	if (!item) {
 		seL4_MessageInfo_t reg_msg = seL4_MessageInfo_new (0, 0, 1, 1);
 
-		/* FIXME: infoleak - don't use virtual addresses as ids */
-	    seL4_CPtr their_cap = cspace_mint_cap (
-	    	cur_cspace, cur_cspace, _mmap_ep, seL4_AllRights, seL4_CapData_Badge_new (page));
+		/* FIXME: possible infoleak on using frame kernel vaddr?
+		 * DON'T EVEN NEED JUST MINT WITH BADGE > 0 i think */
+		seL4_CPtr their_cap = cspace_mint_cap (
+			cur_cspace, cur_cspace, _mmap_ep, seL4_AllRights, seL4_CapData_Badge_new (frame));
 
-	    assert (their_cap);
+		assert (their_cap);
 
 		seL4_SetMR (0, VFS_REGISTER_CAP);
 		seL4_SetCap (0, their_cap);
-		printf ("mmap: registering cap\n");
-		seL4_Call (page->frame->file, reg_msg);
+		printf ("mmap: registering cap on %d\n", frame->file->file);
+		seL4_Call (frame->file->file, reg_msg);
 		seL4_Word id = seL4_GetMR (0);
 		printf ("mmap: got new cap 0x%x\n", id);
 		assert (id > 0);
 
 		item = malloc (sizeof (struct seen_item));
 		assert (item);
-		item->cap = page->frame->file;
+		item->cap = frame->file->file;
 		item->id = id;
 
 		item->next = regd_caps;
 		regd_caps = item;
+
+		//printf ("mmap: got new cap 0x%x\n", id);
+		//swap_id = id;
+		//assert (swap_id > 0);
 	}
 
 	if (direction == PAGE_SWAP_IN) {
-	    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 4);
-	    /* memmap the file - FIXME: should be async -> TO SWAP THREAD */
+		seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 4);
 
-	    seL4_Word id = cid_next ();
-	    printf ("-> into vaddr 0x%x with pid %d\n", vaddr, ((thread_t)evt->args[1])->pid);
-	    /* FIXME: this is dodgy */
-	    maps_append (id, ((thread_t)evt->args[1])->pid, vaddr);
+		seL4_Word id = cid_next ();
+		//printf ("-> into vaddr 0x%x with pid %d\n", vaddr, ((thread_t)evt->args[1])->pid);
+		/* FIXME: this is dodgy */
+		maps_append (id, ((thread_t)evt->args[1])->pid, vaddr);
 
-	    /* well, better badge.. better call Saul */
-	    seL4_CPtr badge_cap = cspace_mint_cap (
-	    	cur_cspace, cur_cspace, _badgemap_ep, seL4_AllRights, seL4_CapData_Badge_new (id));
-	    assert (badge_cap);
+		/* well, better badge.. better call Saul */
+		seL4_CPtr badge_cap = cspace_mint_cap (
+			cur_cspace, cur_cspace, _badgemap_ep, seL4_AllRights, seL4_CapData_Badge_new (id));
+		assert (badge_cap);
 
-	    msg = seL4_MessageInfo_new (0, 0, 1, 7);
-	    seL4_SetCap (0, badge_cap);
-	    seL4_SetMR (0, VFS_READ_OFFSET);
-	    seL4_SetMR (1, id);
-	    seL4_SetMR (2, page->frame->load_length);
-	    seL4_SetMR (3, page->frame->file_offset);
-	    seL4_SetMR (4, page->frame->load_offset);
-	    seL4_SetMR (5, item->id);	/* async ID */
-	    seL4_SetMR (6, page);
+		assert (frame->file);
 
-	    printf ("Calling file %d @ offset 0x%x /w vm offset 0x%x\n", page->frame->file, page->frame->file_offset, page->frame->load_offset);
-	    seL4_Send (page->frame->file, msg);
+		msg = seL4_MessageInfo_new (0, 0, 1, 7);
+		seL4_SetCap (0, badge_cap);
+		seL4_SetMR (0, VFS_READ_OFFSET);
+		seL4_SetMR (1, id);
+		seL4_SetMR (2, frame->file->load_length);
+		seL4_SetMR (3, frame->file->file_offset);
+		seL4_SetMR (4, frame->file->load_offset);
+		seL4_SetMR (5, item->id);	/* async ID */
+		seL4_SetMR (6, frame);
 
-	    /* and we go back to waiting on our EP */
+		printf ("Calling file %d @ offset 0x%x /w vm offset 0x%x\n", frame->file->file, frame->file->file_offset, frame->file->load_offset);
+		seL4_Send (frame->file->file, msg);
+
+		/* and we go back to waiting on our EP */
 	} else if (direction == PAGE_SWAP_OUT) {
-		printf ("%s: swapping out not implemented yet\n");
-		return false;
+		seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 4);
+
+		/* FIXME: need to clean this up after swap OK */
+		seL4_Word id = cid_next ();
+		maps_append (id, ((thread_t)evt->args[1])->pid, vaddr);
+
+		/* well, better badge.. better call Saul */
+		seL4_CPtr badge_cap = cspace_mint_cap (
+			cur_cspace, cur_cspace, _badgemap_ep, seL4_AllRights, seL4_CapData_Badge_new (id));
+		assert (badge_cap);
+
+		msg = seL4_MessageInfo_new (0, 0, 1, 7);
+		seL4_SetCap (0, badge_cap);
+		//seL4_SetMR (0, VFS_WRITE_OFFSET);
+		seL4_SetMR (1, id);
+		seL4_SetMR (2, PAGE_SIZE);	/* always write the whole page out */
+		seL4_SetMR (3, frame->paddr);	/* file offset */
+		seL4_SetMR (4, 0);		/* load into start of share */
+		seL4_SetMR (5, item->id);	/* async ID */
+		seL4_SetMR (6, frame);
+		//assert (frame->flags )
+
+		/* memory map it */
+		frame->file = frame_create_mmap (swap_cap, 0, frame->paddr, PAGE_SIZE);
+		assert (frame->file);
+
+		/* and write it out */
+		seL4_Send (swap_cap, msg);
+
+		/* and we go back to waiting on our EP */
 	} else {
 		printf ("%s: unknown swap direction 0x%x; ignoring\n", __FUNCTION__, direction);
 		return false;
@@ -189,13 +234,13 @@ mmap_queue_schedule (int direction, vaddr_t vaddr, struct pt_entry* page, void* 
 
 /* avoids the need for sync primitives */
 int
-mmap_swap (int direction, vaddr_t vaddr, struct pt_entry* page, void* callback, struct pawpaw_event* evt) {
+mmap_swap (int direction, vaddr_t vaddr, struct frameinfo* frame, void* callback, struct pawpaw_event* evt) {
 	seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 6);
 
 	seL4_SetMR (0, MMAP_REQUEST);
 	seL4_SetMR (1, direction);
 	seL4_SetMR (2, vaddr);
-	seL4_SetMR (3, page);
+	seL4_SetMR (3, frame);
 	seL4_SetMR (4, callback);
 	seL4_SetMR (5, evt);
 
@@ -210,8 +255,8 @@ mmap_swap (int direction, vaddr_t vaddr, struct pt_entry* page, void* callback, 
  * mmap service 
  */
 int mmap_main (void) {
-    while (1) {
-    	seL4_Word badge = 0;
+	while (1) {
+		seL4_Word badge = 0;
 		seL4_Wait (_mmap_ep, &badge);
 
 		if (badge == 0) {
@@ -248,7 +293,7 @@ int mmap_main (void) {
 			/* find the matching mmap request */
 			struct mmap_queue_item* q = mmap_queue;
 			while (q) {
-				if (q->page == evt) {
+				if (q->frame == evt) {
 					/* FIXME: this is inefficient, should just manipulate pointers */
 					struct mmap_queue_item* r = malloc (sizeof (struct mmap_queue_item));
 					if (!r) {
@@ -256,7 +301,8 @@ int mmap_main (void) {
 						break;
 					}
 
-					r->page = q->page;
+					//r->page = q->page;
+					r->frame = q->frame;
 					r->cb = q->cb;
 					r->evt = q->evt;
 					/* FIXME: need status flag for read >= 0 */

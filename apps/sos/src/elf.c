@@ -20,10 +20,10 @@
 #define PAGE_ALIGN(addr)      ((addr) & ~(PAGEMASK))
 #define IS_PAGESIZE_ALIGNED(addr) !((addr) &  (PAGEMASK))
 
-/*
+/**
  * Convert ELF permissions into seL4 permissions.
  */
-seL4_Word get_sel4_rights_from_elf(unsigned long permissions) {
+seL4_Word get_sel4_rights_from_elf (unsigned long permissions) {
     seL4_Word result = 0;
 
     if (permissions & PF_R)
@@ -45,11 +45,15 @@ int load_segment_into_vspace(addrspace_t dest_as,
                                     unsigned long file_size, unsigned long dst,
                                     unsigned long permissions) {
     if (file_size > segment_size) {
-        printf ("%s: umm, file_size (0x%lx) > segment size (0x%lx)\n", __FUNCTION__, file_size, segment_size);
+        printf ("%s: umm, file_size (0x%lx) > segment size (0x%lx)\n",
+            __FUNCTION__, file_size, segment_size);
         return false;
     }
 
-    if (!as_define_region (dest_as, dst, segment_size, permissions, REGION_GENERIC)) {
+    struct as_region* reg = as_define_region (
+        dest_as, dst, segment_size, permissions, REGION_GENERIC);
+
+    if (!reg) {
         printf ("%s: failed to define region at 0x%lx\n", __FUNCTION__, dst);
         return false;
     }
@@ -60,39 +64,34 @@ int load_segment_into_vspace(addrspace_t dest_as,
     while (pos < file_size) {
         seL4_Word vpage = PAGE_ALIGN (dst);
 
-        /* FIXME: should be region attributes? */
-        struct pt_entry* page = page_fetch_entry (dest_as, DEFAULT_ATTRIBUTES, dest_as->pagetable, vpage);
+        struct pt_entry* page = page_fetch_new (
+            dest_as, reg->attributes, dest_as->pagetable, vpage);
+
         if (!page) {
-            printf ("%s: failed to fetch page for vaddr 0x%x\n", __FUNCTION__, vpage);
+            printf ("%s: failed to fetch page for vaddr 0x%x\n",
+                __FUNCTION__, vpage);
+
             return false;
         }
 
-        page->frame = frame_new_from_untyped (0);
+        page->frame = frame_new ();
         if (!page->frame) {
-            printf ("%s: failed to allocate new page\n", __FUNCTION__);
+            printf ("%s: failed to setup new page\n", __FUNCTION__);
             return false;
         }
-
 
         /* mmap the page to the file */
         int nbytes = PAGESIZE - (dst & PAGEMASK);
 
-        page->frame->file = src;
-        page->frame->load_offset = dst - vpage;
-        page->frame->file_offset = offset;
-        
-        page->frame->load_length = MIN(nbytes, file_size - pos);
-        printf ("elf: set frame info for 0x%x - file cap %d @ offset 0x%x load offset 0x%x load len = 0x%x\n", vpage, src, offset, page->frame->load_offset, page->frame->load_length);
+        page->frame->file = frame_create_mmap (
+            src, dst - vpage, offset, MIN (nbytes, file_size - pos));
+        printf ("mapping to file EP %d (%d) = %p\n", src, page->frame->file->file, page->frame->file);
 
-        /* FIXME: increment by nbytes or PAGE_SIZE */
+        assert (page->frame->file);
+
         offset += nbytes;
         pos += nbytes;
         dst += nbytes;
-
-
-        /*offset += PAGE_SIZE;
-        pos += PAGE_SIZE;
-        dst += PAGE_SIZE;*/
     }
 
     return true;

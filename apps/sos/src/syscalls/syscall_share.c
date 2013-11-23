@@ -138,8 +138,11 @@ int syscall_share_mount (struct pawpaw_event* evt) {
     /* cool, now shared map the two */
     printf ("%s: mapping vaddr 0x%x in %s (share 0x%x) to 0x%x in %s\n", __FUNCTION__, src_vaddr, src_thread->name, id, share_reg->vbase, current_thread->name);
 
+    /* FIXME: handle swapping */
+    int status = PAGE_FAILED;
     struct pt_entry* pte = page_map_shared (current_thread->as, share_reg, share_reg->vbase,
-        src_thread->as, other_reg, src_vaddr, false);
+        src_thread->as, other_reg, src_vaddr, false, &status, NULL, NULL);
+    assert (status == PAGE_SUCCESS);
 
     if (!pte) {
         printf ("%s: map shared failed\n", __FUNCTION__);
@@ -162,13 +165,14 @@ int syscall_share_unmount (struct pawpaw_event* evt) {
     evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
 
     /* unmap the associated page - FIXME: what is "abstraction" hurrr */
-    struct pt_entry* pte = page_fetch (current_thread->as->pagetable, reg->vbase);
+    struct pt_entry* pte = page_fetch_existing (current_thread->as->pagetable, reg->vbase);
     if (!pte) {
         printf ("%s: BADNESS: no page associated with region??? double free\n", __FUNCTION__);
         return PAWPAW_EVENT_UNHANDLED;
     }
     
-    int success = page_unmap (pte);
+    printf ("!!!! unmapping page %p\n", pte);
+    int success = page_free (pte);
     seL4_SetMR (0, success);
     if (!success) {
         printf ("%s: WARNING: page unmap failed\n", __FUNCTION__);

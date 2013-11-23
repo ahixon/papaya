@@ -58,13 +58,13 @@ int syscall_map_device (struct pawpaw_event* evt) {
     //printf ("%s: mapping 0x%x -> 0x%x (using size 0x%x though asked for 0x%x) on paddr 0x%x\n", __FUNCTION__, reg->vbase, reg->vbase + reg->size, len, evt->args[1], paddr);
     
     for (vaddr_t vaddr = reg->vbase; vaddr < end; vaddr += PAGE_SIZE) {
-        struct pt_entry* pte = page_fetch_entry (current_thread->as, reg->attributes, current_thread->as->pagetable, vaddr);
+        struct pt_entry* pte = page_fetch_new (current_thread->as, reg->attributes, current_thread->as->pagetable, vaddr);
         assert (pte);
 
         if (pte->cap || pte->frame) {
             /* free underlying frame - should flush cache, right? */
             //printf ("%s: vaddr 0x%x already allocated, freeing\n", __FUNCTION__, vaddr);
-            page_unmap (pte);
+            page_free (pte);
             assert (!pte->cap);
         }
 
@@ -121,13 +121,13 @@ int syscall_alloc_dma (struct pawpaw_event* evt) {
     /* go through all the underlying pages + preallocate frames */
     for (vaddr_t vaddr = evt->args[0]; vaddr < end; vaddr += PAGE_SIZE) {
         /* FIXME: don't use 0 - magic numbers suck. we just do this because we want no caching */
-        struct pt_entry* pte = page_fetch_entry (current_thread->as, 0, current_thread->as->pagetable, vaddr);
+        struct pt_entry* pte = page_fetch_new (current_thread->as, 0, current_thread->as->pagetable, vaddr);
         assert (pte);
 
         if (pte->cap || (pte->frame && pte->frame->paddr)) {
             /* free underlying frame - should flush cache, right? */
             printf ("%s: vaddr 0x%x already allocated, freeing\n", __FUNCTION__, vaddr);
-            page_unmap (pte);
+            page_free (pte);
             if (pte->frame) {
                 assert (!pte->frame->paddr);
             }
@@ -138,10 +138,6 @@ int syscall_alloc_dma (struct pawpaw_event* evt) {
             printf ("%s: failed to allocate new untyped frame for vaddr 0x%x\n", __FUNCTION__, vaddr);
         }
 
-        /*
-        struct pt_entry* map_frame = page_map (current_thread->as, reg, vaddr);
-        assert (map_frame);
-        */
         int status = PAGE_FAILED;
         struct pt_entry* page = page_map (current_thread->as, reg, vaddr, &status, NULL, NULL);
         /* FIXME: should be able to handle swap outs!!! */
@@ -149,7 +145,7 @@ int syscall_alloc_dma (struct pawpaw_event* evt) {
         assert (page);
 
         /* GOD DAMN CACHES - FIXME: only do if we remapped */
-        seL4_ARM_Page_FlushCaches(page->cap);
+        seL4_ARM_Page_FlushCaches (page->cap);
 
         //printf ("%s: underlying frame for 0x%x is now 0x%x\n", __FUNCTION__, vaddr, local_dma);
         local_dma += PAGE_SIZE;

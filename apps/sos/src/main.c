@@ -89,23 +89,16 @@ void syscall_event_dispose (struct pawpaw_event* evt) {
 }
 
 void swap_success (struct pawpaw_event* evt) {
-    //printf ("!!! SWAP SUCCESS @ 0x%x !!!\n", evt->args[0]);
-
     thread_t thread = evt->args[1];
     assert (thread);
 
     /* print out the page contents */
-    struct pt_entry* page = page_fetch (thread->as->pagetable, evt->args[0]);
+    struct pt_entry* page = page_fetch_existing (thread->as->pagetable, evt->args[0]);
     assert (page);
 
-    page->flags &= ~PAGE_SWAPPING;
-    page->flags |= PAGE_ALLOCATED;
+    page->frame->flags &= ~FRAME_SWAPPING;
 
 #if 0
-    if (strcmp (thread->name, "sosh") != 0) {
-        goto flush;
-    }
-
     assert (page->cap);
     seL4_CPtr cap = cspace_copy_cap (cur_cspace, cur_cspace, page->cap, seL4_AllRights);
     assert (cap);
@@ -145,9 +138,6 @@ void swap_success (struct pawpaw_event* evt) {
 
     seL4_ARM_Page_Unmap (cap);
 
-flush:
-
-
 #endif
     //printf ("flushing caches...\n");
     seL4_ARM_Page_FlushCaches (page->cap);
@@ -173,8 +163,6 @@ void syscall_loop (seL4_CPtr ep) {
             printf ("syscall: thread lookup for %d failed\n", badge);
             continue;
         }
-
-        //if (strcmp (thread->name, )
 
         current_thread = thread;
 
@@ -252,7 +240,12 @@ void syscall_loop (seL4_CPtr ep) {
 
                 printf ("%s faulted on addr 0x%x\n", thread->name, vaddr);
 
-                /* FIXME: check if page is currently being mapped then dispose evt */
+                /* FIXME: check if page is currently being swapped then WAIT, then try again:
+                    * swap in on swapped in page should do nothing
+                    * swap out on swapped in page should swap out
+                    * swap in on swapped out page should swap in
+                    * swap out on swapped out page should do nothing
+                 */
 
                 if (page_map (thread->as, reg, vaddr, &status, swap_success, evt)) {
                     /* restart calling thread now we have the page set */
@@ -302,8 +295,6 @@ void syscall_loop (seL4_CPtr ep) {
 
                 if (cb != NULL && arg != 0) {
                     cb (arg);
-                } else {
-                    //printf ("syscall: failed to get next done queue - cb = %p, arg = 0x%x\n", cb, arg);
                 }
             } while (cb != NULL);
 
@@ -355,7 +346,7 @@ static void rootserver_init (seL4_CPtr* ipc_ep, seL4_CPtr* async_ep) {
 
     /* find available memory */
     ut_find_memory (&low, &high);
-    high = low + (0x1000 * 1024 * 1);  /* XXX: artificially limit memory to 10 MB */
+    high = low + (0x1000 * 1024 * 1);  /* XXX: artificially limit memory to 1 MB */
 
     /* Initialise the untyped memory allocator */
     ut_allocator_init (low, high);
@@ -371,20 +362,6 @@ static void rootserver_init (seL4_CPtr* ipc_ep, seL4_CPtr* async_ep) {
     /* Setup address space + pagetable for root server */
     cur_addrspace = addrspace_create (seL4_CapInitThreadPD);
     conditional_panic (!cur_addrspace, "failed to create root server address space");
-
-    /* and map in an IPC for internal services so that thread_create_internal works */
-    // struct as_region* ipc_reg = as_define_region (cur_addrspace, PROCESS_IPC_BUFFER, PAGE_SIZE, seL4_AllRights, REGION_IPC);
-    // if (!ipc_reg) {
-    //     panic ("failed to define IPC region for internal processes");
-    // }
-
-    // if (!page_map (cur_addrspace, ipc_reg, PROCESS_IPC_BUFFER)) {
-    //     panic ("failed to map IPC region for internal processes");
-    // }
-
-    /*if (!as_define_region (cur_addrspace, PROCESS_IPC_BUFFER, PAGE_SIZE, seL4_AllRights, REGION_IPC)) {
-        panic ("failed to define IPC region for internal processes");
-    }*/
 
     /* Initialise PID and map ID generators */
     uid_init ();

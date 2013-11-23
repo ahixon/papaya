@@ -8,25 +8,23 @@
 #include "mapping.h"
 #include "vmem_layout.h"
 #include "frametable.h"
-#include "freeframe.h"
 
-#define verbose 5
-#include <sys/debug.h>
 #include <sys/panic.h>
 
-#define FRAME_SIZE          (1 << seL4_PageBits)
-
-#define IDX_PHYS(x) ((x - low) >> seL4_PageBits)
-#define IDX_VIRT(x) ((x - FRAMEWINDOW_VSTART) >> seL4_PageBits)
-
-struct frameinfo* frametable;
-seL4_Word low, high;        /* FIXME: really should be public globals rather than re-declaring what ut_manages has (_low, _high) */
-frameidx_t high_idx;
-
+static struct frameinfo* frametable;
+static seL4_Word ft_low, ft_high;
+static seL4_Word high_idx;
 static int allocated = 0;
 
+static struct frameinfo* frame_head = NULL;
+static struct frameinfo* frame_tail = NULL;
+
+/**
+ * Helper function to create a physical frame, and map it into the root
+ * server's address space at a given virtual address.
+ */
 static void
-_frame_alloc_internal (vaddr_t prev) {
+_frame_alloc_internal (vaddr_t vaddr) {
     int err;
     seL4_CPtr frame_cap;
 
@@ -42,67 +40,68 @@ _frame_alloc_internal (vaddr_t prev) {
                                  &frame_cap);
     conditional_panic (err, "could not retype frametable frame");
 
-    /* map the page into SOS so we can read/write to the pagetable array */
-    vaddr_t vaddr = prev + FRAME_SIZE;
-    err = map_page(frame_cap, seL4_CapInitThreadPD,
+    /* map the page into rootsvr so we can read/write to the pagetable array */
+    err = map_page (frame_cap, seL4_CapInitThreadPD,
                    vaddr, seL4_AllRights, seL4_ARM_Default_VMAttributes);
+
     conditional_panic (err, "could not map page");
 }
 
 void
 frametable_init (seL4_Word low_arg, seL4_Word high_arg)
 {
-    /* create free frame stack */
-    //freeframe_init ();
-
     /* create allocated frametable for range [low, high) */
-    low = low_arg;
-    high = high_arg;
+    ft_low = low_arg;
+    ft_high = high_arg;
 
     /* try to allocate a sequence of contiguous frames in the vspace */
     frametable = (struct frameinfo*)FRAMETABLE_VSTART;
-
     vaddr_t current_vaddr = (vaddr_t)frametable;
-    current_vaddr -= FRAME_SIZE;
 
-    high_idx = IDX_PHYS(high);
+    high_idx = IDX_PHYS (ft_high);
 
     vaddr_t final_vaddr = (vaddr_t)(&frametable[high_idx]);
     while (current_vaddr <= final_vaddr) {
         _frame_alloc_internal (current_vaddr);
-        current_vaddr += FRAME_SIZE;
+        current_vaddr += PAGE_SIZE;
     }
 }
 
-struct frameinfo* frame_head = NULL;
-struct frameinfo* frame_tail = NULL;
-
 struct frameinfo*
-frame_alloc (void)
-{
-    conditional_panic (!frametable, "frametable not initialised yet");
-
-    seL4_Word untyped_addr;
-
-    /* reserve some from untyped memory */
-    untyped_addr = ut_alloc (seL4_PageBits);
-    if (!untyped_addr) {
-        /* oops, out of memory! */
-        printf ("frame_alloc: out of memory\n");
-        return 0;
-    }
-
-    frameidx_t index = IDX_PHYS(untyped_addr);
-
-    struct frameinfo* frame = &frametable[index];
-    frame = frame_alloc_from_untyped (frame, untyped_addr);
-
+frame_new (void) {
+    struct frameinfo* frame = malloc (sizeof (struct frameinfo));
     if (!frame) {
-        ut_free (untyped_addr, seL4_PageBits);
         return NULL;
     }
 
-    /* add to frame queue */
+    memset (frame, 0, sizeof (struct frameinfo));
+    frame_set_refcount (frame, 1);
+    return frame;
+}
+
+/**
+ * Creates a new "frame" from already allocated untyped memory. Useful for DMA
+ * allocator, or mapping in device registers.
+ *
+ * Not added to frame queue, and is thus not able to be swapped out. If this
+ * isn't what you want, you can add it to the frame queue afterwards.
+ *
+ * This frame does not come from the frametable, and is hence not marked with 
+ * the FRAME_FRAMETABLE flag.
+ */
+struct frameinfo*
+frame_new_from_untyped (seL4_Word untyped) {
+    struct frameinfo* frame = frame_new ();
+    if (!frame) {
+        return NULL;
+    }
+
+    frame->paddr = untyped;
+    return frame;
+}
+
+void
+frame_add_queue (struct frameinfo* frame) {
     if (frame_tail) {
         frame_tail->next = frame;
         frame->prev = frame_tail;
@@ -115,83 +114,147 @@ frame_alloc (void)
     }
 
     allocated++;
-    return frame;
 }
 
 struct frameinfo*
-frame_new_from_untyped (seL4_Word untyped) {
-    struct frameinfo* frame = malloc (sizeof (struct frameinfo));
-    if (!frame) {
-        return NULL;
+frame_alloc (void)
+{
+    assert (frametable);
+
+    seL4_Word untyped_addr;
+
+    /* reserve some from untyped memory */
+    untyped_addr = ut_alloc (seL4_PageBits);
+    if (!untyped_addr) {
+        /* oops, out of memory! */
+        printf ("frame_alloc: out of memory\n");
+        return 0;
     }
 
-    memset (frame, 0, sizeof (struct frameinfo));
+    frameidx_t index = IDX_PHYS (untyped_addr);
+    assert (index <= high_idx);
 
-    frame = frame_alloc_from_untyped (frame, untyped);
-    if (!frame) {
-        free (frame);
-        return NULL;
-    }
-
-    return frame;
-}
-
-struct frameinfo*
-frame_alloc_from_untyped (struct frameinfo* frame, seL4_Word untyped) {
-    /*seL4_CPtr frame_cap;
-    int err;
-
-    err =  cspace_ut_retype_addr(untyped,
-                                 seL4_ARM_SmallPageObject, seL4_PageBits,
-                                 cur_cspace, &frame_cap);
-    if (err != seL4_NoError) {
-        printf ("frame_alloc: could not retype: %s\n", seL4_Error_Message (err));
-        return NULL;
-    }*/   
-
-    frame->flags |= FRAME_ALLOCATED;
-    //frame->capability = frame_cap;
-    frame->paddr = untyped;
+    /* since it's in frametable, no need to alloc */
+    struct frameinfo* frame = &frametable[index];
+    frame->paddr = untyped_addr;
+    frame->flags |= FRAME_FRAMETABLE;
     frame_set_refcount (frame, 1);
 
+    frame_add_queue (frame);
+
     return frame;
+}
+
+/*
+ * Allocates a frame in the frametable, moves the memory based frame
+ * information to this new frame and frees the old one.
+ */
+struct frameinfo*
+frame_alloc_from_existing (struct frameinfo* old) {
+    struct frameinfo* new = frame_alloc ();
+    if (!new) {
+        return NULL;
+    }
+
+    /* membased shouldn't be in frametable - strictly speaking, OK but yeah */
+    assert (!(old->flags & FRAME_FRAMETABLE));
+
+    /* copy stuff */
+    new->flags |= old->flags;
+    new->file = old->file;
+    new->page = old->page;
+
+    /* TODO: do we need to handle membased having next/prev pts? */
+    assert (!old->prev && !old->next);
+
+    /* FIXME: assert old refcount was 1 */
+    free (old);
+
+    printf ("new file = %p\n", new->file);
+    return new;
+}
+
+/* OK, so:
+ *  spec says to implement second chance page replacement algorithm
+ *      (or, really, the clock algorithm since that's faster and basically the
+ *       same thing)
+ * 
+ * however, second-chance is essentially just FIFO, with an adaption to ensure
+ * "referenced" pages are not swapped out early.
+ * 
+ * instead of checking all the pages to see if they have a reference bit set
+ * and skipping them unless forced to swap.. we do not keep "unreferenced"
+ * pages in our frame queue, and just do FIFO (in the hope of approximating
+ * LRU).
+ * 
+ * hence, target selection is O(1) since we just take the head of  the queue.
+ * the queue will always have something in it, unless this function was called
+ * inappropriately - if the queue is empty, there should be no reason to swap,
+ * as all frames are unallocated.
+ *
+ * important note: UT allocator keeps around a separate pool for untyped
+ * objects with size 1<<seL4_PageBits.
+ */
+struct frameinfo*
+frame_select_swap_target (void) {
+    struct frameinfo* target = frame_head;
+    assert (target);  /* shouldn't be called with no frames alloc'd */
+
+    /* remove it from the current queue - will get added back at end by
+     * page_map once the the free frame is added back to the pool, and a page
+     * requested again */
+    if (target->prev) {
+        target->prev = target->next;
+    }
+
+    frame_head = target->next;
+    target->next = NULL;
+
+    return target;
+}
+
+struct mmap*
+frame_create_mmap (seL4_CPtr file, seL4_Word load_offset,
+    seL4_Word file_offset, seL4_Word length) {
+
+    struct mmap* m = malloc (sizeof (struct mmap));
+    if (!m) {
+        return NULL;
+    }
+
+    m->file = file;
+    m->load_offset = load_offset;
+    m->load_length = length;
+    m->file_offset = file_offset;
+
+    return m;
 }
 
 void
 frame_free (struct frameinfo* fi) {
-    //struct frameinfo* fi = &frametable[idx];
-
-    assert (fi->flags & FRAME_ALLOCATED);
-
     unsigned int refcount = frame_get_refcount (fi);
-    printf ("%s: refcount for paddr 0x%x is %d\n", __FUNCTION__, fi->paddr, refcount);
     assert (refcount > 0);
+
     if (refcount > 1) {
         /* just reduce refcount, don't actually free yet */
         frame_set_refcount (fi, refcount - 1);
-        printf ("%s: refcount now %d\n", __FUNCTION__, frame_get_refcount (fi));
         return;
     }
 
-    /*if (cspace_revoke_cap (cur_cspace, fi->capability)) {
-        printf ("frame_free: failed to revoke cap\n");
+    /* free since refcount is 0 */
+    if (fi->paddr) {
+        ut_free (fi->paddr, seL4_PageBits);
     }
 
-    if (cspace_delete_cap (cur_cspace, fi->capability)) {
-        printf ("frame_free: could not delete cap\n");
-    }*/
-
-    printf ("freeing since refcount was %u\n", refcount);
-    ut_free (fi->paddr, seL4_PageBits);
-
-    fi->flags &= ~FRAME_ALLOCATED;
-    allocated--;
+    if (fi->file) {
+        printf ("!!!!!!!!!! FREEING FILE??? !!!!!!!!!!!\n");
+        free (fi->file);
+    }
 
     /* remove from frame queue */
     if (!fi->next && !fi->prev) {
         /* likely a loner + externally allocated */
-        //free (fi);
-        return;
+        goto frame_free_cleanup;
     }
 
     if (frame_head == fi) {
@@ -209,8 +272,17 @@ frame_free (struct frameinfo* fi) {
 
     fi->prev = NULL;
     fi->next = NULL;
+
+frame_free_cleanup:
+    if (fi->flags & FRAME_FRAMETABLE) {
+        fi->flags &= ~FRAME_FRAMETABLE;
+        allocated--;
+    } else {
+        free (fi);
+    }
 }
 
+#if 0
 /* shouldn't really be used except for debugging */
 void
 frametable_freeall (void) {
@@ -218,10 +290,12 @@ frametable_freeall (void) {
         frame_free (frametable_get_frame (i));
     }
 }
+#endif
 
 void
 frametable_stats (void) {
     printf ("Allocated frames: 0x%x\n", allocated);
+
     /*for (int i = 0; i <= high_idx; i++) {
         struct frameinfo* fi = frametable_get_frame (i);
         if (fi->flags & FRAME_ALLOCATED) {
@@ -230,14 +304,3 @@ frametable_stats (void) {
     }
     printf ("\n");*/
 }
-
-struct frameinfo*
-frametable_get_frame (frameidx_t frame) {
-    return &frametable[frame];
-}
-
-/*
-seL4_CPtr
-frametable_fetch_cap (struct frameinfo* frame) {
-    return frame->capability;
-}*/

@@ -305,20 +305,15 @@ int parse_fstab (char* path) {
             *(line)++ = '\0';
         }
         
-        printf ("FSTYPE = %s, MOUNTPOINT = %s, OPTS = %s\n", fs_type, path, opts);
+        //printf ("FSTYPE = %s, MOUNTPOINT = %s, OPTS = %s\n", fs_type, path, opts);
 
         /* try to actually mount it */
         if (!mount (path, fs_type)) {
             status = false;
             break;
         }
-
-        printf ("success!\n");
-
-        /* next yo */
-        //line = strtok (NULL, BOOT_LIST_LINE);
-        //printf ("strtok was OK, line now = %p\n", line);
     }
+
     printf ("done loading fstab\n");
 
     free (mem_fstab);

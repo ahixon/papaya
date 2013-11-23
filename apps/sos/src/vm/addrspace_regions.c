@@ -254,11 +254,12 @@ as_resize_region (addrspace_t as, struct as_region* reg, size_t amount) {
     return reg;
 }
 
+/* FIXME: this function should go.. */
 seL4_CPtr
 as_get_page_cap (addrspace_t as, vaddr_t vaddr) {
     assert (as != NULL);
 
-    struct pt_entry* page = page_fetch (as->pagetable, vaddr);
+    struct pt_entry* page = page_fetch_existing (as->pagetable, vaddr);
     if (!page) {
         return 0;
     }
