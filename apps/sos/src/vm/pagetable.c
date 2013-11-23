@@ -247,8 +247,6 @@ page_map (addrspace_t as, struct as_region *region, vaddr_t vaddr, int *status,
     struct pt_entry* entry = page_fetch_new (
         as, region->attributes, pt, vaddr);
 
-    printf ("%s: fetched entriy %p, cap = %d\n", __FUNCTION__, entry, entry->cap);
-
     if (!entry) {
         *status = PAGE_FAILED;
         return NULL;
@@ -322,14 +320,11 @@ page_map (addrspace_t as, struct as_region *region, vaddr_t vaddr, int *status,
                 }
             }
         }
-    } else {
-        printf ("had frame already, was %p (paddr 0x%x)\n", entry->frame, entry->frame ? entry->frame->paddr : 0);
     }
     
     /* we should have a physical address to back the page now, so retype it to
        a page capability if we weren't already provided with one */
     if (!entry->cap) {
-        printf ("ok retyping cap %d for %p\n", entry->cap, entry);
         err = cspace_ut_retype_addr (entry->frame->paddr,
                                      seL4_ARM_SmallPageObject, seL4_PageBits,
                                      cur_cspace, &(entry->cap));

@@ -245,10 +245,6 @@ static int help(int argc, char **argv) {
 }
 
 int main(void) {
-    /* XXX: hack until we can wait for services to start */
-    sleep (6000);
-    sos_debug_print ("###############################\nsosh: continuing...\n", strlen ("###############################\nsosh: continuing...\n"));
-
     char buf[BUF_SIZ];
     char *argv[MAX_ARGS];
     int i, r, done, found, new, argc;

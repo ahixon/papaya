@@ -26,11 +26,11 @@
 
 # Core services
 dev_timer=sync
-svc_vfs=sync
+svc_vfs=async
 svc_dev=async
 
 # NFS and dependencies
-svc_net=sync
+svc_net=async
 fs_nfs=sync
 
 fs_dev=sync
