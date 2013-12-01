@@ -2,12 +2,12 @@
 #define __PID_H__
 
 #include <sel4/sel4.h>
+#include <sos.h>
 
 #define PID_MAX		1024
 #define PID_MIN		0
 #define CBOX_MAX		(1 << 16)
 
-typedef int pid_t;
 
 void uid_init (void);
 
