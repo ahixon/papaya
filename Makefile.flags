@@ -4,7 +4,7 @@
 # common.mk.
 CFLAGS = "-std=c99"
 
-NK_CFLAGS += -Wno-packed -Wall -funwind-tables -g
+NK_CFLAGS += -Wno-packed -Wall -Werror -funwind-tables -g
 
 LIBGCC_PATH       := $(shell $(CC) $(CFLAGS) -print-libgcc-file-name | sed 's/\(.*\)\(libgcc\.a\)/\1/' )
 NK_LDFLAGS += -L $(LIBGCC_PATH)
