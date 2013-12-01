@@ -1,6 +1,5 @@
 /* @LICENSE(UNKNOWN) */
 
-#define _USE_XOPEN
 #include <string.h>
 #include <stdlib.h>
 

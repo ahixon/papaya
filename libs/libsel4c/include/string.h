@@ -38,8 +38,6 @@ char *strerror(int errnum);
 size_t strlen(const char *);
 
 /* Extra POSIX defined things that aren't part of the C standard */
-#ifdef _USE_XOPEN
 char *strdup(const char *);
-#endif
 
 #endif				/* _STRING_H_ */
