@@ -170,8 +170,9 @@ int vfs_write (struct pawpaw_event* evt) {
     
     assert (evt->share);
 
-    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 4);
-    seL4_SetCap (0, evt->share->cap);
+    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 
+        pawpaw_share_attach (evt->share), 4);
+
     seL4_SetMR (0, NETSVC_SERVICE_SEND);
     seL4_SetMR (1, evt->share->id);
     seL4_SetMR (2, net_id);
