@@ -172,7 +172,15 @@ void vfs_lookup_cb (uintptr_t token, enum nfs_stat status, fhandle_t *fh, fattr_
          * root */
 
         printf ("** nfs lookup said file does not exist, creating...\n");
-        sattr_t attributes = { (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP), -1, -1, -1, -1, -1 };
+        sattr_t attributes = {
+            (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP),
+            -1,             /* uid */
+            -1,             /* gid */
+            -1,             /* size */
+            {-1},           /* atime */
+            {-1}            /* mtime */
+        };
+
         enum rpc_stat res = nfs_create (&mnt_point, current_event->share->buf, &attributes, vfs_create_cb, 0);
         printf ("create was %d\n", res);
         return;
@@ -256,7 +264,11 @@ int vfs_read (struct pawpaw_event* evt) {
 
     /* FIXME: check if opened for reading */
 
-    enum rpc_stat res = nfs_read (&(handle->fh), handle->offset, amount, vfs_read_cb, handle);
+    enum rpc_stat res = nfs_read (&(handle->fh), handle->offset, amount, vfs_read_cb, (uintptr_t)handle);
+    if (res != RPC_OK) {
+        return PAWPAW_EVENT_HANDLED;
+    }
+
     current_event = evt;
     //printf ("read was %d\n", res);
     return PAWPAW_EVENT_HANDLED_SAVED;
@@ -276,7 +288,11 @@ int vfs_write (struct pawpaw_event* evt) {
 
     /* FIXME: check if opened for writing */
 
-    enum rpc_stat res = nfs_write (&(handle->fh), handle->offset, amount, evt->share->buf, vfs_write_cb, handle);
+    enum rpc_stat res = nfs_write (&(handle->fh), handle->offset, amount, evt->share->buf, vfs_write_cb, (uintptr_t)handle);
+    if (res != RPC_OK) {
+        return PAWPAW_EVENT_HANDLED;
+    }
+
     current_event = evt;
     //printf ("write was %d\n", res);
     return PAWPAW_EVENT_HANDLED_SAVED;
@@ -289,10 +305,14 @@ int vfs_open (struct pawpaw_event* evt) {
     /* FIXME: does not handle path names deeper than root level */
 
     char* fname = strdup (evt->share->buf);
-    printf ("fs_nfs: using mount point 0x%x\n", mnt_point.data);
     enum rpc_stat res = nfs_lookup (&mnt_point, fname, &vfs_lookup_cb, 0);
+    if (res != RPC_OK) {
+        return PAWPAW_EVENT_HANDLED;
+    }
+
     printf ("lookup was %d\n", res);
     current_event = evt;
+
     return PAWPAW_EVENT_HANDLED_SAVED;
 }
 
@@ -397,8 +417,10 @@ int vfs_write_offset (struct pawpaw_event *evt) {
     char* buf = evt->share->buf + buf_offset;
     printf ("nfs: ok about to write from %p for len 0x%x\n", buf, amount);
     evt->reply = seL4_MessageInfo_new (0, 0, 0, 2);
-    enum rpc_stat res = nfs_write (&(handle->fh), file_offset, amount, buf, vfs_write_offset_cb, evt);
-    //current_event = evt;
+    enum rpc_stat res = nfs_write (&(handle->fh), file_offset, amount, buf, vfs_write_offset_cb, (uintptr_t)evt);
+    if (res != RPC_OK) {
+        return PAWPAW_EVENT_HANDLED;
+    }
 
     return PAWPAW_EVENT_HANDLED_SAVED;
 }
@@ -415,7 +437,6 @@ void vfs_read_offset_cb (uintptr_t token, enum nfs_stat status, fattr_t *fattr, 
         char* buf = evt->share->buf + buf_offset;
 
         seL4_Word amount = evt->args[0];
-        seL4_Word file_offset = evt->args[1];
         
         if (amount + buf_offset > PAPAYA_IPC_PAGE_SIZE) {
             amount = PAPAYA_IPC_PAGE_SIZE - buf_offset;
@@ -478,7 +499,10 @@ int vfs_read_offset (struct pawpaw_event *evt) {
     }
 
     printf ("nfs: ok about to read len 0x%x at offset 0x%x\n", amount, buf_offset);
-    enum rpc_stat res = nfs_read (&(handle->fh), file_offset, amount, vfs_read_offset_cb, evt);
+    enum rpc_stat res = nfs_read (&(handle->fh), file_offset, amount, vfs_read_offset_cb, (uintptr_t)evt);
+    if (res != RPC_OK) {
+        return PAWPAW_EVENT_HANDLED;
+    }
 
     return PAWPAW_EVENT_HANDLED_SAVED;
 }
