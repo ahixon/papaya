@@ -151,8 +151,8 @@ int netsvc_read (struct pawpaw_event* evt) {
     }
 
     /* FIXME: needs to send start instead */
-    evt->reply = seL4_MessageInfo_new (0, 0, 1, 4);
-    seL4_SetCap (0, saved->share->cap);
+    evt->reply = seL4_MessageInfo_new (0, 0, pawpaw_share_attach (saved->share), 4);
+    //seL4_SetCap (0, saved->share->cap);
 
     seL4_Word amount = pawpaw_cbuf_count (saved->buffer);
     if (amount > PAPAYA_IPC_PAGE_SIZE) {

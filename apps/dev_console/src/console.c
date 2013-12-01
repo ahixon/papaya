@@ -7,57 +7,22 @@
 #include <sel4/sel4.h>
 
 #include <pawpaw.h>
-
 #include <syscalls.h>
 #include <network.h>
-#include <sos.h>
+#include <device.h>
 #include <vfs.h>
 
-#define DEV_REGISTER            21
+#include <sos.h>
 
-#define CONSOLE_BUF_SIZE        1024
-#define CONSOLE_PORT            26706
-//#define NETSVC_SERVICE_DATA     3
+#include "console.h"
 
-struct pawpaw_cbuf* console_buffer;
-seL4_CPtr service_ep = 0;
-seL4_CPtr net_ep = 0;
-int net_id = -1;
+static struct fhandle* open_list = NULL;
+static struct pawpaw_cbuf* console_buffer;
+static seL4_CPtr service_ep = 0;
+static seL4_CPtr net_ep = 0;
+static int net_id = -1;
 
-int vfs_open (struct pawpaw_event* evt);
-int vfs_read (struct pawpaw_event* evt);
-int vfs_write (struct pawpaw_event* evt);
-int vfs_close (struct pawpaw_event* evt);
-
-void interrupt_handler (struct pawpaw_event* evt);
-int interrupt_handler_2 (struct pawpaw_event* evt);
-
-struct pawpaw_eventhandler_info handlers[VFS_NUM_EVENTS] = {
-    {   0,  0,  0   },      //   RESERVED   //
-    {   0,  0,  0   },      //   RESERVED   //
-    {   0,  0,  0   },      //              //
-    {   vfs_open,           2,  HANDLER_REPLY },    // mode + badge, replies with EP to file (badged version of listen cap)
-    {   vfs_read,           2,  HANDLER_REPLY | HANDLER_AUTOMOUNT },    // num bytes
-    {   vfs_write,          2,  HANDLER_REPLY | HANDLER_AUTOMOUNT },    // num bytes
-    {   vfs_close,          0,  HANDLER_REPLY },
-};
-
-struct pawpaw_event_table handler_table = { VFS_NUM_EVENTS, handlers, "console" };
-
-struct fhandle* current_reader = NULL;
-
-struct fhandle {
-    //struct pawpaw_share* share;
-    struct pawpaw_event* current_event;
-    seL4_Word id;
-    int mode;
-    //seL4_CPtr cap;
-
-    struct fhandle* next;
-};
-
-struct fhandle* open_list = NULL;
-
+/* FIXME: yuck, this should be a hashtable */
 struct fhandle* lookup_fhandle (seL4_Word badge) {
     struct fhandle* h = open_list;
     while (h) {
@@ -71,13 +36,13 @@ struct fhandle* lookup_fhandle (seL4_Word badge) {
     return NULL;
 }
 
+/* simple counter to create our file descriptors.
+ * TODO: in future, this should be a bitfield (max size open FDs) */
 int last_opened = 1;
 
 int vfs_open (struct pawpaw_event* evt) {
     if (evt->args[0] & FM_READ) {
-        /* FIXME: this sucks */
         if (current_reader) {
-            printf ("console: already opened for reading\n");
             evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
             seL4_SetMR (0, -1);
             return PAWPAW_EVENT_NEEDS_REPLY;
@@ -95,8 +60,6 @@ int vfs_open (struct pawpaw_event* evt) {
     fh->next = open_list;
     open_list = fh;
 
-    printf ("console: open success\n");
-    printf ("opened for reading? %d\n", evt->args[0] & FM_READ);
     if (evt->args[0] & FM_READ) {
         current_reader = fh;
     }
@@ -117,8 +80,6 @@ int vfs_open (struct pawpaw_event* evt) {
 }
 
 void interrupt_handler (struct pawpaw_event* evt) {
-    //printf ("console: net had data for us, fetching...\n");
-
     seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 2);
     seL4_SetMR (0, NETSVC_SERVICE_DATA);
     seL4_SetMR (1, net_id);
@@ -129,36 +90,30 @@ void interrupt_handler (struct pawpaw_event* evt) {
     /* mount it if we didn't have it already */
     struct pawpaw_share* netshare;
     if (seL4_MessageInfo_get_extraCaps (reply) == 1) {
-        printf ("console: using receive cap\n");
+        printf ("[CONSOLE] mounting share 0x%x\n", seL4_GetMR (0));
         netshare = pawpaw_share_mount (pawpaw_event_get_recv_cap ());
         pawpaw_share_set (netshare);
     } else {
+        printf ("[CONSOLE] fetching share 0x%x\n", seL4_GetMR (0));
         netshare = pawpaw_share_get (seL4_GetMR (0));
-        printf ("console: mounting ID 0x%x (was 0x%x bytes)\n", seL4_GetMR (0), size);
     }
 
     assert (netshare);
-    printf ("console: actually had ID 0x%x\n", netshare->id);
-
-    //printf ("console: writing '%s' to buffer\n", netshare->buf);
     pawpaw_cbuf_write (console_buffer, netshare->buf, size);
 
     /* FIXME: unmount? probably not since internal buffer */
-    //pawpaw_share_unmount (netshare_;)
+    //pawpaw_share_unmount (netshare);
 
-    /* check if we had waiting client */
+    /* check if we had waiting client (if so, dequeue) */
     if (current_reader && current_reader->current_event) {
         if (vfs_read (current_reader->current_event) == PAWPAW_EVENT_NEEDS_REPLY) {
             /* send it off */
-            //printf ("console: sending queued event to client\n");
             seL4_Send (current_reader->current_event->reply_cap, current_reader->current_event->reply);
 
             /* and free */
             pawpaw_event_dispose (current_reader->current_event);
             current_reader->current_event = NULL;
         }
-    } else {
-        printf ("!!! no read queued, leaving in buffer\n");
     }
 }
 
@@ -169,14 +124,12 @@ void interrupt_handler (struct pawpaw_event* evt) {
 int vfs_read (struct pawpaw_event* evt) {
     struct fhandle* fh = lookup_fhandle (evt->badge);
     if (!fh) {
-        printf ("console: did not find handle for badge 0x%x\n", evt->badge);
         evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
         seL4_SetMR (0, -1);
         return PAWPAW_EVENT_NEEDS_REPLY;
     }
 
     if (!(fh->mode & FM_READ)) {
-        printf ("console: tried to read on file not opened for reading\n");
         evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
         seL4_SetMR (0, -1);
         return PAWPAW_EVENT_NEEDS_REPLY;
@@ -185,22 +138,15 @@ int vfs_read (struct pawpaw_event* evt) {
     size_t amount = evt->args[0];
     assert (evt->share);
 
-    /* FIXME: could zero copy, but lazy */
-    //printf ("console: wanted to read 0x%x bytes\n", amount);
-    //printf ("console: buffer currently has %d, trying to read into %p\n", pawpaw_cbuf_count (console_buffer), evt->share->buf);
+    /* FIXME: could zero copy here... */
     int read = pawpaw_cbuf_read (console_buffer, evt->share->buf, amount);
 
     if (read == 0) {
-        //printf ("console: buffer was empty, waiting for interrupt..\n");
         /* wait for more data */
-
         fh->current_event = evt;
         return PAWPAW_EVENT_HANDLED_SAVED;
     } else {
-        //printf ("console: managed to read 0x%x bytes, sending back '%s'\n", read, evt->share->buf);
-
         evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
-        //seL4_SetMR (0, evt->share->id);
         seL4_SetMR (0, read);
     }
 
@@ -211,14 +157,12 @@ int vfs_read (struct pawpaw_event* evt) {
 int vfs_write (struct pawpaw_event* evt) {
     struct fhandle* fh = lookup_fhandle (evt->badge);
     if (!fh) {
-        printf ("console: did not find handle for badge 0x%x\n", evt->badge);
         evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
         seL4_SetMR (0, -1);
         return PAWPAW_EVENT_NEEDS_REPLY;
     }
 
     if (!(fh->mode & FM_WRITE)) {
-        printf ("console: tried to write on file not opened for writing\n");
         evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
         seL4_SetMR (0, -1);
         return PAWPAW_EVENT_NEEDS_REPLY;
@@ -233,7 +177,7 @@ int vfs_write (struct pawpaw_event* evt) {
     seL4_SetMR (2, net_id);
     seL4_SetMR (3, evt->args[0]);
 
-    /* FIXME: should be write? or not really in this case since it's fast enough */
+    /* we don't do async Send here since the Call responds quickly enough */
     seL4_Call (net_ep, msg);
 
     evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
@@ -244,16 +188,13 @@ int vfs_write (struct pawpaw_event* evt) {
 int vfs_close (struct pawpaw_event* evt) {
     struct fhandle* fh = lookup_fhandle (evt->badge);
     if (!fh) {
-        printf ("console: did not find handle for badge 0x%x\n", evt->badge);
         evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
         seL4_SetMR (0, -1);
         return PAWPAW_EVENT_NEEDS_REPLY;
     }
 
-    printf ("console: closing fd 0x%x\n", evt->badge);
-
+    /* also release reader if possible */
     if (current_reader && current_reader == fh) {
-        printf ("console: also released reader\n");
         current_reader = NULL;
     }
 
@@ -279,24 +220,19 @@ int main (void) {
     err = seL4_TCB_BindAEP (PAPAYA_TCB_SLOT, async_ep);
     assert (!err);
 
-    seL4_CPtr dev_ep = pawpaw_service_lookup ("svc_dev");
+    seL4_CPtr dev_ep = pawpaw_service_lookup (DEVSVC_SERVICE_NAME);
 
     seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 4);
-    seL4_SetMR (0, DEV_REGISTER);
+    seL4_SetMR (0, DEVSVC_REGISTER);
     
     seL4_SetCap (0, service_ep);
 
-    seL4_SetMR (1, 0);              // type = console
-    seL4_SetMR (2, 0);              // bus = platform device
-    seL4_SetMR (3, 1337);           // product ID = 1337 lol??
+    seL4_SetMR (1, DEVSVC_TYPE_CONSOLE);
+    seL4_SetMR (2, DEVSVC_BUS_PLATFORM);
+    seL4_SetMR (3, CONSOLE_PRODUCT_ID);
+    seL4_Send (dev_ep, msg);
 
-    /* FIXME: do we REALLY need Call? at the moment, no lol */
-    printf ("console: registering with svc_dev\n");
-    seL4_Send (dev_ep, msg);    /*  FIXME: should eventually be Call, but at the
-                                    moment svc_dev never responds so don't change
-                                    it unless you want to spend a while debugging */
-
-    net_ep = pawpaw_service_lookup ("svc_net");
+    net_ep = pawpaw_service_lookup (NETSVC_SERVICE_NAME);
     msg = seL4_MessageInfo_new (0, 0, 1, 4);
     seL4_SetCap (0, async_ep);
     seL4_SetMR (0, NETSVC_SERVICE_REGISTER);
@@ -304,7 +240,6 @@ int main (void) {
     seL4_SetMR (2, CONSOLE_PORT);
     seL4_SetMR (3, 0);
 
-    printf ("console: registering with svc_net\n");
     seL4_Call (net_ep, msg);
     net_id = seL4_GetMR (0);
     assert (net_id >= 0);
@@ -312,7 +247,6 @@ int main (void) {
     /* we never need to free this */
     char* buf = malloc (sizeof (char) * CONSOLE_BUF_SIZE);
     assert (buf);
-
     console_buffer = pawpaw_cbuf_create (CONSOLE_BUF_SIZE, buf);
 
     pawpaw_event_loop (&handler_table, interrupt_handler, service_ep);

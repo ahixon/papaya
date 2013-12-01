@@ -30,28 +30,19 @@ struct fhandle* lookup_fhandle (fildes_t file);
 
 /* FIXME: what if the VFS service dies and then restarts? endpoint will have changed */
 fildes_t open(const char *path, fmode_t mode) {
-    sos_debug_print ("sosh: about to open\n", strlen ("sosh: about to open\n"));
-
     seL4_MessageInfo_t msg;
 
 	if (!vfs_ep) {
-        sos_debug_print ("sosh: looking up vfs\n", strlen ("sosh: looking up vfs\n"));
 		vfs_ep = pawpaw_service_lookup ("svc_vfs");
-	} else {
-        sos_debug_print ("sosh: vfs already found??? bug\n", strlen ("sosh: vfs already found??? bug\n"));
-    }
+	}
 
-    sos_debug_print ("sosh: creating new share\n", strlen ("sosh: creating new share\n"));
 	struct pawpaw_share* share = pawpaw_share_new ();
 	if (!share) {
-		sos_debug_print ("failed to make new share\n", strlen("failed to make a new share\n"));
 		return -1;
 	}
 
-    sos_debug_print ("sosh: trying to malloc\n", strlen("sosh: trying to malloc\n"));
     struct fhandle* h = malloc (sizeof (struct fhandle));
     if (!h) {
-        sos_debug_print ("sosh: malloc failed\n", strlen("sosh: malloc failed\n"));
         pawpaw_share_unmount (share);
         return -1;
     }
@@ -62,9 +53,9 @@ fildes_t open(const char *path, fmode_t mode) {
     if (!recv_cap) {
         pawpaw_share_unmount (share);
         free (h);
-        sos_debug_print ("sosh: no recv_cap\n", strlen ("sosh: no recv_cap\n"));
         return -1;
     }
+
     seL4_SetCapReceivePath (PAPAYA_ROOT_CNODE_SLOT, recv_cap, PAPAYA_CSPACE_DEPTH);
 
     seL4_SetCap (0, share->cap);
@@ -87,19 +78,16 @@ fildes_t open(const char *path, fmode_t mode) {
 
         return h->fd;
     } else {
-        sos_debug_print ("sos: open failed\n", strlen ("sos: open failed\n"));
         free (h);
-        //pawpaw_share_unmount (share);
-    	//pawpaw_cspace_free_slot (recv_cap);
-    	//return seL4_GetMR (0);
-        return -1;
-    }    
+        pawpaw_share_unmount (share);
+    	pawpaw_cspace_free_slot (recv_cap);
+    	return seL4_GetMR (0);
+    }
 }
 
 int close(fildes_t file) {
     struct fhandle* fh = lookup_fhandle (file);
     if (!fh) {
-        sos_debug_print ("fd lookup failed\n", strlen ("fd lookup failed\n"));
         return -1;
     }
 
@@ -134,18 +122,17 @@ struct fhandle* lookup_fhandle (fildes_t file) {
 
 int read (fildes_t file, char *buf, size_t nbyte) {
 	if (nbyte >= (1 << 12)) {
-        sos_debug_print ("buf too big\n", strlen ("buf too big\n"));
 		return -1;		/* FIXME: crappy limitation */
     }
 
     struct fhandle* fh = lookup_fhandle (file);
     if (!fh) {
-        sos_debug_print ("fd lookup failed\n", strlen ("fd lookup failed\n"));
         return -1;
     }
     
-	seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 3);
-    seL4_SetCap (0, fh->share->cap);
+	seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, pawpaw_share_attach (fh->share), 3);
+    //seL4_SetCap (0, fh->share->cap);
+    
 	seL4_SetMR (0, VFS_READ);
     seL4_SetMR (1, fh->share->id);
     seL4_SetMR (2, nbyte);
@@ -167,14 +154,13 @@ int write(fildes_t file, const char *buf, size_t nbyte) {
 
     struct fhandle* fh = lookup_fhandle (file);
     if (!fh) {
-        sos_debug_print ("fd lookup failed\n", strlen ("fd lookup failed\n"));
         return -1;
     }
 
     memcpy (fh->share->buf, buf, nbyte);
 
-    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 3);
-    seL4_SetCap (0, fh->share->cap);
+    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, pawpaw_share_attach (fh->share), 3);
+    //seL4_SetCap (0, fh->share->cap);
 
     seL4_SetMR (0, VFS_WRITE);
     seL4_SetMR (1, fh->share->id);

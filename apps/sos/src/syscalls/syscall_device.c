@@ -126,7 +126,7 @@ int syscall_alloc_dma (struct pawpaw_event* evt) {
 
         if (pte->cap || (pte->frame && pte->frame->paddr)) {
             /* free underlying frame - should flush cache, right? */
-            printf ("%s: vaddr 0x%x already allocated, freeing\n", __FUNCTION__, vaddr);
+            //printf ("%s: vaddr 0x%x already allocated, freeing\n", __FUNCTION__, vaddr);
             page_free (pte);
             if (pte->frame) {
                 assert (!pte->frame->paddr);
