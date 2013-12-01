@@ -245,7 +245,7 @@ int netsvc_register (struct pawpaw_event* evt) {
 
 /* XXX: separate region would be better, since aligned attribute at
  * compiler whim */
-volatile char DMA_REGION[1 << DMA_SIZE_BITS] __attribute__((aligned(0x1000))) = { 0 };
+char DMA_REGION[1 << DMA_SIZE_BITS] __attribute__((aligned(0x1000))) = { 0 };
 
 seL4_Word dma_physical;
 
