@@ -17,43 +17,15 @@
 #include "network.h"
 #include <network.h>
 
-seL4_CPtr async_ep;
-int last_id = 0;    /* FIXME: in future, should be bitfield */
-
-int netsvc_register (struct pawpaw_event* evt);
-int netsvc_read (struct pawpaw_event* evt);
-int netsvc_write (struct pawpaw_event* evt);
-
-struct pawpaw_eventhandler_info handlers[4] = {
-    {   netsvc_register,    3, HANDLER_REPLY   },      // net register svc
-    {   0,  0,  0   },      // net unregister svc
-    {   netsvc_read,        1,  HANDLER_REPLY   },      /* optionally needs to accept a buffer */
-    {   netsvc_write,       3,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },      /* optionally needs to accept a buffer */
-    // net state query
-    // debug stuff here (ie benchmark)
-};
-
-struct pawpaw_event_table handler_table = { 4, handlers, "net" };
+static seL4_CPtr async_ep;
+static int last_id = 0;    /* FIXME: in future, should be bitfield */
+static struct saved_data* data_head;
 
 void interrupt_handler (struct pawpaw_event* evt) {
     network_irq (evt->args[0]);
 }
 
-/* FIXME: need a hash table */
-struct saved_data {
-    struct pawpaw_share* share;
-    struct pawpaw_cbuf* buffer;
-    char* buffer_data;
-    seL4_CPtr badge;
-    seL4_CPtr cap;
-    void* pcb;
-    unsigned int id;    /* ID of registered event thing */
-
-    struct saved_data* next;
-};
-
-struct saved_data* data_head;
-
+/* FIXME: yuck, should be hashtable */
 struct saved_data*
 get_handler (struct pawpaw_event* evt) {
     struct saved_data* saved = data_head;
@@ -72,16 +44,15 @@ static void
 recv_handler (void* _client_badge, struct udp_pcb* pcb, 
                     struct pbuf *p, struct ip_addr* ipaddr, u16_t unused2) {
 
-    printf ("net: received data of size 0x%x\n", p->len);
+    /* TODO: when unregister is implemented, make sure that you verify this
+     * pointer is valid (since the client may have freed the network service
+     * before we get data back in here) */
     struct saved_data *saved = (struct saved_data*)_client_badge;
-    assert (saved); /* FIXME: need to make sure that if we remove client that
-                       we don't try to access invalid memory since we'll have
-                       freed it */
+    assert (saved);
     
+    /* first time receiving on this connection, set up some state/buffers */
     if (!saved->share) {
-        /* FIXME: not atomic */
         saved->share = pawpaw_share_new ();
-        printf ("net: making new buffer for badge %d, had ID 0x%x @ %p\n", saved->badge, saved->share->id, saved->share->buf);
         assert (saved->share);
 
         /* backing data for ringbuffer */
@@ -97,13 +68,11 @@ recv_handler (void* _client_badge, struct udp_pcb* pcb,
     for (q = p; q != NULL; q = q->next) {
         char* data = q->payload;
         pawpaw_cbuf_write (saved->buffer, data, q->len);
-        //printf ("net: just wrote '%s'\n", data);
     }
 
     pbuf_free (p);
 
     /* and tell the client */
-    printf ("got data for ID 0x%x\n", saved->id);
     seL4_Notify (saved->cap, saved->id);
 }
 
@@ -112,12 +81,10 @@ int netsvc_write (struct pawpaw_event* evt) {
 
     struct saved_data* saved = get_handler (evt);
     if (!saved) {
-        printf ("net: nobody matched badge\n");
         return PAWPAW_EVENT_UNHANDLED;
     }
 
     int len = evt->args[1];
-    printf ("net: sending len 0x%x\n", len);
 
     struct pbuf *p;
     p = pbuf_alloc (PBUF_TRANSPORT, len, PBUF_REF);
@@ -128,7 +95,6 @@ int netsvc_write (struct pawpaw_event* evt) {
 
     evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
     if (udp_send (saved->pcb, p)){
-        printf ("net: failed to send UDP packet\n");
         seL4_SetMR (0, -1);
     } else {
         seL4_SetMR (0, 0);
@@ -146,35 +112,33 @@ int netsvc_write (struct pawpaw_event* evt) {
 int netsvc_read (struct pawpaw_event* evt) {
     struct saved_data* saved = get_handler (evt);
     if (!saved) {
-        printf ("net: nobody matched badge\n");
         return PAWPAW_EVENT_UNHANDLED;
     }
 
-    /* FIXME: needs to send start instead */
-    evt->reply = seL4_MessageInfo_new (0, 0, pawpaw_share_attach (saved->share), 4);
-    //seL4_SetCap (0, saved->share->cap);
+    evt->reply = seL4_MessageInfo_new (0, 0,
+        pawpaw_share_attach (saved->share), 4);
 
+    /* can transfer at most a page at a time, truncate request if wanted more */
     seL4_Word amount = pawpaw_cbuf_count (saved->buffer);
     if (amount > PAPAYA_IPC_PAGE_SIZE) {
-        printf ("net: Buffer was too small: had 0x%x bytes, truncating\n", amount);
         amount = PAPAYA_IPC_PAGE_SIZE;
         seL4_SetMR (2, 1);
     } else {
-        printf ("net: Buffer had 0x%x bytes\n", amount);
         /* no more buffers - if they ask again we can nuke the old one */
         seL4_SetMR (2, 0);
     }
 
-    printf ("net: reading out of buf belonging to conn 0x%x\n", saved->id);
     seL4_SetMR (0, saved->share->id);
     seL4_SetMR (1, amount);
     seL4_SetMR (3, pawpaw_cbuf_count (saved->buffer));
 
-    /* copy it all in */
-    //printf ("net: reading into buf ID 0%x @ %p\n", saved->share->id, saved->share->buf);
-    /* FIXME: there is a race here, in that extra data read in will now go inbetween - really need multiple buffers */
+    /* FIXME: this needs some thought - if we read one half the buffer, and
+     * data comes in, and then the rest of the ring buffer read out again, then
+     * the new data will go in between the two segments. Really, we should be
+     * doing double buffering */
+
+    /* read as much as possible into the buffer */
     pawpaw_cbuf_read (saved->buffer, saved->share->buf, amount);
-    //printf ("net: is now %s\n", saved->share->buf);
 
     return PAWPAW_EVENT_NEEDS_REPLY;
 }
@@ -192,7 +156,6 @@ int netsvc_register (struct pawpaw_event* evt) {
         assert (pcb);
 
         if (udp_bind (pcb, &netif_default->ip_addr, evt->args[1])) {
-            printf ("svc_net: udp_bind failed\n");
             udp_remove (pcb);
             seL4_SetMR (0, -1);
             return PAWPAW_EVENT_NEEDS_REPLY;
@@ -202,12 +165,12 @@ int netsvc_register (struct pawpaw_event* evt) {
         if (evt->args[2] == 0) {
             dest = netif_default->gw;
         } else {
+            /* TODO: support binding to a given IP address */
             //dest = (struct ip_addr)evt->args[2];
             assert (false);
         }
 
         if (udp_connect (pcb, &dest, evt->args[1])) {
-            printf ("svc_net: udp_connect failed\n");
             udp_remove (pcb);
             seL4_SetMR (0, -1);
             return PAWPAW_EVENT_NEEDS_REPLY;
@@ -231,14 +194,13 @@ int netsvc_register (struct pawpaw_event* evt) {
         
         /* FIXME: check error */
         udp_recv (pcb, &recv_handler, saved);
-        printf ("svc_net: registered a UDP handler on port %u, id = 0x%x\n", evt->args[1], saved->id);
 
         /* tell client was OK */
         seL4_SetMR (0, saved->id);
 
         return PAWPAW_EVENT_NEEDS_REPLY;
     } else {
-        printf ("svc_net: got non UDP request\n");
+        /* we only handle UDP for now */
         return PAWPAW_EVENT_UNHANDLED;
     }
 }
@@ -277,16 +239,14 @@ int main (void) {
     assert (!err);
 
     /* Initialise the network hardware - sets up interrupts */
-    // FIXME: make this return an error
-    /*err = */network_init (async_ep);
-    //assert (!err);
+    if (!network_init (async_ep)) {
+        return -1;
+    }
 
     /* register and listen */
     err = pawpaw_register_service (service_ep);
     assert (err);
 
-    printf ("svc_net: started\n");
     pawpaw_event_loop (&handler_table, interrupt_handler, service_ep);
-
     return 0;
 }

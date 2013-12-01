@@ -10,57 +10,18 @@
 
 #include <vfs.h>
 #include <sos.h>
+#include <device.h>
 
-//#define VFS_MOUNT               75
-#define DEV_LISTEN_CHANGES      20
-#define DEV_GET_INFO            25
+#include "fs_dev.h"
 
-#define FILESYSTEM_NAME     "dev"
-
-//#define FM_EXEC  1 /* XXX: from sos.h -> move into separate .h? */
-
-seL4_CPtr service_ep;
-
-struct ventry {
-    char* name;
-    seL4_CPtr vnode;
-    int writing;
-
-    struct ventry* next;
-};
-
-struct ventry* entries;
-
-int vfs_open (struct pawpaw_event* evt);
-int vfs_listdir (struct pawpaw_event* evt);
-int vfs_stat (struct pawpaw_event* evt);
-
-struct pawpaw_eventhandler_info handlers[VFS_NUM_EVENTS] = {
-    {   0,  0,  0   },      //  fs register info
-    {   0,  0,  0   },      //  fs register cap
-    {   0,  0,  0   },      //  mount
-    {   vfs_open,           3,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },  // shareid, replyid, mode - replies with EP to file (badged version of listen cap)
-    {   0,  0,  0   },      //  read 
-    {   0,  0,  0   },      //  write
-    {   0,  0,  0   },      //  close
-    {   vfs_listdir,        3,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },      // shareid, index
-    {   vfs_stat,           1,  HANDLER_REPLY | HANDLER_AUTOMOUNT   }
-};
-
-struct pawpaw_event_table handler_table = { VFS_NUM_EVENTS, handlers, "fs_dev" };
-
+/* find the relevant device to open, and then forward the open request 
+ * off to it, if successful */
 int vfs_open (struct pawpaw_event* evt) {
     if (!evt->share) {
-        printf ("vfs: missing share, open failure\n");
         evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
         seL4_SetMR (0, -1);
         return PAWPAW_EVENT_NEEDS_REPLY;
     }
-
-    printf ("fs_dev: want to open '%s'\n", (char*)evt->share->buf);
-
-    /*assert (seL4_MessageInfo_get_extraCaps (evt->msg) == 1);
-    seL4_CPtr requestor = pawpaw_event_get_recv_cap ();*/
 
     seL4_CPtr ret = 0;
     struct ventry* entry = entries;
@@ -82,8 +43,9 @@ int vfs_open (struct pawpaw_event* evt) {
 
     seL4_MessageInfo_t underlying_msg = seL4_MessageInfo_new (0, 0, 0, 3);
     seL4_SetMR (0, VFS_OPEN);
+
+    /* can't execute devices */
     if (evt->args[0] & FM_EXEC) {
-        printf ("fs_dev: can't execute devices?\n");
         evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
         seL4_SetMR (0, -1);
         return PAWPAW_EVENT_NEEDS_REPLY;
@@ -92,18 +54,16 @@ int vfs_open (struct pawpaw_event* evt) {
     seL4_SetMR (1, evt->args[0]);   /* file mode */
     seL4_SetMR (2, evt->args[1]);   /* owner badge */
 
-    /* XXX: should be Send - we don't want to wait here forever */
-    printf ("fs_dev: asking vnode device...\n");
+    /* XXX: should be Send - we don't want to (possibly) wait here forever */
     seL4_MessageInfo_t reply = seL4_Call (ret, underlying_msg);
 
     /* and tell VFS layer */
     if (seL4_MessageInfo_get_extraCaps (reply) == 1) {
         seL4_CPtr dev_fd_cap = pawpaw_event_get_recv_cap ();
-        printf ("fs_dev: got cap 0x%x, replying to VFS\n", dev_fd_cap);
 
         evt->reply = seL4_MessageInfo_new (0, 0, 1, 1);
-        seL4_SetMR (0, 0);
         seL4_SetCap (0, dev_fd_cap);
+        seL4_SetMR (0, 0);
     } else {
         evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
         seL4_SetMR (0, -1);
@@ -115,7 +75,6 @@ int vfs_open (struct pawpaw_event* evt) {
 
 int vfs_listdir (struct pawpaw_event* evt) {
     if (!evt->share) {
-        printf ("vfs: missing share, listdir failure\n");
         evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
         seL4_SetMR (0, -1);
         return PAWPAW_EVENT_NEEDS_REPLY;
@@ -147,7 +106,6 @@ int vfs_stat (struct pawpaw_event* evt) {
     evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
 
     if (!evt->share) {
-        printf ("vfs: missing share, listdir failure\n");
         seL4_SetMR (0, -1);
         return PAWPAW_EVENT_NEEDS_REPLY;
     }
@@ -157,7 +115,6 @@ int vfs_stat (struct pawpaw_event* evt) {
     int success = -1;
     struct ventry* entry = entries;
     while (entry) {
-        printf ("vfs: stat comparing '%s' and '%s'\n", cmp, entry->name);
         if (strcmp (cmp, entry->name) == 0) {
             stat_t stat = {
                 ST_SPECIAL,
@@ -186,23 +143,24 @@ seL4_CPtr dev_ep = 0;
 
 void interrupt_handler (struct pawpaw_event* evt) {
     seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 2);
-    seL4_SetMR (0, DEV_GET_INFO);
+    seL4_SetMR (0, DEVSVC_GET_INFO);
     seL4_SetMR (1, evt->args[0]);
 
     seL4_MessageInfo_t reply = seL4_Call (dev_ep, msg);
 
     /* allocate it */
     struct ventry* ve = malloc (sizeof (struct ventry));
+    assert (ve);
+
     seL4_Word type = seL4_GetMR (0);
 
-    if (type == 0) {
+    /* FIXME: only supports one of each type */
+    if (type == DEV_CONSOLE) {
         ve->name = "console";
-    } else if (type == 1) {
+    } else if (type == DEV_TIMER) {
         ve->name = "timer";
     } else {
-        /* FIXME: test I don't think this works but it's 3AM and probably will never run */
-        ve->name = "unkdev";
-        //ve->name = strcat (ve->name, itoa ((int)seL4_GetMR (1)));
+        ve->name = "unknown";
     }
 
     assert (seL4_MessageInfo_get_extraCaps (reply) == 1);
@@ -214,8 +172,6 @@ void interrupt_handler (struct pawpaw_event* evt) {
     }
 
     entries = ve;
-
-    //printf ("fs_dev: registered new device %s with cap %d\n", ve->name, ve->vnode);
 }
 
 int main (void) {
@@ -235,20 +191,18 @@ int main (void) {
     assert (service_ep);
     
     /* ask the device service to notify us when a device is added/removed */
-    //printf ("fs_dev: asking device manager to tell us about all device changes\n");
-    dev_ep = pawpaw_service_lookup ("svc_dev");
+    dev_ep = pawpaw_service_lookup (DEVSVC_SERVICE_NAME);
     assert (dev_ep);
 
     msg = seL4_MessageInfo_new (0, 0, 1, 1);
-    seL4_SetMR (0, DEV_LISTEN_CHANGES);
+    seL4_SetMR (0, DEVSVC_LISTEN_CHANGES);
     seL4_SetMR (1, 0);  // all
 
     seL4_SetCap (0, async_ep);
-    printf ("fs_dev: asking device manager to tell us about changes\n");
     seL4_Call (dev_ep, msg);
 
     /* register this filesystem with the VFS */
-    seL4_CPtr vfs_ep = pawpaw_service_lookup ("svc_vfs");
+    seL4_CPtr vfs_ep = pawpaw_service_lookup (VFSSVC_SERVICE_NAME);
 
     msg = seL4_MessageInfo_new (0, 0, 1, 2);
     struct pawpaw_share *newshare = pawpaw_share_new ();
@@ -259,18 +213,16 @@ int main (void) {
 
     strcpy (newshare->buf, FILESYSTEM_NAME);
 
-    printf ("fs_dev: registering info\n");
     seL4_SetMR (0, VFS_REGISTER_INFO);
     seL4_SetMR (1, newshare->id);
     pawpaw_share_attach (newshare);
-    seL4_Call (vfs_ep, msg);    /* FIXME: would we ever need call? otherwise this is OK :) */
+    seL4_Call (vfs_ep, msg);
 
-    printf ("fs_dev: registering cap\n");
     msg = seL4_MessageInfo_new (0, 0, 1, 1);
     seL4_SetMR (0, VFS_REGISTER_CAP);
     seL4_SetCap (0, service_ep);
 
-    seL4_Call (vfs_ep, msg);    /* FIXME: would we ever need call? otherwise this is OK :) */
+    seL4_Call (vfs_ep, msg);
 
     /* setup done, now listen to VFS or other people we've given our EP to */
     pawpaw_event_loop (&handler_table, interrupt_handler, service_ep);

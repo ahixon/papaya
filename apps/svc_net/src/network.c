@@ -1,12 +1,8 @@
-/****************************************************************************
- *
- *      $Id: network.c,v 1.1 2003/09/10 11:44:38 benjl Exp $
- *
- *      Description: Initialise the network stack and NFS library.
- *
- *      Author:      Ben Leslie
- *
- ****************************************************************************/
+/*
+ * Initialises the network stack and NFS library.
+ * Originally by Ben Leslie (2003)
+ * Modified by Alex Hixon
+ */
 
 #include "network.h"
 
@@ -62,7 +58,6 @@ void sos_usleep (int usecs) {
     while (ethif_input (_netif));
 }
 
-
 /*******************
  *** IRQ handler ***
  *******************/
@@ -108,27 +103,26 @@ static seL4_CPtr enable_irq (int irq, seL4_CPtr aep) {
  *** Network init ***
  ********************/
 
-static void
-network_prime_arp(struct ip_addr *gw){
+static void network_prime_arp (struct ip_addr *gw) {
     int timeout = ARP_PRIME_TIMEOUT_MS;
     struct eth_addr* eth;
     struct ip_addr* ip;
-    while(timeout > 0){
+
+    while (timeout > 0) {
         /* Send an ARP request */
         etharp_request(_netif, gw);
+
         /* Wait for the response */
-        //printf ("Waiting for ARP response\n");
-        sos_usleep(ARP_PRIME_RETRY_DELAY_MS * 1000);
-        if(etharp_find_addr(_netif, gw, &eth, &ip) == -1){
+        sos_usleep (ARP_PRIME_RETRY_DELAY_MS * 1000);
+        if (etharp_find_addr (_netif, gw, &eth, &ip) == -1) {
             timeout += ARP_PRIME_RETRY_DELAY_MS;
-        }else{
+        } else {
             return;
         }
     }
 }
 
-void 
-network_init(seL4_CPtr interrupt_ep) {
+int network_init (seL4_CPtr interrupt_ep) {
     struct ip_addr netmask, ipaddr, gw;
     struct eth_driver* eth_driver;
     const int* irqs;
@@ -136,13 +130,13 @@ network_init(seL4_CPtr interrupt_ep) {
     int i;
 
     struct ethif_os_interface sos_interface = {
-            .cookie = NULL,
-            .clean = &dma_clean,
-            .invalidate = &dma_invalidate,
-            .dma_malloc = &sos_dma_malloc,
-            .malloc = &sos_malloc,
-            .ioremap = &sos_map_device
-        };
+        .cookie = NULL,
+        .clean = &dma_clean,
+        .invalidate = &dma_invalidate,
+        .dma_malloc = &sos_dma_malloc,
+        .malloc = &sos_malloc,
+        .ioremap = &sos_map_device
+    };
 
     _irq_ep = interrupt_ep;
 
@@ -152,40 +146,45 @@ network_init(seL4_CPtr interrupt_ep) {
     err |= !ipaddr_aton(CONFIG_SOS_GATEWAY,      &gw);
     err |= !ipaddr_aton(CONFIG_SOS_IP     ,  &ipaddr);
     err |= !ipaddr_aton(CONFIG_SOS_NETMASK, &netmask);
-    assert (!err);
+    if (err) {
+        return false;
+    }
+
     //conditional_panic(err, "Failed to parse IP address configuration");
-    printf("  Local IP Address: %s\n", ipaddr_ntoa( &ipaddr));
-    printf("Gateway IP Address: %s\n", ipaddr_ntoa(     &gw));
+    //printf("  Local IP Address: %s\n", ipaddr_ntoa( &ipaddr));
+    //printf("Gateway IP Address: %s\n", ipaddr_ntoa(     &gw));
     //printf("      Network Mask: %s\n", ipaddr_ntoa(&netmask));
     //printf("\n");
 
     /* low level initialisation */
-    eth_driver = ethif_plat_init(0, sos_interface);
-    assert(eth_driver);
+    eth_driver = ethif_plat_init (0, sos_interface);
+    if (!eth_driver) {
+        return false;
+    }
 
     /* Initialise IRQS */
-    // printf ("Initialising IRQs\n");
-    irqs = ethif_enableIRQ(eth_driver, &_nirqs);
-    _net_irqs = (struct net_irq*)calloc(_nirqs, sizeof(*_net_irqs));
-    for(i = 0; i < _nirqs; i++){
+    irqs = ethif_enableIRQ (eth_driver, &_nirqs);
+    _net_irqs = (struct net_irq*)calloc (_nirqs, sizeof (*_net_irqs));
+    for (i = 0; i < _nirqs; i++){
         _net_irqs[i].irq = irqs[i];
-        // printf ("\tenabling IRQ for %d\n", irqs[i]);
-        _net_irqs[i].cap = enable_irq(irqs[i], _irq_ep);
+        _net_irqs[i].cap = enable_irq (irqs[i], _irq_ep);
     }
 
     /* Setup the network interface */
-    // printf ("Initialising LWIP\n");
-    lwip_init();
-    _netif = (struct netif*)malloc(sizeof(*_netif));
-    assert(_netif != NULL);
-    // printf ("adding interface\n");
-    _netif = netif_add(_netif, &ipaddr, &netmask, &gw, 
-                       eth_driver, ethif_init, ethernet_input);
-    assert(_netif != NULL);
-    // printf ("enabling interface\n");
-    netif_set_up(_netif);
-    // printf ("setting interface as default\n");
-    netif_set_default(_netif);
+    lwip_init ();
+    _netif = (struct netif*)malloc (sizeof (*_netif));
+    if (!_netif) {
+        return false;
+    }
+    
+    _netif = netif_add (_netif, &ipaddr, &netmask, &gw, 
+                        eth_driver, ethif_init, ethernet_input);
+    if (!_netif) {
+        return false;
+    }
+    
+    netif_set_up (_netif);
+    netif_set_default (_netif);
 
     /*
      * LWIP does not queue packets while waiting for an ARP response 
@@ -193,30 +192,7 @@ network_init(seL4_CPtr interrupt_ep) {
      * request before sending another. On the other hand, priming the
      * table is cheap and can save a lot of heart ache 
      */
-    // printf ("priming ARP table\n");
-    network_prime_arp(&gw);
-
-    /* initialise and mount NFS */
-#if 0
-    if(strlen(SOS_NFS_DIR)) {
-        /* Initialise NFS */
-        int err;
-        printf("\nMounting NFS\n");
-        if(!(err = nfs_init(&gw))){
-            /* Print out the exports on this server */
-            nfs_print_exports();
-            if ((err = nfs_mount(SOS_NFS_DIR, &mnt_point))){
-                printf("Error mounting path '%s'!\n", SOS_NFS_DIR);
-            }else{
-                printf("\nSuccessfully mounted '%s'\n", SOS_NFS_DIR);
-            }
-        }
-        if(err){
-            printf("Failed to initialise NFS\n");
-        }
-    }else{
-        printf("Skipping Network initialisation since no mount point was "
-             "specified\n");
-    }
-#endif
+    network_prime_arp (&gw);
+    
+    return true;
 }
