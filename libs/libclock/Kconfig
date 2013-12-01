@@ -1,8 +1,0 @@
-config LIB_CLOCK
-    bool "Build libclock"
-    select LIB_SEL4 
-    select LIB_SEL4_C
-    select HAVE_SEL4_LIBS
-    default y
-    help
-        "Basic clock interfaces for seL4 sos"
