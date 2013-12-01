@@ -228,7 +228,11 @@ int fs_mount (struct pawpaw_event* evt) {
             }
         }
 
-        char* next_part = remaining || get_next_path_part (remaining, end);
+        char* next_part = remaining;
+        if (!next_part) {
+            next_part = get_next_path_part (remaining, end);
+        }
+
         if (next_part) {
             /* create parent "folder" */
             printf ("creating parent fsnode %s\n", remaining);
@@ -287,7 +291,7 @@ int vfs_open (struct pawpaw_event* evt) {
         strcpy (node->fs->share->buf, orig_filename + offset);
 
         /* pass the buck to the FS layer to see if it knows anything about the file */
-        printf ("vfs: asking filesystem '%s' about '%s'\n", node->fs->type, node->fs->share->buf);
+        printf ("vfs: asking filesystem '%s' about '%s'\n", node->fs->type, (char*)node->fs->share->buf);
         seL4_MessageInfo_t lookup_msg = seL4_MessageInfo_new (0, 0, 0, 4);
         
         seL4_SetMR (0, VFS_OPEN);
@@ -356,7 +360,7 @@ int vfs_stat (struct pawpaw_event* evt) {
         strcpy (node->fs->share->buf, orig_filename + offset);
 
         /* pass the buck to the FS layer to see if it knows anything about the file */
-        printf ("vfs: asking filesystem '%s' about '%s'\n", node->fs->type, node->fs->share->buf);
+        printf ("vfs: asking filesystem '%s' about '%s'\n", node->fs->type, (char*)node->fs->share->buf);
         seL4_MessageInfo_t lookup_msg = seL4_MessageInfo_new (0, 0, 0, 2);
         
         seL4_SetMR (0, VFS_STAT);
@@ -368,7 +372,7 @@ int vfs_stat (struct pawpaw_event* evt) {
         //pawpaw_event_get_recv_cap();        /* XXX: investigate why we need this */
         
 
-        seL4_MessageInfo_t fs_reply = seL4_Call (node->fs->cap, lookup_msg);
+        seL4_Call (node->fs->cap, lookup_msg);
         int success = seL4_GetMR (0);
         if (success == 0) {
             memcpy (evt->share->buf, node->fs->share->buf, sizeof (stat_t));
