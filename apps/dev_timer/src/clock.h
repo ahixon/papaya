@@ -1,3 +1,7 @@
+/*
+ * originally from libclock - not really needed anymore
+ */
+
 #ifndef _CLOCK_H_
 #define _CLOCK_H_
 
