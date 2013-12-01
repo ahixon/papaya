@@ -1,7 +1,7 @@
 config APP_DEV_TIMER
     bool "Timer device"
-    depends on LIB_SEL4 && LIB_SEL4_C && LIB_PAWPAW
-    default n
+    depends on LIB_SEL4 && LIB_SEL4_C && LIB_SOS && LIB_PAWPAW
+    default y
     select HAVE_SEL4_APPS
     help
         Timer device server (uses GPT)

@@ -1,7 +1,8 @@
 config APP_TEST_ECHOSERVER
     bool "UDP echo test"
-    depends on LIB_SEL4 && LIB_SEL4_C && LIB_SOS && LIB_PAWPAW && APP_SVC_NET
-    default y
+    depends on LIB_SEL4 && LIB_SEL4_C && LIB_SOS && LIB_PAWPAW
+    default n
+    select APP_SVC_NET
     select HAVE_SEL4_APPS
     help
         Runs an echo server over UDP.

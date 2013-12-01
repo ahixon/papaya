@@ -1,7 +1,7 @@
 config APP_SOSH
     bool "SOSH"
     depends on LIB_SEL4 && LIB_SEL4_C && LIB_SOS && LIB_PAWPAW
-    default n
+    default y
     select HAVE_SEL4_APPS
     help
         Simple shell built upon the Simple Operating System

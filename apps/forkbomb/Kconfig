@@ -2,5 +2,6 @@ config APP_FORKBOMB
     bool "Forkbomb app"
     depends on LIB_SEL4 && LIB_SEL4_C && LIB_SOS && LIB_PAWPAW
     select HAVE_SEL4_APPS
+    default n
     help
         A recursive app(A recursive app(A recursive app(A recursive app)))

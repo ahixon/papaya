@@ -1,2 +1,2 @@
 apps-$(CONFIG_APP_FORKBOMB) += forkbomb
-forkbomb: libsel4c libsel4 libsos
+forkbomb: $(libc) libsel4 libsos libpawpaw

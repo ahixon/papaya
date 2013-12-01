@@ -1,7 +1,8 @@
 config APP_FS_NFS
     bool "NFS filesystem"
-    depends on LIB_SEL4 && LIB_SEL4_C && LIB_SOS && LIB_PAWPAW && APP_SVC_NET && LIB_NFS
-    default n
+    depends on LIB_SEL4 && LIB_SEL4_C && LIB_SOS && LIB_PAWPAW && LIB_NFS && LIB_SEL4_SYNC
+    default y
     select HAVE_SEL4_APPS
+    select APP_SVC_VFS
     help
-        NFS file system server. Requires network library.
+        NFS file system server.

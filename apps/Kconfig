@@ -5,9 +5,7 @@ config SEL4_APPS_PATH
 menu "seL4 Applications"
 
 source "$SEL4_APPS_PATH/sos/Kconfig"
-source "$SEL4_APPS_PATH/sos_test/Kconfig"
 source "$SEL4_APPS_PATH/sosh/Kconfig"
-source "$SEL4_APPS_PATH/tty_test/Kconfig"
 source "$SEL4_APPS_PATH/forkbomb/Kconfig"
 source "$SEL4_APPS_PATH/thrash/Kconfig"
 
@@ -24,11 +22,11 @@ source "$SEL4_APPS_PATH/svc_dev/Kconfig"
 menu "Filesystems"
 source "$SEL4_APPS_PATH/fs_dev/Kconfig"
 source "$SEL4_APPS_PATH/fs_nfs/Kconfig"
-source "$SEL4_APPS_PATH/fs_cpio/Kconfig"
 endmenu
 endmenu
 
 menu "Tests"
+source "$SEL4_APPS_PATH/sos_test/Kconfig"
 source "$SEL4_APPS_PATH/test_echoserver/Kconfig"
 source "$SEL4_APPS_PATH/test_runner/Kconfig"
 source "$SEL4_APPS_PATH/test_share_a/Kconfig"

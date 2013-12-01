@@ -1,4 +1,0 @@
-components-$(CONFIG_APP_TTY_TEST) += tty_test
-
-tty_test: $(libc) libsel4 libsos
-

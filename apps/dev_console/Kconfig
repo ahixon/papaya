@@ -1,7 +1,8 @@
 config APP_DEV_CONSOLE
     bool "Console device"
     depends on LIB_SEL4 && LIB_SEL4_C && LIB_SOS && LIB_PAWPAW
-    default n
+    default y
     select HAVE_SEL4_APPS
+    select APP_SVC_NET
     help
         Console device server

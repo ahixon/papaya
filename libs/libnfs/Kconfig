@@ -1,10 +1,12 @@
 config LIB_NFS
     bool "Build libnfs"
+    depends on LIB_PAWPAW
     select LIB_SEL4 
     select LIB_SEL4_C
     select LIB_LWIP 
     select LIB_SEL4_SYNC
+    select APP_SVC_NET
     select HAVE_SEL4_LIBS
     default y
     help
-        "Basic nfs library for seL4 sos"
+        "Basic NFS library for Papaya"

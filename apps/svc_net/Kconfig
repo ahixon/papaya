@@ -1,7 +1,27 @@
-config APP_SVC_NET
+menuconfig APP_SVC_NET
     bool "Networking service"
-    depends on LIB_SEL4 && LIB_SEL4_C && LIB_ETHIF && LIB_LWIP && LIB_SEL4_SYNC && LIB_NFS
-    default n
+    depends on LIB_SEL4 && LIB_SEL4_C && LIB_ETHIF && LIB_LWIP
+    default y
     select HAVE_SEL4_APPS
     help
         Network service server
+
+config SOS_NETMASK
+    string "Network mask"
+    depends on APP_SVC_NET
+    default "225.225.225.0"
+
+config SOS_IP
+    string "IP address"
+    depends on APP_SVC_NET
+    default "192.168.168.2"
+
+config SOS_GATEWAY
+    string "Gateway IP address"
+    depends on APP_SVC_NET
+    default "192.168.168.1"
+
+config SOS_NFS_DIR
+    string "NFS directory"
+    depends on APP_SVC_NET
+    default "/var/tftpboot/USER"

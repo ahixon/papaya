@@ -1,7 +1,0 @@
-config APP_TTY_TEST
-    bool "TTY test"
-    depends on LIB_SEL4 && LIB_SEL4_C && LIB_SOS
-    default y
-    select HAVE_SEL4_APPS
-    help
-        A test program for printing over serial for AOS

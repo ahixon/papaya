@@ -1,7 +1,9 @@
 config APP_FS_DEV
     bool "Device filesystem"
     depends on LIB_SEL4 && LIB_SEL4_C && LIB_PAWPAW
-    default n
+    default y
     select HAVE_SEL4_APPS
+    select APP_SVC_VFS
+    select APP_SVC_DEV
     help
         Device file system server
