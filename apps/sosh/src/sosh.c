@@ -256,6 +256,7 @@ int main(void) {
     bp = buf;
     done = 0;
     new = 1;
+    found = 0;
 
     printf("\n[SOS Starting]\n");
 
