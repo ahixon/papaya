@@ -76,7 +76,6 @@ static int vfs_open (struct pawpaw_event* evt) {
     	_cpio_archive, i, (const char**)&name, &size); i++) {
 
     	int res = strcmp (evt->share->buf, name);
-    	printf ("comparing '%s' and '%s' = %d\n", evt->share->buf, name, res);
     	if (res == 0) {
     		seL4_CPtr their_cap = pawpaw_cspace_alloc_slot ();
     		if (!their_cap) {
@@ -94,7 +93,6 @@ static int vfs_open (struct pawpaw_event* evt) {
 		    	break;
 		    }
 
-		    printf ("cpio: found file '%s' OK, cap in %d\n", name, their_cap);
 		    evt->reply = seL4_MessageInfo_new (0, 0, 1, 1);
     		seL4_SetCap (0, their_cap);
 			seL4_SetMR (0, 0);
@@ -103,7 +101,6 @@ static int vfs_open (struct pawpaw_event* evt) {
     	}
     }
 
-    printf ("cpio: no such file '%s'\n", evt->share->buf);
 	evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
 	seL4_SetMR (0, -1);
 	return PAWPAW_EVENT_NEEDS_REPLY;
@@ -124,7 +121,6 @@ static int vfs_read (struct pawpaw_event* evt) {
     	_cpio_archive, evt->badge, (const char**)&name, &size);
 
 	if (file) {
-		printf ("found entry for badge %d\n", evt->badge);
 		seL4_Word amount = evt->args[0];
 		if (amount > size) {
 			amount = size;
@@ -133,7 +129,6 @@ static int vfs_read (struct pawpaw_event* evt) {
 		memcpy (evt->share->buf, file, amount);
 		seL4_SetMR (0, amount);
 	} else {
-		printf ("failed to find entry %d\n", evt->badge);
 		seL4_SetMR (0, -1);
 	}
 
@@ -143,7 +138,6 @@ static int vfs_read (struct pawpaw_event* evt) {
 static int vfs_read_offset (struct pawpaw_event* evt) {
 
 	/* FIXME: should pass through to another func */
-	printf ("cpio: hello from read_offset\n");
 
 	seL4_CPtr old_reply = evt->reply_cap;
 	evt->reply = seL4_MessageInfo_new (0, 0, 0, 2);
@@ -205,8 +199,8 @@ static int vfs_read_offset (struct pawpaw_event* evt) {
 				amount = PAPAYA_IPC_PAGE_SIZE - buf_offset;
 			}
 
-			printf ("file base = 0x%x\n", file);
-			printf ("loading from = 0x%x (offset = 0x%x, len = 0x%x, buf_offset = 0x%x)\n", loc, loc - file, amount, buf_offset);
+			//printf ("file base = 0x%x\n", file);
+			//printf ("loading from = 0x%x (offset = 0x%x, len = 0x%x, buf_offset = 0x%x)\n", loc, loc - file, amount, buf_offset);
 
 			memcpy (evt->share->buf + buf_offset, loc, amount);
 			seL4_SetMR (0, amount);
@@ -248,7 +242,7 @@ int fs_cpio_main (void) {
 
         data = cpio_get_entry (_cpio_archive, i, &name, &size);
         if (data != NULL) {
-            printf ("| %3d   | %16s | %p | %12d |\n", i, name, data, size);
+            printf ("| %3d   | %16s | %p | %12lu |\n", i, name, data, size);
         } else {
             break;
         }

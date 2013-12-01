@@ -75,7 +75,7 @@ char* copyout (thread_t thread, vaddr_t ubuf, unsigned int usize, char* kbuf, un
 		unsigned int dist_until_page_end = PAGESIZE - ((ubuf + done) & PAGEMASK);
 		unsigned int nbytes = MIN (dist_until_page_end, ksize - done);
 
-		printf ("copyout: copying 0x%x bytes from 0x%x (mapped from 0x%x) to 0x%x\n", nbytes, ubuf + done, kvpage, (kbuf + done));
+		//printf ("copyout: copying 0x%x bytes from 0x%x (mapped from 0x%x) to 0x%x\n", nbytes, ubuf + done, kvpage, (kbuf + done));
 		//memcpy ((void*)(kbuf + done), kvpage + ((ubuf + done) & PAGEMASK), nbytes);
 		memcpy (kvpage + ((ubuf + done) & PAGEMASK), (void*)(kbuf + done), nbytes);
 

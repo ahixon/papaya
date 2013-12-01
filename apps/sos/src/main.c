@@ -42,7 +42,6 @@ seL4_CPtr swap_cap = 0;
 
 seL4_CPtr save_reply_cap (void) {
     seL4_CPtr reply_cap = cspace_save_reply_cap (cur_cspace);
-    printf ("-S- saved reply cap 0x%x\n", reply_cap);
     return reply_cap;
 }
 
@@ -93,7 +92,7 @@ void syscall_event_dispose (struct pawpaw_event* evt) {
 
 void swap_success (struct pawpaw_event* evt, struct frameinfo* frame) {
     printf ("== swap callback\n");
-    thread_t thread = evt->args[1];
+    thread_t thread = (thread_t)evt->args[1];
     assert (thread);
 
     /* print out the page contents */
@@ -144,14 +143,14 @@ void swap_success (struct pawpaw_event* evt, struct frameinfo* frame) {
         /* this is the pagelist */
         seL4_Word refcount = evt->args[3];
         if (refcount == 1) {
-            orig_page = evt->args[2];
+            orig_page = (struct pt_entry*)evt->args[2];
             printf ("orig page was %p\n", orig_page);
             orig_page->frame = replacement_frame;
-            replacement_frame->pages = evt->args[2];
+            replacement_frame->page = orig_page;
         } else {
             replacement_frame->flags |= FRAME_PAGELIST;
             /* point all the pages back to this guy */
-            replacement_frame->pages = evt->args[2];
+            replacement_frame->pages = (struct pagelist*)evt->args[2];
             struct pagelist* pagenode = replacement_frame->pages;
             while (pagenode) {
                 printf ("an orig page was %p\n", pagenode->page);
@@ -180,7 +179,7 @@ void swap_success (struct pawpaw_event* evt, struct frameinfo* frame) {
     if (page->cap) {
         printf ("flushing caches...\n");
         seL4_ARM_Page_FlushCaches (page->cap);        
-        page_dump (page, evt->args[0]);
+        page_dump (page, (vaddr_t)evt->args[0]);
     }
 
 
@@ -279,7 +278,7 @@ void syscall_loop (seL4_CPtr ep) {
                 evt->reply = message;
                 evt->args = malloc (sizeof (seL4_Word) * 4);
                 evt->args[0] = vaddr;
-                evt->args[1] = thread;
+                evt->args[1] = (seL4_Word)thread;
 
                 printf ("%s faulted on addr 0x%x\n", thread->name, vaddr);
 
@@ -339,12 +338,12 @@ void syscall_loop (seL4_CPtr ep) {
                 seL4_SetMR (0, MMAP_RESULT);
                 seL4_Call (_mmap_ep, req_msg);
 
-                cb = seL4_GetMR (0);
-                seL4_Word arg = seL4_GetMR (1);
-                seL4_Word frameptr = seL4_GetMR (2);
+                cb = (void*)seL4_GetMR (0);
+                struct pawpaw_event* evt = (struct pawpaw_event*)seL4_GetMR (1);
+                struct frameinfo* frameptr = (struct frameinfo*)seL4_GetMR (2);
 
-                if (cb != NULL && arg != 0) {
-                    cb (arg, frameptr);
+                if (cb != NULL && evt != NULL) {
+                    cb (evt, frameptr);
                 }
             } while (cb != NULL);
 

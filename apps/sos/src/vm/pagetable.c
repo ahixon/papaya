@@ -12,6 +12,8 @@
 #include "mapping.h"
 #include "vmem_layout.h"
 #include "frametable.h"
+#include "syscalls/syscall_table.h"
+#include "services/services.h"
 
 #include <vfs.h>
 
@@ -48,7 +50,7 @@ pagetable_dump (pagetable_t pt) {
                 /*paddr_t paddr = 
                     entry.frame ? entry.frame->paddr : 0;*/
 
-                printf ("\t0x%03x: vaddr %08x PTE %08x ", j, vaddr, entry);
+                printf ("\t0x%03x: vaddr %08x PTE %p ", j, vaddr, entry);
                 printf ("frame %p => paddr %08x cap 0x%08x %s %s\n",
                     entry->frame, entry->frame->paddr, entry->cap,
                     //entry.frame->flags & FRAME_SHARED ? "SHARED" : "",
@@ -257,7 +259,7 @@ page_map (addrspace_t as, struct as_region *region, vaddr_t vaddr, int *status,
 
     /* check if page already allocated - ie has cap AND underyling frame */
     if (entry->cap && entry->frame && entry->frame->flags & FRAME_FRAMETABLE) {
-        printf ("%s: !!!!!!!!!!!!!!!! page already mapped and in frametable\n");
+        printf ("%s: !!!!!!!!!!!!!!!! page already mapped and in frametable\n", __FUNCTION__);
         return entry;
     }
 
@@ -405,7 +407,7 @@ page_map (addrspace_t as, struct as_region *region, vaddr_t vaddr, int *status,
                 
                 fake_page->frame = target;
                 fake_page->frame->file = NULL;
-                evt->args[2] = target->page;    /* store old page pointer since we need to point all the
+                evt->args[2] = (seL4_Word)target->page;    /* store old page pointer since we need to point all the
                                                    old pages to the swapped out frame */
                 evt->args[3] = frame_get_refcount (target);
                 target->page = fake_page;
@@ -800,7 +802,7 @@ page_dump (struct pt_entry* page, vaddr_t vaddr) {
         printf ("%08x: ", vaddr + i);
 
         for (int j = 0; j < 0x10; j++) {
-            char* addr = FRAMEWINDOW_VSTART + i + j;
+            char* addr = (char*)FRAMEWINDOW_VSTART + i + j;
             printf ("%02x", *addr);
 
             if ((seL4_Word)addr % 2) {
@@ -812,7 +814,7 @@ page_dump (struct pt_entry* page, vaddr_t vaddr) {
 
         /* and char rep */
         for (int j = 0; j < 0x10; j++) {
-            char* addr = FRAMEWINDOW_VSTART + i + j;
+            char* addr = (char*)FRAMEWINDOW_VSTART + i + j;
             if (*addr >= 0x20 && *addr <= 0x7e) {
                 printf ("%c", *addr);
             } else {

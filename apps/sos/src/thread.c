@@ -20,6 +20,8 @@
 #include <sos.h>
 #include <vm/frametable.h>
 
+#include <cpio/cpio.h>
+
 #include <services/services.h>
 
 #define verbose 5

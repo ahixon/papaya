@@ -9,7 +9,9 @@
 #include <ut_manager/ut.h>
 #include <vm/vm.h>
 #include <vm/addrspace.h>
+#include <vm/pagetable.h>
 #include <vm/frametable.h>
+#include <mapping.h>
 #include <vm/vmem_layout.h>
 
 /* Minimum of two values. */

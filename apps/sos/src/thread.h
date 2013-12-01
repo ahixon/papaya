@@ -67,4 +67,6 @@ int thread_cspace_new_cnodes (thread_t t, int num, seL4_CPtr* cnode);
 seL4_CPtr thread_cspace_new_ep (thread_t thread);
 seL4_CPtr thread_cspace_new_async_ep (thread_t thread);
 
+int thread_setup_default_caps (thread_t thread, seL4_CPtr rootsvr_ep);
+
 #endif

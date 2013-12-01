@@ -57,11 +57,25 @@ static inline void frame_set_refcount (struct frameinfo* fi, int count) {
 	fi->flags = (fi->flags & ~FRAME_REFCOUNT_MASK) | count;
 }
 
+int frame_fill_reserved (void);
+
+int frame_free_reserved (seL4_Word phys);
+
+
 struct frameinfo*
 frametable_get_frame (frameidx_t frame);
 
+seL4_Word frame_get_reserved (void);
+
 void
 frametable_init (seL4_Word low_arg, seL4_Word high_arg);
+
+struct frameinfo*
+frame_new (void);
+
+void
+frame_add_queue (struct frameinfo* frame);
+
 
 struct frameinfo*
 frame_new_from_untyped (seL4_Word untyped);
@@ -73,13 +87,17 @@ struct frameinfo*
 frame_alloc (void);
 
 struct frameinfo*
-frame_alloc_from_untyped (struct frameinfo* frame, seL4_Word untyped);
+frame_alloc_from_existing (struct frameinfo* old);
+
+struct frameinfo*
+frame_select_swap_target (void);
+
+struct mmap*
+frame_create_mmap (seL4_CPtr file, seL4_Word load_offset,
+    seL4_Word file_offset, seL4_Word length);
 
 void
 frame_free (struct frameinfo* frame);
-
-seL4_CPtr
-frametable_fetch_cap (struct frameinfo* frame);
 
 void
 frametable_stats (void);

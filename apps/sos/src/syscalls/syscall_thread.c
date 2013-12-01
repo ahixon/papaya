@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <copyinout.h>
 #include <sos.h>
+#include <string.h>
 
 #define THREAD_PATH_SIZE_MAX	512
 #define MAX_PROCESS_LIST_SIZE   30
@@ -135,7 +136,7 @@ int syscall_thread_list (struct pawpaw_event* evt) {
         thread = thread->next;
     }
     
-    if (copyout (current_thread, dest, usize, processes, usize)) {
+    if (copyout (current_thread, dest, usize, (char*)processes, usize)) {
         printf ("%s: had %d threads\n", __FUNCTION__, i);
         seL4_SetMR (0, i);
     } else {

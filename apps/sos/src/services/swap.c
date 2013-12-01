@@ -144,7 +144,7 @@ mmap_queue_schedule (int direction, vaddr_t vaddr, struct frameinfo *frame, void
 		return false;
 	}
 
-	printf ("** registered with frame 0x%x\n", q->frame);
+	printf ("** registered with frame %p\n", q->frame);
 	assert (frame);
 
 	if (direction == PAGE_SWAP_IN) {
@@ -152,7 +152,6 @@ mmap_queue_schedule (int direction, vaddr_t vaddr, struct frameinfo *frame, void
 		assert (frame->file->file);
 
 		/* FIXME: seriously this needs work */
-		seL4_CPtr cap;
 		struct seen_item *item = regd_caps;
 		while (item) {
 			if (item->cap == frame->file->file) {
@@ -168,7 +167,7 @@ mmap_queue_schedule (int direction, vaddr_t vaddr, struct frameinfo *frame, void
 			/* FIXME: possible infoleak on using frame kernel vaddr?
 			 * DON'T EVEN NEED JUST MINT WITH BADGE > 0 i think */
 			seL4_CPtr their_cap = cspace_mint_cap (
-				cur_cspace, cur_cspace, _mmap_ep, seL4_AllRights, seL4_CapData_Badge_new (frame));
+				cur_cspace, cur_cspace, _mmap_ep, seL4_AllRights, seL4_CapData_Badge_new ((seL4_Word)frame));
 
 			assert (their_cap);
 
@@ -215,7 +214,7 @@ mmap_queue_schedule (int direction, vaddr_t vaddr, struct frameinfo *frame, void
 		seL4_SetMR (3, frame->file->file_offset);
 		seL4_SetMR (4, frame->file->load_offset);
 		seL4_SetMR (5, item->id);	/* async ID */
-		seL4_SetMR (6, frame);
+		seL4_SetMR (6, (seL4_Word)frame);
 
 		printf ("Calling file %d @ offset 0x%x /w vm offset 0x%x\n", frame->file->file, frame->file->file_offset, frame->file->load_offset);
 		seL4_Send (frame->file->file, msg);
@@ -266,7 +265,7 @@ mmap_queue_schedule (int direction, vaddr_t vaddr, struct frameinfo *frame, void
 			seL4_SetMR (3, page_id + wrote);	/* file offset */
 			seL4_SetMR (4, wrote);		/* load into start of share */
 			//seL4_SetMR (5, swap_id);	/* async ID - NOT USED */
-			seL4_SetMR (6, frame);
+			seL4_SetMR (6, (seL4_Word)frame);
 
 			/* and write it out */
 			printf ("** calling FS\n");
@@ -312,9 +311,9 @@ mmap_swap (int direction, vaddr_t vaddr, struct frameinfo* frame, void* callback
 	seL4_SetMR (0, MMAP_REQUEST);
 	seL4_SetMR (1, direction);
 	seL4_SetMR (2, vaddr);
-	seL4_SetMR (3, frame);
-	seL4_SetMR (4, callback);
-	seL4_SetMR (5, evt);
+	seL4_SetMR (3, (seL4_Word)frame);
+	seL4_SetMR (4, (seL4_Word)callback);
+	seL4_SetMR (5, (seL4_Word)evt);
 
 	/* note: cannot be a Call since svc_mmap might require the root server
 	 * to be free to handle some of its own requests, eg sbrk */
@@ -339,8 +338,8 @@ int mmap_main (void) {
 			if (method == MMAP_REQUEST) {
 				/* i've got a nest of brackets, but no bird... */
 				do_reply = mmap_queue_schedule (
-					seL4_GetMR (1), seL4_GetMR (2), seL4_GetMR (3),
-					seL4_GetMR (4), seL4_GetMR (5));
+					seL4_GetMR (1), seL4_GetMR (2), (struct frameinfo*)seL4_GetMR (3),
+					(void*)seL4_GetMR (4), (struct pawpaw_event*)seL4_GetMR (5));
 
 				if (do_reply) {
 					seL4_Notify (rootserver_async_cap, MMAP_IRQ);
@@ -352,9 +351,9 @@ int mmap_main (void) {
 					seL4_SetMR (1, 0);
 					seL4_SetMR (2, 0);
 				} else {
-					seL4_SetMR (0, done_queue->cb);
-					seL4_SetMR (1, done_queue->evt);
-					seL4_SetMR (2, done_queue->frame);
+					seL4_SetMR (0, (seL4_Word)done_queue->cb);
+					seL4_SetMR (1, (seL4_Word)done_queue->evt);
+					seL4_SetMR (2, (seL4_Word)done_queue->frame);
 
 					struct mmap_queue_item* cur = done_queue;
 					done_queue = done_queue->next;
@@ -368,14 +367,15 @@ int mmap_main (void) {
 			}
 		} else {
 			/* response from filesystem */
-			seL4_Word amount = seL4_GetMR (0);
-			seL4_Word evt = seL4_GetMR (1);
+			//seL4_Word amount = seL4_GetMR (0);
+			/* FIXME: ensure amount == PAGE_SIZE or needed amount */
+
+			struct frameinfo* evt_id = (struct frameinfo*)seL4_GetMR (1);
 
 			/* find the matching mmap request */
 			struct mmap_queue_item* q = mmap_queue;
 			while (q) {
-				printf ("comparing 0x%x and 0x%x\n", q->frame, evt);
-				if (q->frame == evt) {
+				if (q->frame == evt_id) {
 					q = mmap_move_done (q);
 					break;
 				}
@@ -385,7 +385,7 @@ int mmap_main (void) {
 
 			/* read finished, notify server if we found one */
 			if (q == NULL) {
-				printf ("mmap: unknown badge 0x%x + ID 0x%x - how did you get this number\n", badge, evt);
+				printf ("mmap: unknown badge 0x%x + ID %p - how did you get this number\n", badge, evt_id);
 			} else {
 				seL4_Notify (rootserver_async_cap, MMAP_IRQ);
 			}

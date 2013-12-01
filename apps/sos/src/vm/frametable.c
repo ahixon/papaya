@@ -57,6 +57,7 @@ int frame_free_reserved (seL4_Word phys) {
     return false;*/
     /* XXX: need to remount into rootsvr and zero pages */
     assert (false);
+    return 0;
 }
 
 /**

@@ -15,5 +15,7 @@ int fs_cpio_main (void);
 
 extern short badgemap_found;
 void maps_append (seL4_Word idx, pid_t pid, vaddr_t start);
+
+int mmap_swap (int direction, vaddr_t vaddr, struct frameinfo* frame, void* callback, struct pawpaw_event* evt);
 	
 #endif

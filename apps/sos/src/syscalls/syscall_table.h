@@ -40,5 +40,6 @@ int syscall_share_unmount (struct pawpaw_event* evt);
 int syscall_alloc_dma (struct pawpaw_event* evt);
 
 seL4_CPtr service_lookup (char* name);
+struct as_region* create_share_reg (seL4_CPtr *cap, seL4_Word *dest_id, int map);
 
 #endif

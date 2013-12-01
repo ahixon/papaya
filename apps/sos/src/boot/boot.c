@@ -14,6 +14,8 @@
 #include <elf/elf.h>
 #include "elf.h"
 
+#include <syscalls/syscall_table.h>
+
 #include "vm/vmem_layout.h"
 
 #define verbose 5
@@ -203,7 +205,7 @@ int mount (char* mountpoint, char* fs) {
     printf ("mounting '%s' on '%s'...\n", fs, mountpoint);
 
     if (!share_reg) {
-        share_reg = create_share_reg (&share_badge, &share_id);
+        share_reg = create_share_reg (&share_badge, &share_id, true);
     }
 
     int mp_len = strlen (mountpoint);
@@ -211,9 +213,10 @@ int mount (char* mountpoint, char* fs) {
         return false;
     }
 
-    strcpy (share_reg->vbase, mountpoint);
-    *(char*)(share_reg->vbase + mp_len) = '\0';
-    strcpy (share_reg->vbase + mp_len + 1, fs);
+    char* share_buf = (char*)share_reg->vbase;
+    strcpy (share_buf, mountpoint);
+    *(share_buf + mp_len) = '\0';
+    strcpy (share_buf + mp_len + 1, fs);
     
     seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 2);
     seL4_SetCap (0, share_badge);
@@ -237,7 +240,7 @@ int open_swap (char* path) {
     printf ("opening '%s' ...\n", path);
 
     if (!share_reg) {
-        share_reg = create_share_reg (&share_badge, &share_id);
+        share_reg = create_share_reg (&share_badge, &share_id, true);
     }
 
     int mp_len = strlen (path);
@@ -245,8 +248,9 @@ int open_swap (char* path) {
         return false;
     }
 
-    strcpy (share_reg->vbase, path);
-    *(char*)(share_reg->vbase + mp_len) = '\0';
+    char* share_buf = (char*)share_reg->vbase;
+    strcpy (share_buf, path);
+    *(share_buf + mp_len) = '\0';
     
     seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 3);
     seL4_SetCap (0, share_badge);
