@@ -1,7 +1,0 @@
-config APP_FS_CPIO
-    bool "CPIO filesystem"
-    depends on LIB_SEL4 && LIB_SEL4_C && LIB_SOS
-    default n
-    select HAVE_SEL4_APPS
-    help
-        CPIO file system server. Required to mount filesystem containing optional "core" startup services.
