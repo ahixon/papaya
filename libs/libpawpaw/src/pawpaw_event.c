@@ -51,6 +51,7 @@ void pawpaw_event_loop (struct pawpaw_event_table* table, void (*interrupt_func)
 
             switch (result) {
                 case PAWPAW_EVENT_NEEDS_REPLY:
+                    printf ("-!- replying on 0x%x\n", evt->reply_cap);
                     seL4_Send (evt->reply_cap, evt->reply);
                     pawpaw_event_dispose (evt); 
                     break;

@@ -19,6 +19,46 @@ static int allocated = 0;
 static struct frameinfo* frame_head = NULL;
 static struct frameinfo* frame_tail = NULL;
 
+#define RESERVED_FRAMES_NUM 20
+seL4_Word reserved_frames[RESERVED_FRAMES_NUM] = {0};
+
+seL4_Word frame_get_reserved (void) {
+    for (int i = 0; i < RESERVED_FRAMES_NUM; i++) {
+        if (reserved_frames[i] != 0) {
+            seL4_Word addr = reserved_frames[i];
+            reserved_frames[i] = 0;
+            return addr;
+        }
+    }
+
+    return 0;
+}
+
+int frame_fill_reserved (void) {
+    for (int i = 0; i < RESERVED_FRAMES_NUM; i++) {
+        reserved_frames[i] = ut_alloc (seL4_PageBits);
+        if (!reserved_frames[i]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/* returns if address was freed into slot, false otherwise */
+int frame_free_reserved (seL4_Word phys) {
+    /*for (int i = 0; i < RESERVED_FRAMES_NUM; i++) {
+        if (reserved_frames[i] == 0) {
+            reserved_frames[i] = phys;
+            return true;
+        }
+    }
+
+    return false;*/
+    /* XXX: need to remount into rootsvr and zero pages */
+    assert (false);
+}
+
 /**
  * Helper function to create a physical frame, and map it into the root
  * server's address space at a given virtual address.
@@ -75,6 +115,7 @@ frame_new (void) {
     }
 
     memset (frame, 0, sizeof (struct frameinfo));
+    frame->flags = FRAME_DIRTY;     /* XXX: remove me if we implement mount-as-readonly-first */
     frame_set_refcount (frame, 1);
     return frame;
 }
@@ -108,9 +149,11 @@ frame_add_queue (struct frameinfo* frame) {
     }
 
     frame_tail = frame;
+    frame->next = NULL;
 
     if (!frame_head) {
         frame_head = frame;
+        frame->prev = NULL;
     }
 
     allocated++;
@@ -138,6 +181,7 @@ frame_alloc (void)
     struct frameinfo* frame = &frametable[index];
     frame->paddr = untyped_addr;
     frame->flags |= FRAME_FRAMETABLE;
+    frame->flags |= FRAME_DIRTY;        /* XXX: remove me later when remap-on-write implemented */
     frame_set_refcount (frame, 1);
 
     frame_add_queue (frame);
@@ -170,7 +214,7 @@ frame_alloc_from_existing (struct frameinfo* old) {
     /* FIXME: assert old refcount was 1 */
     free (old);
 
-    printf ("new file = %p\n", new->file);
+    //printf ("new file = %p\n", new->file);
     return new;
 }
 
@@ -198,16 +242,35 @@ frame_alloc_from_existing (struct frameinfo* old) {
 struct frameinfo*
 frame_select_swap_target (void) {
     struct frameinfo* target = frame_head;
+    while (target && target->flags & FRAME_PINNED) {
+        printf ("skipping frame %p because it was pinned\n", target);
+        target = target->next;
+    }
+
     assert (target);  /* shouldn't be called with no frames alloc'd */
 
     /* remove it from the current queue - will get added back at end by
      * page_map once the the free frame is added back to the pool, and a page
      * requested again */
-    if (target->prev) {
-        target->prev = target->next;
+    if (frame_head == target) {
+        frame_head = target->next;
     }
 
-    frame_head = target->next;
+    if (frame_tail == target) {
+        frame_tail = target->prev;
+    }
+
+    /* cut it out */
+    if (target->prev) {
+        target->prev->next = target->next;
+    }
+
+    if (target->next) {
+        target->next->prev = target->prev;
+    }
+
+
+    target->prev = NULL;
     target->next = NULL;
 
     return target;
@@ -243,7 +306,12 @@ frame_free (struct frameinfo* fi) {
 
     /* free since refcount is 0 */
     if (fi->paddr) {
-        ut_free (fi->paddr, seL4_PageBits);
+        if (fi->flags & FRAME_RESERVED) {
+            /* try to replenish reserve frames first */
+            frame_free_reserved (fi->paddr);
+        } else {
+            ut_free (fi->paddr, seL4_PageBits);
+        }
     }
 
     if (fi->file) {
@@ -251,17 +319,22 @@ frame_free (struct frameinfo* fi) {
         free (fi->file);
     }
 
+    fi->page = NULL;
+
     /* remove from frame queue */
     if (!fi->next && !fi->prev) {
         /* likely a loner + externally allocated */
+        printf ("was loner, skipping framequeue\n");
         goto frame_free_cleanup;
     }
 
     if (frame_head == fi) {
+        printf ("was head\n");
         frame_head = fi->next;
     }
 
     if (frame_tail == fi) {
+        printf ("was tail\n");
         frame_tail = fi->prev;
     }
 

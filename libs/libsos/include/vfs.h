@@ -8,5 +8,6 @@
 #define VFS_LISTDIR			(7)
 #define VFS_STAT			(8)
 #define VFS_READ_OFFSET		(9)
+#define VFS_WRITE_OFFSET	(10)
 
-#define VFS_NUM_EVENTS		(10)
+#define VFS_NUM_EVENTS		(11)

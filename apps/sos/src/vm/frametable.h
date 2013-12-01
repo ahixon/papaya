@@ -9,7 +9,9 @@
 #define FRAME_PINNED        (1 << 29)
 #define FRAME_DIRTY         (1 << 28)   /* unused */
 #define FRAME_COPY_ON_WRITE (1 << 27)   /* unused, relevant iff refcount > 1 */
-#define NUM_FRAME_FLAGS     (5)
+#define FRAME_PAGELIST      (1 << 26)
+#define FRAME_RESERVED      (1 << 25)
+#define NUM_FRAME_FLAGS     (8)
 
 #define FRAME_REFCOUNT_MAX	(1 << ((32 - NUM_FRAME_FLAGS)))
 #define FRAME_REFCOUNT_MASK	((1 << ((32 - NUM_FRAME_FLAGS) + 1)) - 1)

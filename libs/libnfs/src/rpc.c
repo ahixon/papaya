@@ -15,7 +15,7 @@
 #include <pawpaw.h>
 #include <network.h>
 
-//#define DEBUG_RPC 1
+#define DEBUG_RPC 1
 #ifdef DEBUG_RPC
 #define debug(x...) printf( x )
 #else
@@ -106,13 +106,19 @@ pbuf_new(u16_t length)
 {
     return pbuf_alloc(PBUF_TRANSPORT, length, PBUF_RAM);
 }
+    
+
+/* FIXME: maybe use a pool? but otherwise this is OK once net_svc schedules */
+struct pawpaw_share* last_share = NULL;
 
 static inline enum rpc_stat
 my_udp_send(int connection_id, struct pbuf *pbuf)
 {
     /* FIXME: should use same share to recv? or share pool */
-    struct pawpaw_share* share = pawpaw_share_new ();
-    assert (share);
+    if (!last_share) {
+        last_share = pawpaw_share_new ();
+        assert (last_share);
+    }
 
 #if 0
     struct pbuf *p = pbuf_new(pbuf->tot_len);
@@ -127,11 +133,18 @@ my_udp_send(int connection_id, struct pbuf *pbuf)
      * TODO: yes, this is inefficient, but it means i don't have to re-write
      * all the pbuf stuff that this code uses... */
     /* FIXME: make sure we don't overrun our buffer! */
+    /*unsigned int sent = 0;
+
+    printf ("total buffer size was 0x%x\n", pbuf->tot_len);
+    while (sent < pbuf->tot_len) {
+
+    }*/
+
     struct pbuf *q;
     int offset = 0;
     for (q = pbuf; q != NULL; q = q->next) {
         char* data = q->payload;
-        memcpy (share->buf + offset, data, q->len);
+        memcpy (last_share->buf + offset, data, q->len);
         // for (int i = 0; i < q->len && i < 500; i++) {
         //     printf ("out_data[%d] = 0x%x\n", offset + i, ((char*)(share->buf))[offset + i]);
         // }
@@ -139,11 +152,12 @@ my_udp_send(int connection_id, struct pbuf *pbuf)
     }
 
 
+    assert (offset == pbuf->tot_len);
     debug ("loaded pbuf into cap, sending to svc_net (len 0x%x)...\n", offset);
-    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, pawpaw_share_attach (share), 4);
+    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, pawpaw_share_attach (last_share), 4);
     //seL4_SetCap (0, share->cap);
     seL4_SetMR (0, NETSVC_SERVICE_SEND);
-    seL4_SetMR (1, share->id);
+    seL4_SetMR (1, last_share->id);
     seL4_SetMR (2, connection_id);
     seL4_SetMR (3, pbuf->tot_len);
     seL4_Call (net_ep, msg);
@@ -404,35 +418,60 @@ rpc_call(struct pbuf *pbuf, int len, int handler_id,
 
     /* ok had data, go fetch it */
     seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 2);
-    seL4_SetMR (0, NETSVC_SERVICE_DATA);
-    seL4_SetMR (1, id);
 
-    debug ("asking for data for connection %d\n", id);
-    seL4_Call (net_ep, msg);
-    seL4_Word size = seL4_GetMR(1);
-    debug ("had 0x%x bytes data\n", size);
+    seL4_Word had_more = 1;
+    struct pbuf* head_pbuf = NULL;
 
-    int share_id = seL4_GetMR (0);
-    seL4_CPtr share_cap = pawpaw_event_get_recv_cap ();
 
-    struct pawpaw_share* result_share = pawpaw_share_get (share_id);
-    if (!result_share) {
-        result_share = pawpaw_share_mount (share_cap);
-        pawpaw_share_set (result_share);
-    }
+    do {
+        printf ("asking for data for connection %d\n", id);
+        seL4_SetMR (0, NETSVC_SERVICE_DATA);
+        printf ("mr0 = %d\n", seL4_GetMR (0));
+        seL4_SetMR (1, id);
+        seL4_Call (net_ep, msg);
+        had_more = seL4_GetMR (2);
 
-    assert (result_share);
+        int share_id = seL4_GetMR (0);
+        seL4_Word size = seL4_GetMR (1);
+        seL4_CPtr share_cap = pawpaw_event_get_recv_cap ();
+
+        struct pawpaw_share* result_share = pawpaw_share_get (share_id);
+        if (!result_share) {
+            result_share = pawpaw_share_mount (share_cap);
+            pawpaw_share_set (result_share);
+        }
+
+        assert (result_share);
+
+        /* copy it in : FIXME - race, also fixme because we get the same share so we need to copy */
+        //seL4_Word total_size = seL4_GetMR (3);
+        printf ("had 0x%x bytes data\n", size);
+
+        if (!head_pbuf) {
+            //recv_pbuf = pbuf_alloc (PBUF_TRANSPORT, total_size, PBUF_REF);
+            head_pbuf = pbuf_alloc (PBUF_TRANSPORT, size, PBUF_RAM);
+            assert (head_pbuf);
+
+            pbuf_take (head_pbuf, result_share->buf, size);
+        } else {
+            struct pbuf* p = pbuf_alloc (PBUF_TRANSPORT, size, PBUF_RAM);
+            assert (p);
+            pbuf_take (p, result_share->buf, size);
+
+            pbuf_cat (p, head_pbuf);
+            head_pbuf = p;
+        }
+    } while (had_more);
+
 
     /* create pbuf: FIXME maybe need a local copy rather than ref? */
-    struct pbuf* recv_pbuf = pbuf_alloc (PBUF_TRANSPORT, size, PBUF_REF);
-    assert (recv_pbuf);
-    recv_pbuf->payload = result_share->buf;
-    assert (recv_pbuf->tot_len == size);
+    //head_pbuf->payload = result_share->buf;
+    //assert (head_pbuf->tot_len == size);
 
     /* handle it */
     //debug ("calling recv function\n");
     /* FIXME: unmount share after recv, also MAN WTF RETURN CODES */
-    return my_recv (NULL, id, recv_pbuf, NULL, 0) == true ? 0 : 1;
+    return my_recv (NULL, id, head_pbuf, NULL, 0) == true ? 0 : 1;
 
     //return 0;
 

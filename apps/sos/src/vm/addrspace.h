@@ -25,6 +25,7 @@ typedef enum {
 struct addrspace {
 	seL4_ARM_PageDirectory pagedir_cap;
 	seL4_Word pagedir_addr;
+	int pinned;
 
 	struct as_region* regions;
 	struct as_region* special_regions[NUM_SPECIAL_REGION_TYPES];

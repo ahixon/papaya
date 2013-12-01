@@ -96,3 +96,124 @@ int load_segment_into_vspace(addrspace_t dest_as,
 
     return true;
 }
+
+static int load_segment_directly_into_vspace(addrspace_t dest_as,
+                                    char *src, unsigned long segment_size,
+                                    unsigned long file_size, unsigned long dst,
+                                    unsigned long permissions) {
+    assert(file_size <= segment_size);
+
+    unsigned long pos;
+
+    struct as_region* reg = as_define_region (dest_as, dst, segment_size, permissions, REGION_GENERIC);
+    if (!reg) {
+        return 1;
+    }
+
+    /* We work a page at a time in the destination vspace. */
+    pos = 0;
+    while(pos < segment_size) {
+        seL4_CPtr sos_cap, frame_cap;
+        seL4_Word vpage, kvpage;
+
+        unsigned long kdst;
+        int nbytes;
+        int err;
+
+        kdst   = dst + PROCESS_SCRATCH_START;
+        vpage  = PAGE_ALIGN(dst);
+        kvpage = PAGE_ALIGN(kdst);
+        //kvpage = PROCESS_SCRATCH + 0x1000;
+
+        /* Map the page into the destination address space */
+        int status = PAGE_FAILED;
+        struct pt_entry* page = page_map (dest_as, reg, vpage, &status, NULL, NULL);
+
+        if (!page || status != PAGE_SUCCESS) {
+            printf ("failed to map page\n");
+            return 1;
+        }
+
+        /* Map the frame into SOS as well so we can copy into it */
+        /* FIXME: WOULD BE MUCH NICER(!) if we just used cur_addrspace - 
+         * you will need to create a region in main's init function */
+        //sos_cap = frametable_fetch_cap (frame);
+        sos_cap = page->cap;
+        assert (sos_cap);
+
+        frame_cap = cspace_copy_cap (cur_cspace, cur_cspace, sos_cap, seL4_AllRights);
+        if (!frame_cap) {
+            printf ("%s: failed to copy cap\n", __FUNCTION__);
+            return 1;
+        }
+        
+        err = map_page (frame_cap, seL4_CapInitThreadPD, kvpage, seL4_AllRights, seL4_ARM_Default_VMAttributes);
+        if (err) {
+            printf ("failed to map into sos, err = %d\n", err);
+            return 1;
+        }
+
+        /* Now copy our data into the destination vspace */
+        nbytes = PAGESIZE - (dst & PAGEMASK);
+        if (pos < file_size){
+            memcpy((void*)kdst, (void*)src, MIN(nbytes, file_size - pos));
+        }
+
+        /* Not observable to I-cache yet so flush the frame */
+        seL4_ARM_Page_FlushCaches(frame_cap);
+
+        /* unmap page + delete cap copy */
+        err = seL4_ARM_Page_Unmap (frame_cap);    
+        if (err) {
+            printf ("Failed to unmap from SOS\n");
+        }
+
+        cspace_delete_cap (cur_cspace, frame_cap);
+
+        pos += nbytes;
+        dst += nbytes;
+        src += nbytes;
+    }
+
+    return 0;
+}
+
+int elf_load (addrspace_t dest_as, char *elf_file) {
+
+    int num_headers;
+    int err;
+    int i;
+
+    /* Ensure that the ELF file looks sane. */
+    if (elf_checkFile(elf_file)){
+        return seL4_InvalidArgument;
+    }
+
+    num_headers = elf_getNumProgramHeaders(elf_file);
+    for (i = 0; i < num_headers; i++) {
+        char *source_addr;
+        unsigned long flags, file_size, segment_size, vaddr;
+
+        /* Skip non-loadable segments (such as debugging data). */
+        if (elf_getProgramHeaderType(elf_file, i) != PT_LOAD)
+            continue;
+
+        /* Fetch information about this segment. */
+        source_addr = elf_file + elf_getProgramHeaderOffset(elf_file, i);
+        file_size = elf_getProgramHeaderFileSize(elf_file, i);
+        segment_size = elf_getProgramHeaderMemorySize(elf_file, i);
+        vaddr = elf_getProgramHeaderVaddr(elf_file, i);
+        flags = elf_getProgramHeaderFlags(elf_file, i);
+
+        /* Copy it across into the vspace. */
+        printf(" * Loading segment %08x-->%08x\n", (int)vaddr, (int)(vaddr + segment_size));
+        err = load_segment_directly_into_vspace(dest_as, source_addr, segment_size, file_size, vaddr,
+                                       get_sel4_rights_from_elf(flags) & seL4_AllRights);
+        if (err != 0) {
+            return 1;
+        }
+        //conditional_panic(err != 0, "Elf loading failed!\n");
+    }
+
+    return 0;
+}

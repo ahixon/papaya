@@ -40,15 +40,22 @@ int vfs_open (struct pawpaw_event* evt);
 int vfs_read (struct pawpaw_event* evt);
 int vfs_write (struct pawpaw_event* evt);
 int vfs_close (struct pawpaw_event* evt);
+int vfs_register_cap (struct pawpaw_event* evt);
+int vfs_write_offset (struct pawpaw_event* evt);
+int vfs_read_offset (struct pawpaw_event* evt);
 
 struct pawpaw_eventhandler_info handlers[VFS_NUM_EVENTS] = {
     {   0,  0,  0   },      //              //
-    {   0,  0,  0   },      //   RESERVED   //
+    {   vfs_register_cap,   0,  HANDLER_REPLY                       },  /* for async cap registration */
     {   0,  0,  0   },      //              //
     {   vfs_open,           3,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },  // shareid, replyid, mode - replies with EP to file (badged version of listen cap)
     {   vfs_read,           2,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },      //              //
     {   vfs_write,          2,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },      //              //
     {   vfs_close,          0,  HANDLER_REPLY },
+    {   0,  0,  0   },      /* listdir */
+    {   0,  0,  0   },      /* stat */
+    {   vfs_read_offset,    6,  HANDLER_AUTOMOUNT                   },
+    {   vfs_write_offset,   6,  HANDLER_REPLY | HANDLER_AUTOMOUNT                   },
 };
 
 struct pawpaw_event_table handler_table = { VFS_NUM_EVENTS, handlers, "nfs" };
@@ -165,7 +172,7 @@ void vfs_lookup_cb (uintptr_t token, enum nfs_stat status, fhandle_t *fh, fattr_
          * root */
 
         printf ("** nfs lookup said file does not exist, creating...\n");
-        sattr_t attributes = { S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP, -1, -1, -1, -1, -1 };
+        sattr_t attributes = { (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP), -1, -1, -1, -1, -1 };
         enum rpc_stat res = nfs_create (&mnt_point, current_event->share->buf, &attributes, vfs_create_cb, 0);
         printf ("create was %d\n", res);
         return;
@@ -307,6 +314,175 @@ int vfs_close (struct pawpaw_event* evt) {
     /* FIXME: what about race on current event - ie do a SEND read, then close, then input comes in */
 }
 
+static seL4_CPtr cap = 0;
+int vfs_register_cap (struct pawpaw_event* evt) {
+    printf ("got register\n");
+    /* FIXME: regsiter cap, badge pair and lookup with 2nd argument of
+     * async open */
+
+    assert (seL4_MessageInfo_get_extraCaps (evt->msg) == 1);
+    cap = pawpaw_event_get_recv_cap ();
+
+    evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+    seL4_SetMR (0, 1);  /* FIXME: this should be new ID */
+    return PAWPAW_EVENT_NEEDS_REPLY;
+}
+
+static seL4_CPtr lookup_cap (struct pawpaw_event* evt) {
+    return cap;
+}
+
+void vfs_write_offset_cb (uintptr_t token, enum nfs_stat status, fattr_t *fattr, int count) {
+    struct pawpaw_event* evt = (struct pawpaw_event*)token;
+
+
+    /* XXX: mmap should really just wait for the async return value */
+    //seL4_SetMR (0, count);
+    /*printf ("sending to original reply cap that we got 0x%x\n", count);
+    seL4_Send (evt->reply_cap, evt->reply);*/
+    
+    if (status == NFS_OK) {
+        seL4_SetMR (0, count);
+    } else {
+        printf ("** nfs write failed, had error = %d\n", status);
+        seL4_SetMR (0, -1);
+    }
+
+    seL4_SetMR (1, evt->args[4]);
+    printf ("sending to reply cap\n");
+    seL4_Send (evt->reply_cap, evt->reply);
+
+    // printf ("write_cb: unmounting share\n");
+    // pawpaw_share_unmount (evt->share);
+
+    /* and free */
+    pawpaw_event_dispose (evt);
+}
+
+int vfs_write_offset (struct pawpaw_event *evt) {
+    /*if (!lookup_cap (evt)) {
+        printf ("nfs: no such reply cap registered; ignoring event\n");
+        return PAWPAW_EVENT_HANDLED;
+    }*/
+
+    if (!evt->share) {
+        printf ("nfs: no share\n");
+        /* FIXME: should respond now we have reply cap */
+        return PAWPAW_EVENT_HANDLED;
+    }
+
+
+    struct open_handle* handle = handle_lookup (evt->badge);
+    if (!handle) {
+        printf ("nfs: could not find filehandle for given badge 0x%x\n", evt->badge);
+        /*evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+        seL4_SetMR (0, -1);
+        return PAWPAW_EVENT_NEEDS_REPLY;*/
+        return PAWPAW_EVENT_HANDLED;
+    }
+
+    /* FIXME: check if opened for reading */
+
+    seL4_Word amount = evt->args[0];
+    seL4_Word file_offset = evt->args[1];
+    seL4_Word buf_offset = evt->args[2];
+    if (buf_offset > PAPAYA_IPC_PAGE_SIZE) {
+        buf_offset = 0;
+    }
+
+    if (amount + buf_offset > PAPAYA_IPC_PAGE_SIZE) {
+        amount = PAPAYA_IPC_PAGE_SIZE - buf_offset;
+    }
+
+    char* buf = evt->share->buf + buf_offset;
+    printf ("nfs: ok about to write from %p for len 0x%x\n", buf, amount);
+    evt->reply = seL4_MessageInfo_new (0, 0, 0, 2);
+    enum rpc_stat res = nfs_write (&(handle->fh), file_offset, amount, buf, vfs_write_offset_cb, evt);
+    //current_event = evt;
+
+    return PAWPAW_EVENT_HANDLED_SAVED;
+}
+
+void vfs_read_offset_cb (uintptr_t token, enum nfs_stat status, fattr_t *fattr, int count, void* data) {
+    struct pawpaw_event* evt = (struct pawpaw_event*)token;
+
+    if (status == NFS_OK) {
+        seL4_Word buf_offset = evt->args[2];
+        if (buf_offset > PAPAYA_IPC_PAGE_SIZE) {
+            buf_offset = 0;
+        }
+
+        char* buf = evt->share->buf + buf_offset;
+
+        seL4_Word amount = evt->args[0];
+        seL4_Word file_offset = evt->args[1];
+        
+        if (amount + buf_offset > PAPAYA_IPC_PAGE_SIZE) {
+            amount = PAPAYA_IPC_PAGE_SIZE - buf_offset;
+        }
+
+        /* ensure NFS doesn't cause a security vuln via buffer overflow */
+        if (count > amount) {
+            count = amount;
+        }
+
+        memcpy (buf, data, count);
+        seL4_SetMR (0, count);
+    } else {
+        printf ("** nfs read failed, had error = %d\n", status);
+        seL4_SetMR (0, -1);
+    }
+
+    seL4_SetMR (1, evt->args[4]);
+    seL4_Send (evt->reply_cap, evt->reply);
+
+    /* and free */
+    pawpaw_event_dispose (evt);
+}
+
+int vfs_read_offset (struct pawpaw_event *evt) {
+    evt->reply_cap = lookup_cap (evt);
+    if (!evt->reply_cap) {
+        printf ("nfs: no such reply cap registered; ignoring event\n");
+        return PAWPAW_EVENT_HANDLED;
+    }
+
+    if (!evt->share) {
+        printf ("nfs: no share\n");
+        /* FIXME: should respond now we have reply cap */
+        return PAWPAW_EVENT_HANDLED;
+    }
+
+    evt->reply = seL4_MessageInfo_new (0, 0, 0, 2);
+
+    struct open_handle* handle = handle_lookup (evt->badge);
+    if (!handle) {
+        printf ("nfs: could not find filehandle for given badge 0x%x\n", evt->badge);
+        /*evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+        seL4_SetMR (0, -1);
+        return PAWPAW_EVENT_NEEDS_REPLY;*/
+        return PAWPAW_EVENT_HANDLED;
+    }
+
+    /* FIXME: check if opened for reading */
+
+    seL4_Word amount = evt->args[0];
+    seL4_Word file_offset = evt->args[1];
+    seL4_Word buf_offset = evt->args[2];
+    /*if (buf_offset > PAPAYA_IPC_PAGE_SIZE) {
+        buf_offset = 0;
+    }*/
+    
+    if (amount + buf_offset > PAPAYA_IPC_PAGE_SIZE) {
+        amount = PAPAYA_IPC_PAGE_SIZE - buf_offset;
+    }
+
+    printf ("nfs: ok about to read len 0x%x at offset 0x%x\n", amount, buf_offset);
+    enum rpc_stat res = nfs_read (&(handle->fh), file_offset, amount, vfs_read_offset_cb, evt);
+
+    return PAWPAW_EVENT_HANDLED_SAVED;
+}
+
 seL4_CPtr dev_ep = 0;
 
 int
@@ -318,42 +494,72 @@ my_recv(void *arg, int upcb, struct pbuf *p,
 extern seL4_CPtr net_ep;
 
 void interrupt_handler (struct pawpaw_event* evt) {
+    printf ("~~~~ got sel4 interrupt in nfs ~~~~\n");
 
     /* do some shit - bring this and the code in rpc_call together */
     int id = seL4_GetMR (0);    /* FIXME: might be ORed */
     debug ("got reply on conn %d\n", id);
 
-    /* ok had data, go fetch it */
+        /* ok had data, go fetch it */
     seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 2);
-    seL4_SetMR (0, NETSVC_SERVICE_DATA);
-    seL4_SetMR (1, id);
 
-    debug ("asking for data for connection %d\n", id);
-    seL4_Call (net_ep, msg);
-    seL4_Word size = seL4_GetMR(1);
-    debug ("had 0x%x bytes data\n", size);
+    seL4_Word had_more = 1;
+    struct pbuf* head_pbuf = NULL;
 
-    int share_id = seL4_GetMR (0);
-    seL4_CPtr share_cap = pawpaw_event_get_recv_cap ();
 
-    struct pawpaw_share* result_share = pawpaw_share_get (share_id);
-    if (!result_share) {
-        result_share = pawpaw_share_mount (share_cap);
-        pawpaw_share_set (result_share);
-    }
+    do {
+        printf ("asking for data for connection %d\n", id);
 
-    assert (result_share);
+        seL4_SetMR (0, NETSVC_SERVICE_DATA);
+        seL4_SetMR (1, id);
+        seL4_Call (net_ep, msg);
+        had_more = seL4_GetMR (2);
+
+        int share_id = seL4_GetMR (0);
+        seL4_Word size = seL4_GetMR (1);
+        seL4_CPtr share_cap = pawpaw_event_get_recv_cap ();
+
+        struct pawpaw_share* result_share = pawpaw_share_get (share_id);
+        if (!result_share) {
+            result_share = pawpaw_share_mount (share_cap);
+            pawpaw_share_set (result_share);
+        }
+
+        assert (result_share);
+
+        /* copy it in : FIXME - race, also fixme because we get the same share so we need to copy */
+        //seL4_Word total_size = seL4_GetMR (3);
+        printf ("had 0x%x bytes data\n", size);
+
+        if (!head_pbuf) {
+            //recv_pbuf = pbuf_alloc (PBUF_TRANSPORT, total_size, PBUF_REF);
+            head_pbuf = pbuf_alloc (PBUF_TRANSPORT, size, PBUF_RAM);
+            assert (head_pbuf);
+
+            pbuf_take (head_pbuf, result_share->buf, size);
+        } else {
+            struct pbuf* p = pbuf_alloc (PBUF_TRANSPORT, size, PBUF_RAM);
+            assert (p);
+            pbuf_take (p, result_share->buf, size);
+
+            pbuf_cat (p, head_pbuf);
+            head_pbuf = p;
+        }
+    } while (had_more);
+
 
     /* create pbuf: FIXME maybe need a local copy rather than ref? */
-    struct pbuf* recv_pbuf = pbuf_alloc (PBUF_TRANSPORT, size, PBUF_REF);
-    assert (recv_pbuf);
-    recv_pbuf->payload = result_share->buf;
-    assert (recv_pbuf->tot_len == size);
+    //head_pbuf->payload = result_share->buf;
+    //assert (head_pbuf->tot_len == size);
+
+    printf ("total size was: 0x%x\n", head_pbuf->tot_len);
 
     /* handle it */
     //debug ("calling recv function\n");
-    /* FIXME: unmount share after recv */
-    my_recv (NULL, id, recv_pbuf, NULL, 0);
+    /* FIXME: unmount share after recv, also MAN WTF RETURN CODES */
+    my_recv (NULL, id, head_pbuf, NULL, 0);
+
+    pbuf_free (head_pbuf);
 }
 
 int main (void) {

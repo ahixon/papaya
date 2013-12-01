@@ -13,7 +13,7 @@
 #include <pawpaw.h>
 
 
-//#define DEBUG_NFS 1
+#define DEBUG_NFS 1
 #ifdef DEBUG_NFS
 #define debug(x...) printf(x)
 #else
@@ -248,21 +248,27 @@ _nfs_read_cb(void * callback, uintptr_t token, struct pbuf *pbuf)
 
     assert(callback != NULL);
 
+    debug ("reading header from read response\n");
     if (rpc_read_hdr(pbuf, &hdr, &pos) == RPCERR_OK){
         /* get the status out */
         pb_readl(pbuf, &status, &pos);
 
         if (status == NFS_OK) {
+            debug ("status was OK, trying to take stuff out\n");
             /* it worked, so take out the return stuff! */
             pb_read_arrl(pbuf, (uint32_t*)&pattrs, sizeof(pattrs), &pos);
             pb_readl(pbuf, &size, &pos);
+            debug ("had data size 0x%x, mallocing\n", size);
+            debug ("pbuf size was: 0x%x\n", pbuf->tot_len);
             /* malloc for data since pbuf may be part of a chain */
             data = malloc(size);
             assert(data != NULL);
+            debug ("ok reading it from pos 0x%x\n", pos);
             pb_read(pbuf, data, size, &pos);
         }
     }
 
+    debug ("doing callback\n");
     cb(token, status, &pattrs, size, data);
 
     if(data){
@@ -354,10 +360,12 @@ nfs_write(const fhandle_t *fh, int offset, int count, const void *data,
     /* Limit the number of bytes to send to fit the packet */
     limit = pbuf->tot_len - pos - sizeof(count);
     if(count > limit){
+        printf ("!!!! LIMITING FROM 0x%x to 0x%x\n", count, limit);
         count = limit;
     }
     /* put the data in */
     pb_writel(pbuf, count, &pos);
+    /* FIXME: zero copy write would be nice here */
     pb_write(pbuf, data, count, &pos);
     pb_alignl(&pos);
 

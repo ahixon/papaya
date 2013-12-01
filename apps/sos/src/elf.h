@@ -12,4 +12,6 @@ int load_segment_into_vspace(addrspace_t dest_as,
 
 seL4_Word get_sel4_rights_from_elf(unsigned long permissions);
 
+int elf_load(addrspace_t dest_as, char *elf_file);
+
 #endif /* _LIBOS_ELF_H_ */

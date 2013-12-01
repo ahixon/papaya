@@ -40,6 +40,7 @@ struct thread {
     seL4_CPtr service_cap;
     struct pawpaw_saved_event* bequests;
     int default_caps;
+    int pinned; /* FIXME: make flags struct item */
 
     char* static_stack;
 
@@ -53,6 +54,8 @@ thread_t thread_create_internal (char* name, cspace_t *existing_cspace, addrspac
 
 thread_t thread_alloc (void);
 void thread_destroy (thread_t thread);
+
+void thread_pin (thread_t thread);
 
 void threadlist_add (pid_t pid, thread_t thread);
 thread_t thread_lookup (pid_t pid);

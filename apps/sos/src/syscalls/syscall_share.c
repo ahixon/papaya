@@ -8,6 +8,8 @@
 #include <uid.h>
 
 #include <vm/addrspace.h>
+#include <vm/frametable.h>
+#include <thread.h>
 
 #include <services/services.h>
 #include <assert.h>
@@ -109,8 +111,8 @@ int syscall_share_mount (struct pawpaw_event* evt) {
     }
 
     /* ensure the other region still exists */
-    //printf ("%s: wanting to get source region for source vaddr 0x%x\n", __FUNCTION__, seL4_GetMR (1));
-    //addrspace_print_regions (src_thread->as);
+    printf ("%s: wanting to get source region for source vaddr 0x%x\n", __FUNCTION__, seL4_GetMR (1));
+    addrspace_print_regions (src_thread->as);
     seL4_Word src_vaddr = seL4_GetMR (1);
     struct as_region* other_reg = as_get_region_by_addr (src_thread->as, src_vaddr);
     if (!other_reg) {
@@ -143,6 +145,12 @@ int syscall_share_mount (struct pawpaw_event* evt) {
     struct pt_entry* pte = page_map_shared (current_thread->as, share_reg, share_reg->vbase,
         src_thread->as, other_reg, src_vaddr, false, &status, NULL, NULL);
     assert (status == PAGE_SUCCESS);
+
+    /* pin if required */
+    //if (src_thread->pinned || current_thread->pinned) {
+        pte->frame->flags |= FRAME_PINNED;
+        // TODO: don't always pin shares
+    //}
 
     if (!pte) {
         printf ("%s: map shared failed\n", __FUNCTION__);
@@ -180,22 +188,24 @@ int syscall_share_unmount (struct pawpaw_event* evt) {
 
     as_region_destroy (current_thread->as, reg);
 
-    //printf ("%s: post unmount looks like:\n", __FUNCTION__);
-    //addrspace_print_regions (src_thread->as);
+    printf ("%s: post unmount looks like:\n", __FUNCTION__);
+    addrspace_print_regions (current_thread->as);
 
     return PAWPAW_EVENT_NEEDS_REPLY;
 }
 
-struct as_region* create_share_reg (seL4_CPtr *cap, seL4_Word *dest_id) {
+struct as_region* create_share_reg (seL4_CPtr *cap, seL4_Word *dest_id, int map) {
     struct as_region* share_reg = as_define_region_within_range (cur_addrspace,
             PROCESS_SCRATCH_START, PROCESS_SCRATCH_END, PAGE_SIZE, seL4_AllRights, REGION_SHARE);
 
     assert (share_reg);
 
     /* map straight away */
-    int status = PAGE_FAILED;
-    assert (page_map (cur_addrspace, share_reg, share_reg->vbase, &status, NULL, NULL));
-    assert (status != PAGE_FAILED);
+    if (map) {
+        int status = PAGE_FAILED;
+        assert (page_map (cur_addrspace, share_reg, share_reg->vbase, &status, NULL, NULL));
+        assert (status != PAGE_FAILED);
+    }
 
     /* badge with unique ID */
     seL4_Word id = cid_next ();

@@ -85,10 +85,10 @@ recv_handler (void* _client_badge, struct udp_pcb* pcb,
         assert (saved->share);
 
         /* backing data for ringbuffer */
-        saved->buffer_data = malloc (sizeof (char) * 0x1000);
+        saved->buffer_data = malloc (sizeof (char) * 0x3000);
         assert (saved->buffer_data);
 
-        saved->buffer = pawpaw_cbuf_create (0x1000, saved->buffer_data);
+        saved->buffer = pawpaw_cbuf_create (0x3000, saved->buffer_data);
         assert (saved->buffer);
     }
 
@@ -151,17 +151,29 @@ int netsvc_read (struct pawpaw_event* evt) {
     }
 
     /* FIXME: needs to send start instead */
-    evt->reply = seL4_MessageInfo_new (0, 0, 1, 3);
+    evt->reply = seL4_MessageInfo_new (0, 0, 1, 4);
     seL4_SetCap (0, saved->share->cap);
 
-    //printf ("net: reading out of buf belonging to conn 0x%x\n", saved->id);
+    seL4_Word amount = pawpaw_cbuf_count (saved->buffer);
+    if (amount > PAPAYA_IPC_PAGE_SIZE) {
+        printf ("net: Buffer was too small: had 0x%x bytes, truncating\n", amount);
+        amount = PAPAYA_IPC_PAGE_SIZE;
+        seL4_SetMR (2, 1);
+    } else {
+        printf ("net: Buffer had 0x%x bytes\n", amount);
+        /* no more buffers - if they ask again we can nuke the old one */
+        seL4_SetMR (2, 0);
+    }
+
+    printf ("net: reading out of buf belonging to conn 0x%x\n", saved->id);
     seL4_SetMR (0, saved->share->id);
-    seL4_SetMR (1, pawpaw_cbuf_count (saved->buffer));
-    seL4_SetMR (2, 0);  /* no more buffers - if they ask again we can nuke the old one */
+    seL4_SetMR (1, amount);
+    seL4_SetMR (3, pawpaw_cbuf_count (saved->buffer));
 
     /* copy it all in */
     //printf ("net: reading into buf ID 0%x @ %p\n", saved->share->id, saved->share->buf);
-    pawpaw_cbuf_read (saved->buffer, saved->share->buf, pawpaw_cbuf_count (saved->buffer));
+    /* FIXME: there is a race here, in that extra data read in will now go inbetween - really need multiple buffers */
+    pawpaw_cbuf_read (saved->buffer, saved->share->buf, amount);
     //printf ("net: is now %s\n", saved->share->buf);
 
     return PAWPAW_EVENT_NEEDS_REPLY;

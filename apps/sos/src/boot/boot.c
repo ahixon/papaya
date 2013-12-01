@@ -37,6 +37,7 @@ extern seL4_CPtr rootserver_syscall_cap;
 
 #define BOOT_CMD_MOUNT  "mount "
 #define BOOT_CMD_SWAP   "swap "
+#define BOOT_CMD_PIN    "pin "
 
 #define BOOT_TYPE_UNKNOWN   0
 #define BOOT_TYPE_ASYNC     1
@@ -44,6 +45,7 @@ extern seL4_CPtr rootserver_syscall_cap;
 #define BOOT_TYPE_BOOT      3
 #define BOOT_TYPE_CMD_MOUNT 4
 #define BOOT_TYPE_CMD_SWAP  5
+#define BOOT_TYPE_CMD_PIN   6
 
 int mount (char* mountpoint, char* fs);
 int parse_fstab (char* path);
@@ -87,11 +89,13 @@ int boot_thread (void) {
         } else if (strstr (line, BOOT_CMD_SWAP) == line) {
             /* wanted to set swap file */
             type = BOOT_TYPE_CMD_SWAP;
+        } else if (strstr (line, BOOT_CMD_PIN) == line) {
+            type = BOOT_TYPE_CMD_PIN;
         }
 
         char* sep_type = BOOT_LIST_SEP;
 
-        if (type == BOOT_TYPE_CMD_MOUNT || type == BOOT_TYPE_CMD_SWAP) {
+        if (type == BOOT_TYPE_CMD_MOUNT || type == BOOT_TYPE_CMD_SWAP || type == BOOT_TYPE_CMD_PIN) {
             sep_type =  BOOT_ARG_SEP;
         }
 
@@ -117,13 +121,31 @@ int boot_thread (void) {
                 printf ("boot: failed parsing fstab '%s'\n", type_str);
                 panic ("failed to parse fstab");
             }
-
         } else if (type == BOOT_TYPE_CMD_SWAP) {
             /* handle setting up swap */
             if (!open_swap (type_str)) {
                 printf ("boot: failed to open swap file '%s', swapping will not be available\n", type_str);
                 panic ("failed to open swap");  /* XXX: debug, no need to be panic */
             }
+        } else if (type == BOOT_TYPE_CMD_PIN) {
+            /* find relevant thread if possible */
+            thread_t thread = threadlist_first ();
+            while (thread) {
+                if (strcmp (thread->name, type_str) == 0) {
+                    break;
+                }
+
+                thread = thread->next;
+            }
+
+            /* and pin it - FIXME: does not pin future pages */
+            if (!thread) {
+                printf ("boot: failed to find thread '%s'\n", type_str);
+                panic ("failed to find thread");
+            }
+
+            thread_pin (thread);
+            printf ("pinned thread %s\n", thread->name);
         } else {
             if (strcmp (type_str, "async") == 0) {
                 type = BOOT_TYPE_ASYNC;

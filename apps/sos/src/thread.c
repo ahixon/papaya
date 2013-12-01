@@ -18,6 +18,7 @@
 #include "vm/vmem_layout.h"
 #include <vfs.h>
 #include <sos.h>
+#include <vm/frametable.h>
 
 #include <services/services.h>
 
@@ -33,6 +34,8 @@ void print_resource_stats (void);
 
 extern seL4_CPtr _badgemap_ep;      /* XXX: move later */
 extern seL4_CPtr _fs_cpio_ep;      /* XXX: move later */
+
+extern char _cpio_archive[];
 
 thread_t threadlist[PID_MAX] = {0};
 
@@ -227,6 +230,9 @@ thread_t thread_create (char* name, cspace_t *existing_cspace, addrspace_t exist
         thread_destroy (thread);
         return NULL;
     }
+
+    /* don't swap IPC please */
+    page->frame->flags |= FRAME_PINNED;
 
 
     assert (page->cap);
@@ -524,6 +530,7 @@ struct as_region* share_reg = NULL;
 seL4_CPtr share_badge = 0;
 seL4_Word share_id = 0;
 
+#if 0
 thread_t thread_create_from_cpio (char* path, seL4_CPtr rootsvr_ep) {
     /* FIXME: make common with syscall_share.c */
     if (!share_reg) {
@@ -585,6 +592,65 @@ thread_t thread_create_from_cpio (char* path, seL4_CPtr rootsvr_ep) {
     return thread_create_from_fs (path, (char*)share_reg->vbase, recv_cap, 0, rootsvr_ep);
     /* FIXME: free shared buf page */
 }
+#endif
+
+thread_t thread_create_from_cpio (char* path, seL4_CPtr rootsvr_ep) {
+    char* elf_base;
+    unsigned long elf_size;
+
+    thread_t thread = thread_create (path, NULL, NULL);
+    if (!thread) {
+        return NULL;
+    }
+
+    /* install caps that threads usually expect */
+    if (!thread_setup_default_caps (thread, rootsvr_ep)) {
+        thread_destroy (thread);
+        return NULL;
+    }
+
+    /* FIXME: look up using read */
+    dprintf (1, "Starting \"%s\"...\n", path);
+    elf_base = cpio_get_file (_cpio_archive, path, &elf_size);
+    if (!elf_base) {
+        thread_destroy (thread);
+        return NULL;
+    }
+
+    /* load the elf image */
+    if (elf_load (thread->as, elf_base)) {
+        thread_destroy (thread);
+        return NULL;
+    }
+
+    if (as_create_stack_heap (thread->as, NULL, NULL)) {
+        printf ("%s: failed to create stack + heap\n", __FUNCTION__);
+        thread_destroy (thread);
+        return NULL;
+    }
+
+    /*printf ("Thread's address space looks like:\n");
+    addrspace_print_regions (thread->as);*/
+
+    /* install into threadlist before we start */
+    threadlist_add (thread->pid, thread);
+
+    /* and stick at end of running thread queue */
+    if (!running_head) {
+        running_head = thread;
+    } else {
+        thread_t end = running_head;
+        while (end->next) {
+            end = end->next;
+        }
+
+        end->next = thread;
+    }
+
+    /* FINALLY, start the new process */
+    seL4_TCB_WritePCSP (thread->tcb_cap, true, elf_getEntryPoint(elf_base), thread->as->stack_vaddr);
+    return thread;
+}
 
 thread_t
 thread_create_internal (char* name, cspace_t *existing_cspace, addrspace_t existing_addrspace, void* initial_pc) {
@@ -632,4 +698,13 @@ thread_t thread_next (thread_t t) {
     }
 
     return NULL;
+}
+
+void thread_pin (thread_t thread) {
+    thread->pinned = true;
+    thread->as->pinned = true;
+
+    
+    /* walk PT and pin pages */
+    pagetable_pin (thread->as->pagetable);
 }

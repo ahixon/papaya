@@ -12,33 +12,42 @@
 
 #include <sos.h>
 
-#define THRASH_NUM      1024 * 10
+#define THRASH_NUM      896
 
 int main (void) {
     printf ("welcome to thrasher >:)\n");
-    printf ("thrashing %d pages...\n", THRASH_NUM);
-    //fflush (stdout);
+    printf ("thrashing %d pages (this may take a while)...\n", THRASH_NUM);
 
     volatile char* locs[THRASH_NUM] = {NULL};
 
+    char lol = 0;
     for (int i = 0; i < THRASH_NUM; i++) {
         //printf ("mallocing %d\n", i);
-        //fflush (stdout);
 
         volatile char* b = malloc (PAPAYA_IPC_PAGE_SIZE);
         assert (b);
         locs[i] = b;
+
         for (int j = 0; j < PAPAYA_IPC_PAGE_SIZE; j++) {
-            b[j] = 0xad;
+            b[j] = lol;
+            lol++;
         }
     }
 
+    printf ("checkking results\n");
+    lol = 0;
     for (int i = 0; i < THRASH_NUM; i++) {
         //printf ("checking %d\n", i);
-        //fflush (stdout);
 
         char* b = locs[i];
-        assert (b[0xa] = 0xad);
+        for (int j = 0; j < PAPAYA_IPC_PAGE_SIZE; j++) {
+            if (b[j] != lol) {
+                printf ("failed at %d\n", i);
+                assert (b[j] == lol);
+            }
+
+            lol++;
+        }
     }
 
     printf ("you survived... this time.\n");

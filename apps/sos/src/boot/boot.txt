@@ -35,6 +35,10 @@ fs_nfs=sync
 
 fs_dev=sync
 
+# Pin swap-related processes before we enable swapping
+pin fs_nfs
+pin svc_net
+
 # Mount user filesystems
 mount fstab.txt
 
@@ -49,5 +53,5 @@ dev_console=sync
 # or a CPIO file. CPIO has priority.
 #/bin/sosh=boot
 #/mnt/cpio/sosh=boot
-sosh=boot
-#thrash=boot
+#sosh=boot
+thrash=boot
