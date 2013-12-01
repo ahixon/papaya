@@ -310,7 +310,7 @@ int parse_fstab (char* path) {
          * strpbrk results don't go over next line */
         char* fs_type = strpbrk (line, BOOT_ARG_SEP);
         if (!fs_type) {
-            status = false;
+            //status = false;
             break;
         }
 
