@@ -11,3 +11,5 @@
 #define VFS_WRITE_OFFSET	(10)
 
 #define VFS_NUM_EVENTS		(11)
+
+#define VFSSVC_SERVICE_NAME	"svc_vfs"

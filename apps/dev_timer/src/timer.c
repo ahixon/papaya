@@ -3,7 +3,6 @@
 
 #include <stdlib.h>
 #include <stdio.h>
-#include <assert.h>
 #include <stddef.h>
 #include <string.h>
 
@@ -16,9 +15,9 @@
 
 /* A array-based heap would be probably better here, but alas, I am lazy */
 struct timer_node {
-    uint64_t compare;       /* what we set into the compare reg */
-    uint32_t overflows;     /* number of overflows before compare reg is valid*/
-    seL4_CPtr owner;        /* who set the timer */
+    uint64_t compare;   /* what we set into the compare reg */
+    uint32_t overflows; /* number of overflows before compare reg is valid */
+    seL4_CPtr owner;    /* who set the timer */
 
     struct timer_node* next;
 };
@@ -120,7 +119,9 @@ static void insert_timer (struct timer_node* t) {
 static struct timer_node* create_timer (uint64_t delay, seL4_CPtr owner) {
     uint32_t counter = regs->counter;
     struct timer_node* timer = malloc (sizeof (struct timer_node));
-    assert (timer != NULL);
+    if (!timer) {
+        return NULL;
+    }
 
     /* TODO: bitshift rather than mod */
     timer->overflows = delay / 0xffffffff;
@@ -195,8 +196,7 @@ static void fire_timer (void) {
     struct timer_node* t = timers;
 
     if (t) {
-        assert (t->overflows == 0);
-
+        //assert (t->overflows == 0);
         seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 1);
         seL4_SetMR (0, TIMER_SUCCESS);
 
@@ -302,41 +302,59 @@ timestamp_t time_stamp (void) {
     return tt;
 }
 
-static void service_init (void) {
+static int service_init (void) {
     int err;
 
     /* Try to register events on our IRQ */
     handler = pawpaw_register_irq (IRQ_GPT);
-    assert (handler);
+    if (!handler) {
+        return false;
+    }
 
     seL4_CPtr async_ep = pawpaw_create_ep_async();
-    assert (async_ep);
+    if (!async_ep) {
+        return false;
+    }
 
     service_ep = pawpaw_create_ep ();
-    assert (service_ep);
+    if (!service_ep) {
+        return false;
+    }
 
     /* now bind our async EP to our regular message EP */
     err = seL4_TCB_BindAEP (PAPAYA_TCB_SLOT, async_ep);
-    assert (!err);
+    if (err) {
+        return false;
+    }
 
     /* awesome, now setup to receive interrupts on our async endpoint */
     err = seL4_IRQHandler_SetEndpoint(handler, async_ep);
-    assert (!err);
+    if (err) {
+        return false;
+    }
 
     /* map the GPT registers into memory */
     regs = pawpaw_map_device (GPT_MEMMAP_BASE, GPT_MEMMAP_SIZE);
-    assert (regs);
+    if (!regs) {
+        return false;
+    }
 
     /* and if anyone asks for us, tell them to use our endpoint */
     err = pawpaw_register_service (service_ep);
-    assert (err);
+    if (!err) {
+        return false;
+    }
 
     /* FIXME: register the device so we get /dev/timer0 */
+
+    return true;
 }
 
 int main (void) {
     /* setup the service */
-    service_init ();
+    if (!service_init ()) {
+        return -1;
+    }
 
     /* reset the device */
     gpt_reset ();
@@ -352,8 +370,7 @@ int main (void) {
     gpt_set_prescale (66);
 
     /* ack just in case some interrupts already arrived while setting up */
-    int err = seL4_IRQHandler_Ack (handler);
-    assert (!err);
+    seL4_IRQHandler_Ack (handler);
 
     regs->control |= CR_EN;
 
@@ -378,7 +395,6 @@ int main (void) {
 
                     /* NOTE: remember to use seL4_GetMR before save_reply! */
                     seL4_CPtr reply_cap = pawpaw_save_reply ();
-
                     if (!reply_cap) {
                         break;
                     }

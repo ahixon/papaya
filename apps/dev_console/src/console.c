@@ -226,8 +226,8 @@ int main (void) {
     seL4_SetCap (0, service_ep);
 
     seL4_SetMR (0, DEVSVC_REGISTER);
-    seL4_SetMR (1, DEVSVC_TYPE_CONSOLE);
-    seL4_SetMR (2, DEVSVC_BUS_PLATFORM);
+    seL4_SetMR (1, DEV_CONSOLE);
+    seL4_SetMR (2, DEV_PLATFORM_DEVICE);
     seL4_SetMR (3, CONSOLE_PRODUCT_ID);
     seL4_Send (dev_ep, msg);
 
