@@ -27,7 +27,6 @@ void pawpaw_event_loop (struct pawpaw_event_table* table, void (*interrupt_func)
 
         seL4_Word label = seL4_MessageInfo_get_label (msg);
         if (!(label == seL4_NoFault || (label == seL4_Interrupt && interrupt_func))) {
-            printf ("%s: junking incoming was wasn't NoFault or Interrupt with handler\n", __FUNCTION__);
             continue;
         }
 
@@ -51,7 +50,6 @@ void pawpaw_event_loop (struct pawpaw_event_table* table, void (*interrupt_func)
 
             switch (result) {
                 case PAWPAW_EVENT_NEEDS_REPLY:
-                    printf ("-!- replying on 0x%x\n", evt->reply_cap);
                     seL4_Send (evt->reply_cap, evt->reply);
                     pawpaw_event_dispose (evt); 
                     break;
@@ -93,7 +91,6 @@ void pawpaw_event_dispose (struct pawpaw_event* evt) {
 
     if (evt->share) {
         if (evt->flags & PAWPAW_EVENT_UNMOUNT) {
-            printf ("%s: had share 0x%x @ %p, unmounting\n", evt->table->app_name, evt->share->id, evt->share->buf);
             pawpaw_share_unset (evt->share);
             pawpaw_share_unmount (evt->share);
         } else {
@@ -125,7 +122,6 @@ int pawpaw_event_process (struct pawpaw_event_table* table, struct pawpaw_event 
     unsigned int arg_offset = 1;
 	unsigned int evt_id = seL4_GetMR (0);
 	if (evt_id >= table->num_events) {
-        printf ("%s: junking incoming request as function ID %d was beyond table size %d events (last idx %d)\n", __FUNCTION__, evt_id, table->num_events, table->num_events - 1);
         return PAWPAW_EVENT_INVALID;
     }
 
@@ -134,13 +130,11 @@ int pawpaw_event_process (struct pawpaw_event_table* table, struct pawpaw_event 
 
     /* event is valid, but no function handler defined */
     if (eh.func == 0) {
-        printf ("%s: %s: junking incoming request 0x%x as function handler was NULL\n", table->app_name, __FUNCTION__, evt_id);
         return PAWPAW_EVENT_UNHANDLED;
     }
 
    	/* bad argument count */
     if (argc != eh.argcount) {
-        printf ("%s: %s: junking incoming request as argument count did not match\n", table->app_name, __FUNCTION__);
     	return PAWPAW_EVENT_INVALID;
     }
 
@@ -169,7 +163,6 @@ int pawpaw_event_process (struct pawpaw_event_table* table, struct pawpaw_event 
     if (eh.flags & HANDLER_REPLY) {
         evt->reply_cap = save_reply_func ();
         if (!(evt->reply_cap)) {
-            printf ("%s: %s: junking since failed to save reply cap\n", table->app_name, __FUNCTION__);
             return PAWPAW_EVENT_INVALID;
         }
     }
@@ -185,10 +178,8 @@ int pawpaw_event_process (struct pawpaw_event_table* table, struct pawpaw_event 
 
             pawpaw_event_new_recv_cap ();
         } else {
-            printf ("%s: mounting share from ID 0x%x\n", table->app_name, share_id);
             evt->share = pawpaw_share_get (share_id);
             if (!evt->share) {
-                printf ("%s: share cap missing, even though was automount\n", __FUNCTION__);
                 evt->share = NULL;
             }
         }
@@ -197,8 +188,6 @@ int pawpaw_event_process (struct pawpaw_event_table* table, struct pawpaw_event 
     }
 
     /* ok call the event */
-    printf ("%s: handling function id %d\n", table->app_name, evt_id);
     int res = eh.func (evt);
-    printf ("%s: finished syscall\n", table->app_name);
     return res;
 }

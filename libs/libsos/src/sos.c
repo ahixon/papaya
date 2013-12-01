@@ -15,18 +15,18 @@
 
 seL4_CNode vfs_ep = 0;
 
-struct fhandle {
+struct sos_fhandle {
     struct pawpaw_share* share;
     fildes_t fd;
     seL4_CPtr cap;
 
-    struct fhandle* next;
+    struct sos_fhandle* next;
 };
 
-fildes_t last_fd = 0;          /* FIXME: should be bitmap */
-struct fhandle* open_list = NULL;    /* FIXME: should be hashmap */
+fildes_t last_fd = 0;                   /* FIXME: should be bitmap */
+struct sos_fhandle* open_list = NULL;   /* FIXME: should be hashmap */
 
-struct fhandle* lookup_fhandle (fildes_t file);
+static struct sos_fhandle* sos_lookup_fhandle (fildes_t file);
 
 /* FIXME: what if the VFS service dies and then restarts? endpoint will have changed */
 fildes_t open(const char *path, fmode_t mode) {
@@ -41,7 +41,7 @@ fildes_t open(const char *path, fmode_t mode) {
 		return -1;
 	}
 
-    struct fhandle* h = malloc (sizeof (struct fhandle));
+    struct sos_fhandle* h = malloc (sizeof (struct sos_fhandle));
     if (!h) {
         pawpaw_share_unmount (share);
         return -1;
@@ -86,7 +86,7 @@ fildes_t open(const char *path, fmode_t mode) {
 }
 
 int close(fildes_t file) {
-    struct fhandle* fh = lookup_fhandle (file);
+    struct sos_fhandle* fh = sos_lookup_fhandle (file);
     if (!fh) {
         return -1;
     }
@@ -107,8 +107,8 @@ int close(fildes_t file) {
     }
 }
 
-struct fhandle* lookup_fhandle (fildes_t file) {
-    struct fhandle* h = open_list;
+static struct sos_fhandle* sos_lookup_fhandle (fildes_t file) {
+    struct sos_fhandle* h = open_list;
     while (h) {
         if (h->fd == file) {
             return h;
@@ -125,14 +125,14 @@ int read (fildes_t file, char *buf, size_t nbyte) {
 		return -1;		/* FIXME: crappy limitation */
     }
 
-    struct fhandle* fh = lookup_fhandle (file);
+    struct sos_fhandle* fh = sos_lookup_fhandle (file);
     if (!fh) {
         return -1;
     }
     
 	seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, pawpaw_share_attach (fh->share), 3);
     //seL4_SetCap (0, fh->share->cap);
-    
+
 	seL4_SetMR (0, VFS_READ);
     seL4_SetMR (1, fh->share->id);
     seL4_SetMR (2, nbyte);
@@ -152,7 +152,7 @@ int write(fildes_t file, const char *buf, size_t nbyte) {
         return -1;      /* FIXME: crappy limitation */
     }
 
-    struct fhandle* fh = lookup_fhandle (file);
+    struct sos_fhandle* fh = sos_lookup_fhandle (file);
     if (!fh) {
         return -1;
     }

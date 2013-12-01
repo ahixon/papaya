@@ -63,11 +63,9 @@ seL4_CPtr pawpaw_save_reply (void) {
 	if (err) {
 		/* FIXME: unallocate slot? */
         /* XXX: shouldn't try again */
-        printf ("[WARN] save caller failed, retrying to infinity...\n");
         return pawpaw_save_reply ();
 		//return 0;
 	} else {
-        printf ("=!= placed reply into cap 0x%x\n", cap);
 		return cap;
 	}
 }
