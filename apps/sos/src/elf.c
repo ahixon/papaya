@@ -47,8 +47,6 @@ int load_segment_into_vspace(addrspace_t dest_as,
                                     unsigned long file_size, unsigned long dst,
                                     unsigned long permissions) {
     if (file_size > segment_size) {
-        printf ("%s: umm, file_size (0x%lx) > segment size (0x%lx)\n",
-            __FUNCTION__, file_size, segment_size);
         return false;
     }
 
@@ -56,7 +54,6 @@ int load_segment_into_vspace(addrspace_t dest_as,
         dest_as, dst, segment_size, permissions, REGION_GENERIC);
 
     if (!reg) {
-        printf ("%s: failed to define region at 0x%lx\n", __FUNCTION__, dst);
         return false;
     }
 
@@ -70,15 +67,11 @@ int load_segment_into_vspace(addrspace_t dest_as,
             dest_as, reg->attributes, dest_as->pagetable, vpage);
 
         if (!page) {
-            printf ("%s: failed to fetch page for vaddr 0x%x\n",
-                __FUNCTION__, vpage);
-
             return false;
         }
 
         page->frame = frame_new ();
         if (!page->frame) {
-            printf ("%s: failed to setup new page\n", __FUNCTION__);
             return false;
         }
 
@@ -87,7 +80,6 @@ int load_segment_into_vspace(addrspace_t dest_as,
 
         page->frame->file = frame_create_mmap (
             src, dst - vpage, offset, MIN (nbytes, file_size - pos));
-        printf ("mapping to file EP %d (%d) = %p\n", src, page->frame->file->file, page->frame->file);
 
         assert (page->frame->file);
 
@@ -107,7 +99,9 @@ static int load_segment_directly_into_vspace(addrspace_t dest_as,
 
     unsigned long pos;
 
-    struct as_region* reg = as_define_region (dest_as, dst, segment_size, permissions, REGION_GENERIC);
+    struct as_region* reg = as_define_region (dest_as, dst, segment_size,
+        permissions, REGION_GENERIC);
+
     if (!reg) {
         return 1;
     }
@@ -129,29 +123,34 @@ static int load_segment_directly_into_vspace(addrspace_t dest_as,
 
         /* Map the page into the destination address space */
         int status = PAGE_FAILED;
-        struct pt_entry* page = page_map (dest_as, reg, vpage, &status, NULL, NULL);
+        struct pt_entry* page = page_map (dest_as, reg, vpage, &status,
+            NULL, NULL);
 
         if (!page || status != PAGE_SUCCESS) {
-            printf ("failed to map page\n");
+            /* we should really only be using this function at boot time.
+             * load_segment_into_vspace will handle lazy loading/swap events
+             * for you - early on in the boot we can assume that swapping is NOT
+             * an option */
             return 1;
         }
 
         /* Map the frame into SOS as well so we can copy into it */
         /* FIXME: WOULD BE MUCH NICER(!) if we just used cur_addrspace - 
          * you will need to create a region in main's init function */
-        //sos_cap = frametable_fetch_cap (frame);
         sos_cap = page->cap;
         assert (sos_cap);
 
-        frame_cap = cspace_copy_cap (cur_cspace, cur_cspace, sos_cap, seL4_AllRights);
+        frame_cap = cspace_copy_cap (cur_cspace, cur_cspace, sos_cap,
+            seL4_AllRights);
+
         if (!frame_cap) {
-            printf ("%s: failed to copy cap\n", __FUNCTION__);
             return 1;
         }
         
-        err = map_page (frame_cap, seL4_CapInitThreadPD, kvpage, seL4_AllRights, seL4_ARM_Default_VMAttributes);
+        err = map_page (frame_cap, seL4_CapInitThreadPD, kvpage, seL4_AllRights,
+            seL4_ARM_Default_VMAttributes);
+
         if (err) {
-            printf ("failed to map into sos, err = %d\n", err);
             return 1;
         }
 
@@ -165,9 +164,9 @@ static int load_segment_directly_into_vspace(addrspace_t dest_as,
         seL4_ARM_Page_FlushCaches(frame_cap);
 
         /* unmap page + delete cap copy */
-        err = seL4_ARM_Page_Unmap (frame_cap);    
+        err = seL4_ARM_Page_Unmap (frame_cap);
         if (err) {
-            printf ("Failed to unmap from SOS\n");
+            return 1;
         }
 
         cspace_delete_cap (cur_cspace, frame_cap);
@@ -208,13 +207,13 @@ int elf_load (addrspace_t dest_as, char *elf_file) {
         flags = elf_getProgramHeaderFlags(elf_file, i);
 
         /* Copy it across into the vspace. */
-        printf(" * Loading segment %08x-->%08x\n", (int)vaddr, (int)(vaddr + segment_size));
-        err = load_segment_directly_into_vspace(dest_as, source_addr, segment_size, file_size, vaddr,
-                                       get_sel4_rights_from_elf(flags) & seL4_AllRights);
+        err = load_segment_directly_into_vspace(dest_as, source_addr,
+            segment_size, file_size, vaddr,
+            get_sel4_rights_from_elf(flags) & seL4_AllRights);
+
         if (err != 0) {
             return 1;
         }
-        //conditional_panic(err != 0, "Elf loading failed!\n");
     }
 
     return 0;

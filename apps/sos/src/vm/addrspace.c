@@ -1,8 +1,3 @@
-/* address space management
- *  - so region based mapping 
- *  - stores a copy of the page table for this address space
- */
-
 #include <string.h>
 #include <sel4/sel4.h>
 
@@ -37,7 +32,10 @@ addrspace_print_regions (addrspace_t as) {
     printf ("\tvbase\t\tvlimit\t\tsize\t\tperms\tattrs\n");
 
     while (reg) {
-        printf ("%s\t0x%08x\t0x%08x\t0x%08x\t%d\t%d\n", types[reg->type], reg->vbase, reg->vbase + reg->size, reg->size, reg->permissions, reg->attributes);
+        printf ("%s\t0x%08x\t0x%08x\t0x%08x\t%d\t%d\n", types[reg->type],
+            reg->vbase, reg->vbase + reg->size, reg->size, reg->permissions,
+            reg->attributes);
+
         reg = reg->next;
     }
 }
@@ -74,9 +72,11 @@ addrspace_create (seL4_ARM_PageTable pd)
             return NULL;
         }
         
-        err = cspace_ut_retype_addr(as->pagedir_addr,
-                                    seL4_ARM_PageDirectoryObject, seL4_PageDirBits,
-                                    cur_cspace, &as->pagedir_cap);
+        err = cspace_ut_retype_addr (as->pagedir_addr,
+                                    seL4_ARM_PageDirectoryObject,
+                                    seL4_PageDirBits, cur_cspace,
+                                    &as->pagedir_cap);
+
         if (err) {
             ut_free (as->pagedir_addr, seL4_PageDirBits);
             pagetable_free (as->pagetable);
@@ -93,10 +93,10 @@ addrspace_destroy (addrspace_t as) {
     struct as_region* reg = as->regions;
     while (reg) {
         struct as_region* next = reg->next;
+        
         /* don't need to use as_region_destroy since we don't need to reorder
          * as we're nuking everything anyway */
         free (reg);
-
         reg = next;
     }
 
@@ -109,7 +109,7 @@ addrspace_destroy (addrspace_t as) {
         }
 
         if (as->pagedir_addr) {
-            /* FIXME: seL4 bug? related to TCB binding bug */
+            /* XXX: commented out due to seL4 bug; related to TCB binding bug */
             //ut_free (as->pagedir_addr, seL4_PageDirBits);
         }
     }

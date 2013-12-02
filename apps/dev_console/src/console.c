@@ -181,6 +181,9 @@ int vfs_write (struct pawpaw_event* evt) {
     /* we don't do async Send here since the Call responds quickly enough */
     seL4_Call (net_ep, msg);
 
+    /* chill out for a few othewise we drop packets */
+    usleep (CONSOLE_DELAY_TIME);
+
     evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
     seL4_SetMR (0, evt->args[0]);
     return PAWPAW_EVENT_NEEDS_REPLY;

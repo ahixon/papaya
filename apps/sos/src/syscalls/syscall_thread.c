@@ -25,44 +25,36 @@ int syscall_thread_create (struct pawpaw_event* evt) {
     evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
 
     char thread_path[THREAD_PATH_SIZE_MAX] = {0};
-    if (!copyin (current_thread, evt->args[0], evt->args[1], thread_path, THREAD_PATH_SIZE_MAX)) {
+    if (!copyin (current_thread, evt->args[0], evt->args[1], thread_path,
+        THREAD_PATH_SIZE_MAX)) {
+
         /* invalid request, ignore */
         return PAWPAW_EVENT_UNHANDLED;
     }
 
-    printf ("thread %s asked to create thread with path '%s'\n", current_thread->name, thread_path);
-    /* FIXME: save event, open file, wait for cb, then read 1 byte out, then call:
-       thread_t thread_create_from_fs (char* name, char *file, seL4_CPtr file_cap, int file_size, seL4_CPtr rootsvr_ep)
+    /* FIXME: WELL, I BROKE THE NFS FILE LOADING BUT HAVE NO TIME TO FIX IT - OOPS */
+    //thread_t child = thread_create_from_fs (thread_path, rootserver_syscall_cap);
+    thread_t child = thread_create_from_cpio (thread_path, rootserver_syscall_cap);
 
-     */
-
-    /*thread_t child = thread_create_from_fs (thread_path, rootserver_syscall_cap);
     if (child) {
     	seL4_SetMR (0, child->pid);
     } else {
     	seL4_SetMR (0, -1);
-    }*/
+    }
 
     seL4_SetMR (0, -1);
     return PAWPAW_EVENT_NEEDS_REPLY;
 }
 
 int syscall_thread_destroy (struct pawpaw_event* evt) {
-    printf ("%s: looking up PID %d\n", __FUNCTION__, evt->args[0]);
 	thread_t target = thread_lookup (evt->args[0]);
 
 	evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
 
 	if (target) {
-		printf ("thread %s asked to terminate PID %d (%s)\n",
-			current_thread->name, target->pid, target->name);
-
-        //print_resource_stats ();
 		thread_destroy (target);
 		seL4_SetMR (0, 0);
 	} else {
-		printf ("thread %s asked to kill PID %d but no such thread\n",
-			current_thread->name, evt->args[0]);
 		seL4_SetMR (0, -1);
 	}
 
@@ -82,8 +74,6 @@ int syscall_thread_wait (struct pawpaw_event* evt) {
     evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
 
     if (!target) {
-        printf ("thread %s asked to kill PID %d but no such thread\n",
-            current_thread->name, evt->args[0]);
         seL4_SetMR (0, -1);
         return PAWPAW_EVENT_NEEDS_REPLY;
     }
@@ -91,7 +81,9 @@ int syscall_thread_wait (struct pawpaw_event* evt) {
     /* ok have target pid, register in it's "to notify" list and 
      * go back to event loop */
 
-    struct pawpaw_saved_event *saved = malloc (sizeof (struct pawpaw_saved_event));
+    struct pawpaw_saved_event *saved = malloc (sizeof (
+        struct pawpaw_saved_event));
+
     if (!saved) {
         seL4_SetMR (0, -1);
         return PAWPAW_EVENT_NEEDS_REPLY;
@@ -112,7 +104,6 @@ int syscall_thread_list (struct pawpaw_event* evt) {
     size_t usize = count * sizeof (process_t);
 
     if (count > MAX_PROCESS_LIST_SIZE) {
-        printf ("%s: too many processes requested\n", __FUNCTION__);
         return PAWPAW_EVENT_UNHANDLED;
     }
 
@@ -137,10 +128,8 @@ int syscall_thread_list (struct pawpaw_event* evt) {
     }
     
     if (copyout (current_thread, dest, usize, (char*)processes, usize)) {
-        printf ("%s: had %d threads\n", __FUNCTION__, i);
         seL4_SetMR (0, i);
     } else {
-        printf ("%s: copyout failed\n", __FUNCTION__);
         seL4_SetMR (0, 0);
     }
 

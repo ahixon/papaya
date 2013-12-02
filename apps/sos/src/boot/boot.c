@@ -28,30 +28,7 @@
 #include <sos.h>
 
 #include <autoconf.h>
-
-extern char _cpio_archive[];
-extern seL4_CPtr rootserver_syscall_cap;
-
-#define BOOT_LIST       "boot.txt"
-#define BOOT_LIST_LINE  "\n"
-#define BOOT_LIST_SEP   "="
-#define BOOT_ARG_SEP    "\t "
-
-#define BOOT_CMD_MOUNT  "mount "
-#define BOOT_CMD_SWAP   "swap "
-#define BOOT_CMD_PIN    "pin "
-
-#define BOOT_TYPE_UNKNOWN   0
-#define BOOT_TYPE_ASYNC     1
-#define BOOT_TYPE_SYNC      2
-#define BOOT_TYPE_BOOT      3
-#define BOOT_TYPE_CMD_MOUNT 4
-#define BOOT_TYPE_CMD_SWAP  5
-#define BOOT_TYPE_CMD_PIN   6
-
-int mount (char* mountpoint, char* fs);
-int parse_fstab (char* path);
-int open_swap (char* path);
+#include "boot.h"
 
 /* XXX: double rainbow^H^H^Hhack. can't get timer EP, nor should sleep */
 void sleep (int msec) {
@@ -66,11 +43,13 @@ int boot_thread (void) {
     unsigned long size;
 
     cpio_bootlist = cpio_get_file (_cpio_archive, BOOT_LIST, &size);
-    conditional_panic (!cpio_bootlist, "failed to find boot list '"BOOT_LIST"' in CPIO archive\n");
+    conditional_panic (!cpio_bootlist, "failed to find boot list '"BOOT_LIST"' "
+        "in CPIO archive\n");
 
-    /* eugh.. in case we have no new lines at the end - also less chance of mangling CPIO */
+    /* eugh.. in case we have no new lines at the end - also less chance of
+     * mangling CPIO */
     mem_bootlist = malloc (size + 1);
-    conditional_panic (!mem_bootlist, "not enough memory to copy in bootlist\n");
+    conditional_panic(!mem_bootlist, "not enough memory to copy in bootlist\n");
     memcpy (mem_bootlist, cpio_bootlist, size);
     *(mem_bootlist + size) = '\0';  /* EOF the string */
     
@@ -97,13 +76,17 @@ int boot_thread (void) {
 
         char* sep_type = BOOT_LIST_SEP;
 
-        if (type == BOOT_TYPE_CMD_MOUNT || type == BOOT_TYPE_CMD_SWAP || type == BOOT_TYPE_CMD_PIN) {
+        if (type == BOOT_TYPE_CMD_MOUNT || type == BOOT_TYPE_CMD_SWAP ||
+            type == BOOT_TYPE_CMD_PIN) {
+
             sep_type =  BOOT_ARG_SEP;
         }
 
         char* equals = strpbrk (line, sep_type);
         if (!equals) {
-            printf ("boot: syntax error in %s: missing '%s' expected, had '%s'\n", BOOT_LIST, BOOT_LIST_SEP, line);
+            printf ("boot: syntax error in %s: missing '%s' expected, had "
+                "'%s'\n", BOOT_LIST, BOOT_LIST_SEP, line);
+
             line = strtok (NULL, BOOT_LIST_LINE);
             continue;
         }
@@ -126,8 +109,11 @@ int boot_thread (void) {
         } else if (type == BOOT_TYPE_CMD_SWAP) {
             /* handle setting up swap */
             if (!open_swap (type_str)) {
-                printf ("boot: failed to open swap file '%s', swapping will not be available\n", type_str);
-                panic ("failed to open swap");  /* XXX: debug, no need to be panic */
+                printf ("boot: failed to open swap file '%s', swapping will "
+                    "not be available\n", type_str);
+
+                /* XXX: just for easy debug, no need to actually panic */
+                panic ("failed to open swap"); 
             }
         } else if (type == BOOT_TYPE_CMD_PIN) {
             /* find relevant thread if possible */
@@ -140,14 +126,13 @@ int boot_thread (void) {
                 thread = thread->next;
             }
 
-            /* and pin it - FIXME: does not pin future pages */
+            /* and pin it */
             if (!thread) {
                 printf ("boot: failed to find thread '%s'\n", type_str);
                 panic ("failed to find thread");
             }
 
             thread_pin (thread);
-            printf ("pinned thread %s\n", thread->name);
         } else {
             if (strcmp (type_str, "async") == 0) {
                 type = BOOT_TYPE_ASYNC;
@@ -158,18 +143,21 @@ int boot_thread (void) {
             } 
 
             if (type == BOOT_TYPE_UNKNOWN) {
-                printf ("boot: invalid boot type '%s' for application %s\n", type_str, app);
+                printf ("boot: invalid boot type '%s' for "
+                    "application %s\n", type_str, app);
+
                 panic ("invalid boot application type");
             }
 
-            /* XXX: sleep a little first */
             if (type == BOOT_TYPE_BOOT) {
-                printf ("boot app\n");
+                /* XXX: sleep a little first */
                 sleep (3000);
             }
 
             printf ("Starting '%s' as %s...\n", app, type_str);
-            thread_t thread = thread_create_from_cpio (app, rootserver_syscall_cap);
+            thread_t thread = thread_create_from_cpio (app,
+                                                       rootserver_syscall_cap);
+
             if (!thread) {
                 printf ("boot: failed to start '%s' - in CPIO archive?\n", app);
                 if (type != BOOT_TYPE_BOOT) {
@@ -179,12 +167,12 @@ int boot_thread (void) {
             } else {
                 printf ("\tstarted with PID %d\n", thread->pid);
 
-                /* XXX: should wait for EP rather than sleeping */
                 if (type == BOOT_TYPE_SYNC) {
-                    printf ("sync app\n");
+                    /* XXX: should wait for EP rather than sleeping */
                     sleep (3000);
                 } else if (type == BOOT_TYPE_BOOT && thread) {
-                    printf ("boot: boot thread started, exiting bootsvc\n");
+                    /* boot thread started, we are done! */
+                    printf ("Boot complete.\n");
                     break;
                 }
             }
@@ -196,10 +184,6 @@ int boot_thread (void) {
     free (mem_bootlist);
     return 0;
 }
-
-extern struct as_region* share_reg;
-extern seL4_CPtr share_badge;
-extern seL4_Word share_id;
 
 int mount (char* mountpoint, char* fs) {
     printf ("mounting '%s' on '%s'...\n", fs, mountpoint);
@@ -223,10 +207,9 @@ int mount (char* mountpoint, char* fs) {
     seL4_SetMR (0, VFS_MOUNT);
     seL4_SetMR (1, share_id);
 
-    /* XXX: should get service name from boot list */
-    seL4_CPtr service = service_lookup ("svc_vfs");
+    seL4_CPtr service = service_lookup (VFSSVC_SERVICE_NAME);
     if (!service) {
-        printf ("failed to find VFS cap\n");
+        panic ("wanted to use swap but could not find running VFS service");
         return false;
     }
 
@@ -237,7 +220,7 @@ int mount (char* mountpoint, char* fs) {
 extern seL4_CPtr swap_cap;
 
 int open_swap (char* path) {
-    printf ("opening '%s' ...\n", path);
+    printf ("using swap file '%s' ...\n", path);
 
     if (!share_reg) {
         share_reg = create_share_reg (&share_badge, &share_id, true);
@@ -258,10 +241,9 @@ int open_swap (char* path) {
     seL4_SetMR (1, share_id);
     seL4_SetMR (2, FM_READ | FM_WRITE);
 
-    /* XXX: should get service name from boot list */
-    seL4_CPtr service = service_lookup ("svc_vfs");
+    seL4_CPtr service = service_lookup (VFSSVC_SERVICE_NAME);
     if (!service) {
-        printf ("failed to find VFS cap\n");
+        panic ("wanted to use swap but could not find running VFS service");
         return false;
     }
 
@@ -271,7 +253,7 @@ int open_swap (char* path) {
 
     seL4_MessageInfo_t reply = seL4_Call (service, msg);
     if (seL4_MessageInfo_get_extraCaps (reply) != 1) {
-        printf ("%s: open failed\n", __FUNCTION__);
+        /* failed to get open file capability */
         return false;
     }
 
@@ -288,7 +270,8 @@ int parse_fstab (char* path) {
         return false;
     }
 
-    /* eugh.. in case we have no new lines at the end - also less chance of mangling CPIO */
+    /* eugh.. in case we have no new lines at the end - also less chance of
+     * mangling CPIO */
     mem_fstab = malloc (size + 1);
     conditional_panic (!mem_fstab, "not enough memory to copy in fstab\n");
     memcpy (mem_fstab, cpio_fstab, size);
@@ -331,16 +314,12 @@ int parse_fstab (char* path) {
             *(line)++ = '\0';
         }
         
-        //printf ("FSTYPE = %s, MOUNTPOINT = %s, OPTS = %s\n", fs_type, path, opts);
-
         /* try to actually mount it */
         if (!mount (path, fs_type)) {
             status = false;
             break;
         }
     }
-
-    printf ("done loading fstab\n");
 
     free (mem_fstab);
     return status;

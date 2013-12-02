@@ -15,7 +15,11 @@
 #define PAGESIZE              (1 << (seL4_PageBits))
 #define PAGEMASK              ((PAGESIZE) - 1)
 
-char* copyout (thread_t thread, vaddr_t ubuf, unsigned int usize, char* kbuf, unsigned int ksize) {
+/* TODO: unify copyin and copyout, since they share a lot of similar code */
+
+char* copyout (thread_t thread, vaddr_t ubuf, unsigned int usize, char* kbuf,
+	unsigned int ksize) {
+
 	assert (kbuf);
 	assert (ksize > 0);
 	assert (usize > 0);		/* TODO: copyin_str might pass in 0 when impl */
@@ -40,7 +44,6 @@ char* copyout (thread_t thread, vaddr_t ubuf, unsigned int usize, char* kbuf, un
 	while (done < usize && done < ksize) {
 		seL4_CPtr frame_cap = as_get_page_cap (thread->as, ubuf + done);
 		if (!frame_cap) {
-			printf ("copyout: failed, could not get page cap\n");
 			/* no page mapped, ABORT - and free buf? */
 			return NULL;
 		}
@@ -57,27 +60,29 @@ char* copyout (thread_t thread, vaddr_t ubuf, unsigned int usize, char* kbuf, un
 				cspace_delete_cap (cur_cspace, last_mapped_cap);
 			}
 
-			seL4_CPtr copyinout_cap = cspace_copy_cap (cur_cspace, cur_cspace, frame_cap, seL4_AllRights);
+			seL4_CPtr copyinout_cap = cspace_copy_cap (cur_cspace, cur_cspace,
+				frame_cap, seL4_AllRights);
 			if (!copyinout_cap) {
-				printf ("copyout: cap copy failed\n");
 				return NULL;
 			}
 
 			last_mapped_cap = copyinout_cap;
 
-			err = map_page (copyinout_cap, seL4_CapInitThreadPD, (seL4_Word)kvpage, seL4_AllRights, seL4_ARM_Default_VMAttributes);
+			err = map_page (copyinout_cap, seL4_CapInitThreadPD,
+				(seL4_Word)kvpage, seL4_AllRights,
+				seL4_ARM_Default_VMAttributes);
+
 			if (err) {
-				printf ("copyout: map page failed\n");
 				return NULL;
 			}
 		}
 
-		unsigned int dist_until_page_end = PAGESIZE - ((ubuf + done) & PAGEMASK);
-		unsigned int nbytes = MIN (dist_until_page_end, ksize - done);
+		unsigned int dist_until_page_end = PAGESIZE -
+			((ubuf + done) & PAGEMASK);
 
-		//printf ("copyout: copying 0x%x bytes from 0x%x (mapped from 0x%x) to 0x%x\n", nbytes, ubuf + done, kvpage, (kbuf + done));
-		//memcpy ((void*)(kbuf + done), kvpage + ((ubuf + done) & PAGEMASK), nbytes);
-		memcpy (kvpage + ((ubuf + done) & PAGEMASK), (void*)(kbuf + done), nbytes);
+		unsigned int nbytes = MIN (dist_until_page_end, ksize - done);
+		memcpy (kvpage + ((ubuf + done) & PAGEMASK), (void*)(kbuf + done),
+			nbytes);
 
 		done += nbytes;
 		last_cap = frame_cap;
@@ -85,7 +90,6 @@ char* copyout (thread_t thread, vaddr_t ubuf, unsigned int usize, char* kbuf, un
 
 	err = seL4_ARM_Page_Unmap (last_mapped_cap);
 	if (err) {
-		printf ("copyout: unmap failed\n");
 		return NULL;
 	}
 
@@ -93,14 +97,8 @@ char* copyout (thread_t thread, vaddr_t ubuf, unsigned int usize, char* kbuf, un
 	return kbuf;
 }
 
-#if 0
-char* copyin_str (thread_t thread, vaddr_t ubuf, unsigned int usize, char* kbuf, unsigned int ksize) {
-	
-}
-#endif
-
-char* copyin (thread_t thread, vaddr_t ubuf, unsigned int usize, char* kbuf, unsigned int ksize) {
-	//addrspace_print_regions (thread->as);
+char* copyin (thread_t thread, vaddr_t ubuf, unsigned int usize, char* kbuf,
+	unsigned int ksize) {
 
 	assert (kbuf);
 	assert (ksize > 0);
@@ -126,7 +124,6 @@ char* copyin (thread_t thread, vaddr_t ubuf, unsigned int usize, char* kbuf, uns
 	while (done < usize) {
 		seL4_CPtr frame_cap = as_get_page_cap (thread->as, ubuf + done);
 		if (!frame_cap) {
-			printf ("copyin: failed, could not get page cap\n");
 			/* no page mapped, ABORT - and free buf? */
 			return NULL;
 		}
@@ -143,26 +140,30 @@ char* copyin (thread_t thread, vaddr_t ubuf, unsigned int usize, char* kbuf, uns
 				cspace_delete_cap (cur_cspace, last_mapped_cap);
 			}
 
-			seL4_CPtr copyinout_cap = cspace_copy_cap (cur_cspace, cur_cspace, frame_cap, seL4_AllRights);
+			seL4_CPtr copyinout_cap = cspace_copy_cap (cur_cspace, cur_cspace,
+				frame_cap, seL4_AllRights);
+
 			if (!copyinout_cap) {
-				printf ("copyin: cap copy failed\n");
 				return NULL;
 			}
 
 			last_mapped_cap = copyinout_cap;
 
-			err = map_page (copyinout_cap, seL4_CapInitThreadPD, (seL4_Word)kvpage, seL4_AllRights, seL4_ARM_Default_VMAttributes);
+			err = map_page (copyinout_cap, seL4_CapInitThreadPD,
+				(seL4_Word)kvpage, seL4_AllRights,
+				seL4_ARM_Default_VMAttributes);
+
 			if (err) {
-				printf ("copyin: map page failed\n");
 				return NULL;
 			}
 		}
 
-		unsigned int dist_until_page_end = PAGESIZE - ((ubuf + done) & PAGEMASK);
-		unsigned int nbytes = MIN (dist_until_page_end, usize - done);
+		unsigned int dist_until_page_end = PAGESIZE - 
+			((ubuf + done) & PAGEMASK);
 
-		//printf ("copyin: copying 0x%x bytes from 0x%x (mapped from 0x%x) to 0x%x\n", nbytes, kvpage, ubuf + done, (kbuf + done));
-		memcpy ((void*)(kbuf + done), kvpage + ((ubuf + done) & PAGEMASK), nbytes);
+		unsigned int nbytes = MIN (dist_until_page_end, usize - done);
+		memcpy ((void*)(kbuf + done), kvpage + ((ubuf + done) & PAGEMASK),
+			nbytes);
 
 		done += nbytes;
 		last_cap = frame_cap;
@@ -170,7 +171,6 @@ char* copyin (thread_t thread, vaddr_t ubuf, unsigned int usize, char* kbuf, uns
 
 	err = seL4_ARM_Page_Unmap (last_mapped_cap);
 	if (err) {
-		printf ("copyin: unmap failed\n");
 		return NULL;
 	}
 

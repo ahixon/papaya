@@ -15,7 +15,7 @@
 #include <pawpaw.h>
 #include <network.h>
 
-#define DEBUG_RPC 1
+//#define DEBUG_RPC 1
 #ifdef DEBUG_RPC
 #define debug(x...) printf( x )
 #else
@@ -120,40 +120,21 @@ my_udp_send(int connection_id, struct pbuf *pbuf)
         assert (last_share);
     }
 
-#if 0
-    struct pbuf *p = pbuf_new(pbuf->tot_len);
-    if(p == NULL) {
-        return RPCERR_NOBUF;
-    }
-
-    assert(!pbuf_copy(p, pbuf));
-#endif
-
     /* read data out of pbuf into our regular buffer
      * TODO: yes, this is inefficient, but it means i don't have to re-write
      * all the pbuf stuff that this code uses... */
     /* FIXME: make sure we don't overrun our buffer! */
-    /*unsigned int sent = 0;
-
-    printf ("total buffer size was 0x%x\n", pbuf->tot_len);
-    while (sent < pbuf->tot_len) {
-
-    }*/
 
     struct pbuf *q;
     int offset = 0;
     for (q = pbuf; q != NULL; q = q->next) {
         char* data = q->payload;
         memcpy (last_share->buf + offset, data, q->len);
-        // for (int i = 0; i < q->len && i < 500; i++) {
-        //     printf ("out_data[%d] = 0x%x\n", offset + i, ((char*)(share->buf))[offset + i]);
-        // }
         offset += q->len;
     }
 
 
     assert (offset == pbuf->tot_len);
-    debug ("loaded pbuf into cap, sending to svc_net (len 0x%x)...\n", offset);
     seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, pawpaw_share_attach (last_share), 4);
     //seL4_SetCap (0, share->cap);
     seL4_SetMR (0, NETSVC_SERVICE_SEND);
@@ -364,17 +345,14 @@ rpc_call_cb(void *callback, uintptr_t token, struct pbuf *pbuf)
     _mutex_release(call_arg->mutex);
 }
 
-/* TODO: rename rpc_call-> rpc_call_blocking or something to emphasise non-async */
+/* should rename rpc_call-> rpc_call_blocking or something to emphasise non-async */
 enum rpc_stat
 rpc_call(struct pbuf *pbuf, int len, int handler_id, 
      void (*func)(void *, uintptr_t, struct pbuf *), 
      void *callback, uintptr_t token)
 {
     struct rpc_call_arg call_arg;
-    //struct rpc_queue *q_item;
-    //int time_out;
     enum rpc_stat stat;
-    //xid_t xid;
 
     /* If we give up early, we must ensure that the argument remains in memory
      * just in case the packet comes in later */
@@ -388,8 +366,6 @@ rpc_call(struct pbuf *pbuf, int len, int handler_id,
     _mutex_acquire(call_arg.mutex);
 
     /* Make the call */
-    //xid = extract_xid(pbuf);
-    debug ("doing rpc_send...\n");
     stat = rpc_send(pbuf, pbuf->tot_len, handler_id, &rpc_call_cb, NULL, 
                    (uintptr_t)&call_arg);
     if(stat){
@@ -399,22 +375,8 @@ rpc_call(struct pbuf *pbuf, int len, int handler_id,
 
     /* Wait for the response here instead of the main loop doing it */
     /* FIXME: what about timeout */
-#if 0
-    time_out = RETRANSMIT_DELAY_MS * (CALL_RETRIES + 1);
-    while(time_out >= 0){
-        _usleep(CALL_TIMEOUT_MS * 1000);
-        if(_mutex_try_acquire(call_arg.mutex)){
-            /* Success */
-            _mutex_destroy(call_arg.mutex);
-            return 0;
-        }
-        rpc_timeout(CALL_TIMEOUT_MS);
-        time_out -= CALL_TIMEOUT_MS;
-    }
-#endif
     seL4_Wait (nfs_async_ep, NULL);
-    int id = seL4_GetMR (0);    /* FIXME: might be ORed */
-    debug ("got reply on conn %d\n", id);
+    int id = seL4_GetMR (0);    /* FIXME: might be ORed? */
 
     /* ok had data, go fetch it */
     seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 0, 2);
@@ -424,9 +386,7 @@ rpc_call(struct pbuf *pbuf, int len, int handler_id,
 
 
     do {
-        printf ("asking for data for connection %d\n", id);
         seL4_SetMR (0, NETSVC_SERVICE_DATA);
-        printf ("mr0 = %d\n", seL4_GetMR (0));
         seL4_SetMR (1, id);
         seL4_Call (net_ep, msg);
         had_more = seL4_GetMR (2);
@@ -443,12 +403,9 @@ rpc_call(struct pbuf *pbuf, int len, int handler_id,
 
         assert (result_share);
 
-        /* copy it in : FIXME - race, also fixme because we get the same share so we need to copy */
-        //seL4_Word total_size = seL4_GetMR (3);
-        printf ("had 0x%x bytes data\n", size);
+        /* copy it in */
 
         if (!head_pbuf) {
-            //recv_pbuf = pbuf_alloc (PBUF_TRANSPORT, total_size, PBUF_REF);
             head_pbuf = pbuf_alloc (PBUF_TRANSPORT, size, PBUF_RAM);
             assert (head_pbuf);
 
@@ -463,28 +420,7 @@ rpc_call(struct pbuf *pbuf, int len, int handler_id,
         }
     } while (had_more);
 
-
-    /* create pbuf: FIXME maybe need a local copy rather than ref? */
-    //head_pbuf->payload = result_share->buf;
-    //assert (head_pbuf->tot_len == size);
-
-    /* handle it */
-    //debug ("calling recv function\n");
-    /* FIXME: unmount share after recv, also MAN WTF RETURN CODES */
     return my_recv (NULL, id, head_pbuf, NULL, 0) == true ? 0 : 1;
-
-    //return 0;
-
-#if 0
-    /* If we get here, we have failed. Data is on the stack so make sure 
-     * we remove references from the queue */
-    q_item = get_from_queue(xid);
-    assert(q_item);
-    pbuf_free(q_item->pbuf);
-    free(q_item);
-    _mutex_destroy(call_arg.mutex);
-    return RPCERR_COMM;
-#endif
 }
 
 

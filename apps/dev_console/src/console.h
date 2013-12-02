@@ -6,6 +6,7 @@
 #define CONSOLE_BUF_SIZE        1024
 #define CONSOLE_PORT            26706
 #define CONSOLE_PRODUCT_ID      1337
+#define CONSOLE_DELAY_TIME      500  /* usec to sleep between packets */
 
 int vfs_open (struct pawpaw_event* evt);
 int vfs_read (struct pawpaw_event* evt);

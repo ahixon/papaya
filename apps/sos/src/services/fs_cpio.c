@@ -32,14 +32,14 @@ static int vfs_register_cap (struct pawpaw_event* evt);
 
 struct pawpaw_eventhandler_info handlers[VFS_NUM_EVENTS] = {
 	{   0,  0,  0   },      //  fs register info
-    {   vfs_register_cap,  	0,  HANDLER_REPLY   					},	/* for async cap registration */
+    {   vfs_register_cap,  	0,  HANDLER_REPLY   					},
     {   0,  0,  0   },      //  mount
     {   vfs_open,           2,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },
     {   vfs_read,			2,  HANDLER_REPLY | HANDLER_AUTOMOUNT	},
     {   0,  0,  0   },      //  write
     {   0,  0,  0   },      //  close
-    {   0,  0,  0   },      //  listdir{   vfs_listdir,        3,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },
-    {   0,  0,  0   },      //  stat{   vfs_stat,           1,  HANDLER_REPLY | HANDLER_AUTOMOUNT   }
+    {   0,  0,  0   },      //  listdir
+    {   0,  0,  0   },      //  stat
     {   vfs_read_offset,	6,  HANDLER_AUTOMOUNT	},
 };
 
@@ -49,15 +49,18 @@ struct pawpaw_event_table handler_table = {
 
 static seL4_CPtr cap = 0;
 static int vfs_register_cap (struct pawpaw_event* evt) {
-	printf ("got register\n");
 	/* FIXME: regsiter cap, badge pair and lookup with 2nd argument of
-	 * async open */
+	 * async open - this only enables one client to be registered for async
+	 * at a time */
 
 	assert (seL4_MessageInfo_get_extraCaps (evt->msg) == 1);
 	cap = pawpaw_event_get_recv_cap ();
 
 	evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
-	seL4_SetMR (0, 1);	/* FIXME: this should be new ID */
+
+	/* FIXME: this should be new ID when we support > 1 registration */
+	seL4_SetMR (0, 1);
+
 	return PAWPAW_EVENT_NEEDS_REPLY;
 }
 
@@ -66,47 +69,42 @@ static seL4_CPtr lookup_cap (struct pawpaw_event* evt) {
 }
 
 static int vfs_open (struct pawpaw_event* evt) {
-	assert (evt->share);
+	if (evt->share) {
+		unsigned long size;
+	    char *name;
+	    for (int i = 0; cpio_get_entry (
+	    	_cpio_archive, i, (const char**)&name, &size); i++) {
 
-	/* FIXME: check mode + don't die on no share */
+	    	int res = strcmp (evt->share->buf, name);
+	    	if (res == 0) {
+	    		seL4_CPtr their_cap = pawpaw_cspace_alloc_slot ();
+	    		if (!their_cap) {
+	    			break;
+	    		}
 
-	unsigned long size;
-    char *name;
-    for (int i = 0; cpio_get_entry (
-    	_cpio_archive, i, (const char**)&name, &size); i++) {
+			    int err = seL4_CNode_Mint (
+			        PAPAYA_ROOT_CNODE_SLOT, their_cap,  PAPAYA_CSPACE_DEPTH,
+			        PAPAYA_ROOT_CNODE_SLOT, service_ep, PAPAYA_CSPACE_DEPTH,
+			        seL4_AllRights, seL4_CapData_Badge_new (i));
 
-    	int res = strcmp (evt->share->buf, name);
-    	if (res == 0) {
-    		seL4_CPtr their_cap = pawpaw_cspace_alloc_slot ();
-    		if (!their_cap) {
-    			printf ("cpio: failed to alloc slot\n");
-    			break;
-    		}
+			    if (err) {
+			    	break;
+			    }
 
-		    int err = seL4_CNode_Mint (
-		        PAPAYA_ROOT_CNODE_SLOT, their_cap,  PAPAYA_CSPACE_DEPTH,
-		        PAPAYA_ROOT_CNODE_SLOT, service_ep, PAPAYA_CSPACE_DEPTH,
-		        seL4_AllRights, seL4_CapData_Badge_new (i));
+			    evt->reply = seL4_MessageInfo_new (0, 0, 1, 1);
+	    		seL4_SetCap (0, their_cap);
+				seL4_SetMR (0, 0);
 
-		    if (err) {
-		    	printf ("cpio: failed to mint cap\n");
-		    	break;
-		    }
-
-		    evt->reply = seL4_MessageInfo_new (0, 0, 1, 1);
-    		seL4_SetCap (0, their_cap);
-			seL4_SetMR (0, 0);
-
-			return PAWPAW_EVENT_NEEDS_REPLY;
-    	}
-    }
+				return PAWPAW_EVENT_NEEDS_REPLY;
+	    	}
+	    }
+	}
 
 	evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
 	seL4_SetMR (0, -1);
 	return PAWPAW_EVENT_NEEDS_REPLY;
 }
 
-/* FIXME: what about file handle offsets */
 static int vfs_read (struct pawpaw_event* evt) {
 	evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
 
@@ -135,27 +133,15 @@ static int vfs_read (struct pawpaw_event* evt) {
 	return PAWPAW_EVENT_NEEDS_REPLY;
 }
 
+/* TODO: refactor with vfs_read? */
 static int vfs_read_offset (struct pawpaw_event* evt) {
-
-	/* FIXME: should pass through to another func */
-
 	seL4_CPtr old_reply = evt->reply_cap;
 	evt->reply = seL4_MessageInfo_new (0, 0, 0, 2);
 
 	if (evt->args[3]) {
-		//printf ("cpio: waiting for callback cap..\n");
-		//seL4_ReplyWait (service_ep, NULL);
-
-		/* FIXME: replywait inside pawpaw would be nice? if it makes
-		sure it's the same EP? */
-
-		//seL4_Send (evt->reply_cap, seL4_MessageInfo_new (0, 0, 0, 0));
-		//seL4_Wait (service_ep, NULL);
-		//printf ("Got it...\n");
-
 		evt->reply_cap = lookup_cap (evt);	/* FIXME: use arg[3] */
 		if (evt->reply_cap == 0) {
-			printf ("cpio: reply cap not registered\n");
+			/* cap not registered */
 			seL4_SetMR (0, -1);
 			evt->reply_cap = old_reply;
 			return PAWPAW_EVENT_NEEDS_REPLY;
@@ -164,7 +150,6 @@ static int vfs_read_offset (struct pawpaw_event* evt) {
 
 	if (!evt->share) {
 		seL4_SetMR (0, -1);
-		printf ("cpio: share not found\n");
 		evt->reply_cap = old_reply;
 		return PAWPAW_EVENT_NEEDS_REPLY;
 	}
@@ -189,7 +174,6 @@ static int vfs_read_offset (struct pawpaw_event* evt) {
 				amount = remaining;
 			}
 
-
 			seL4_Word buf_offset = evt->args[2];
 			if (buf_offset > PAPAYA_IPC_PAGE_SIZE) {
 				buf_offset = PAPAYA_IPC_PAGE_SIZE;
@@ -199,27 +183,18 @@ static int vfs_read_offset (struct pawpaw_event* evt) {
 				amount = PAPAYA_IPC_PAGE_SIZE - buf_offset;
 			}
 
-			//printf ("file base = 0x%x\n", file);
-			//printf ("loading from = 0x%x (offset = 0x%x, len = 0x%x, buf_offset = 0x%x)\n", loc, loc - file, amount, buf_offset);
-
 			memcpy (evt->share->buf + buf_offset, loc, amount);
 			seL4_SetMR (0, amount);
 		}
 	} else {
-		printf ("failed to find entry %d\n", evt->badge);
 		seL4_SetMR (0, -1);
 	}
 
 	/* send out reply */
 	seL4_SetMR (1, evt->args[4]);			/* client evt id */
-	printf ("Sending reply with 0x%x\n", evt->args[4]);
 	seL4_Send (evt->reply_cap, evt->reply);
-	printf ("Done\n");
 	evt->reply_cap = old_reply;
 
-	/* spend it */
-	//cspace_delete_cap (cur_cspace, evt->reply_cap);
-	//seL4_Notify (evt->reply_cap, 0);
 	return PAWPAW_EVENT_HANDLED;
 }
 
@@ -228,9 +203,9 @@ static int vfs_read_offset (struct pawpaw_event* evt) {
  * CPIO filesystem
  */
 int fs_cpio_main (void) {
-	printf ("fs_cpio: starting\n");	
     pawpaw_event_init ();
 
+#if 0
     printf ("Parsing cpio data:\n");
     printf ("--------------------------------------------------------\n");
     printf ("| index |        name      |  address   | size (bytes) |\n");
@@ -251,6 +226,7 @@ int fs_cpio_main (void) {
     printf ("--------------------------------------------------------\n");
 
     printf ("fs_cpio: started\n");
+#endif
 	pawpaw_event_loop (&handler_table, NULL, service_ep);
 	return 0;
 }

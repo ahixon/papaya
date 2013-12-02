@@ -427,6 +427,7 @@ void ut_free(seL4_Word addr, int sizebits){
     allocated -= (1 << sizebits);
 }
 
+#if 0
 /* debugging */
 seL4_Word ut_alloc_debug (const char* func, const int lineno, int sizebits) {
     seL4_Word res = ut_alloc (sizebits);
@@ -441,3 +442,4 @@ void ut_free_debug (const char* func, const int lineno, seL4_Word addr, int size
 
 //#define ut_alloc(sizebits)  ut_alloc_debug (__LINE__, sizebits)
 
+#endif

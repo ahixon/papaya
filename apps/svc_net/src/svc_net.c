@@ -17,6 +17,8 @@
 #include "network.h"
 #include <network.h>
 
+#include "svc_net.h"
+
 static seL4_CPtr async_ep;
 static int last_id = 0;    /* FIXME: in future, should be bitfield */
 static struct saved_data* data_head;
@@ -56,10 +58,10 @@ recv_handler (void* _client_badge, struct udp_pcb* pcb,
         assert (saved->share);
 
         /* backing data for ringbuffer */
-        saved->buffer_data = malloc (sizeof (char) * 0x3000);
+        saved->buffer_data = malloc (sizeof (char) * NET_BUFFER_SIZE);
         assert (saved->buffer_data);
 
-        saved->buffer = pawpaw_cbuf_create (0x3000, saved->buffer_data);
+        saved->buffer = pawpaw_cbuf_create(NET_BUFFER_SIZE, saved->buffer_data);
         assert (saved->buffer);
     }
 
@@ -175,7 +177,6 @@ int netsvc_register (struct pawpaw_event* evt) {
             seL4_SetMR (0, -1);
             return PAWPAW_EVENT_NEEDS_REPLY;
         }
-
 
         /* register the thing */
         struct saved_data* saved = malloc (sizeof (struct saved_data));

@@ -25,7 +25,7 @@ struct as_region* share_alloc_region (void) {
 
     if (!share_reg) {
         /* pick a share region based on ??? and unmap page + clear contents - DO NOT reduce refcount (only for unmount) */
-        printf ("%s: ran out of regions, should normally swap but not implemented\n", __FUNCTION__);
+        //printf ("%s: ran out of regions, should normally swap but not implemented\n", __FUNCTION__);
         return NULL;
     }
 
@@ -78,12 +78,10 @@ int syscall_share_mount (struct pawpaw_event* evt) {
     /* lookup provided CNode */
     seL4_Word ep_cpy = cspace_copy_cap (cur_cspace, current_thread->croot, evt->args[0], seL4_AllRights);
     if (!ep_cpy) {
-        printf ("%s: failed to copy user provided EP\n", __FUNCTION__);
         return PAWPAW_EVENT_UNHANDLED;
     }
 
     seL4_MessageInfo_t local_msg = seL4_MessageInfo_new (0, 0, 0, 0);
-    //printf ("%s: calling on given EP\n", __FUNCTION__);
     /* FIXME: this is VERY BAD - should do notify and get callback since this can be an arbitary EP and we may never get a callback */
     seL4_Call (ep_cpy, local_msg);
 
@@ -94,7 +92,6 @@ int syscall_share_mount (struct pawpaw_event* evt) {
 
     /* FIXME: maybe made ids start from 1 not 0 */
     if (!badgemap_found) {
-        printf ("%s: badgemapper returned failure\n", __FUNCTION__);
         evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
         seL4_SetMR (0, 0);
 
@@ -103,7 +100,6 @@ int syscall_share_mount (struct pawpaw_event* evt) {
 
     thread_t src_thread = thread_lookup (thread_id);
     if (!src_thread) {
-        printf ("%s: fetching source thread failed, looked up thread id %d (share id 0x%x)\n", __FUNCTION__, thread_id, id);
         evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
         seL4_SetMR (0, 0);
 
@@ -111,24 +107,18 @@ int syscall_share_mount (struct pawpaw_event* evt) {
     }
 
     /* ensure the other region still exists */
-    printf ("%s: wanting to get source region for source vaddr 0x%x\n", __FUNCTION__, seL4_GetMR (1));
-    addrspace_print_regions (src_thread->as);
     seL4_Word src_vaddr = seL4_GetMR (1);
     struct as_region* other_reg = as_get_region_by_addr (src_thread->as, src_vaddr);
     if (!other_reg) {
-        printf ("%s: fetching source region failed\n", __FUNCTION__);
         evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
         seL4_SetMR (0, 0);
 
         return PAWPAW_EVENT_NEEDS_REPLY;
     }
 
-    //printf ("%s: ended up getting region 0x%x -> 0x%x\n", __FUNCTION__, other_reg->vbase, other_reg->vbase + other_reg->size);
-
     /* make a new region to place it in */
     struct as_region* share_reg = share_alloc_region ();
     if (!share_reg) {
-        printf ("%s: alloc region failed\n", __FUNCTION__);
         return PAWPAW_EVENT_UNHANDLED;
     }
 
@@ -136,9 +126,6 @@ int syscall_share_mount (struct pawpaw_event* evt) {
     seL4_SetMR (0, id);
     seL4_SetMR (1, share_reg->vbase);
     seL4_SetMR (2, 0);
-
-    /* cool, now shared map the two */
-    printf ("%s: mapping vaddr 0x%x in %s (share 0x%x) to 0x%x in %s\n", __FUNCTION__, src_vaddr, src_thread->name, id, share_reg->vbase, current_thread->name);
 
     /* FIXME: handle swapping */
     int status = PAGE_FAILED;
@@ -149,11 +136,10 @@ int syscall_share_mount (struct pawpaw_event* evt) {
     /* pin if required */
     //if (src_thread->pinned || current_thread->pinned) {
         pte->frame->flags |= FRAME_PINNED;
-        // TODO: don't always pin shares
+        // TODO: don't always pin shares (this is probably safe to remove)
     //}
 
     if (!pte) {
-        printf ("%s: map shared failed\n", __FUNCTION__);
         return PAWPAW_EVENT_UNHANDLED;
     }
 
@@ -166,7 +152,6 @@ int syscall_share_unmount (struct pawpaw_event* evt) {
     
     struct as_region* reg = as_get_region_by_addr (current_thread->as, evt->args[1]);
     if (!reg) {
-        printf ("%s: invalid vaddr 0x%x\n", __FUNCTION__, evt->args[1]);
         return PAWPAW_EVENT_UNHANDLED;
     }
 
@@ -175,21 +160,12 @@ int syscall_share_unmount (struct pawpaw_event* evt) {
     /* unmap the associated page - FIXME: what is "abstraction" hurrr */
     struct pt_entry* pte = page_fetch_existing (current_thread->as->pagetable, reg->vbase);
     if (!pte) {
-        printf ("%s: BADNESS: no page associated with region??? double free\n", __FUNCTION__);
         return PAWPAW_EVENT_UNHANDLED;
     }
     
-    printf ("!!!! unmapping page %p\n", pte);
     int success = page_free (pte);
     seL4_SetMR (0, success);
-    if (!success) {
-        printf ("%s: WARNING: page unmap failed\n", __FUNCTION__);
-    }
-
     as_region_destroy (current_thread->as, reg);
-
-    printf ("%s: post unmount looks like:\n", __FUNCTION__);
-    addrspace_print_regions (current_thread->as);
 
     return PAWPAW_EVENT_NEEDS_REPLY;
 }

@@ -43,7 +43,7 @@ pin svc_net
 mount fstab.txt
 
 # Now that filesystems have been mounted, enable swapping
-swap /swap.bin
+#swap /swap.bin
 
 # We need to ensure this finishes starting before starting 
 # our application, otherwise standard I/O will not be available
@@ -53,5 +53,6 @@ dev_console=sync
 # or a CPIO file. CPIO has priority.
 #/bin/sosh=boot
 #/mnt/cpio/sosh=boot
+sosh=boot
 sosh=boot
 #thrash=boot

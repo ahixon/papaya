@@ -116,7 +116,10 @@ frame_new (void) {
     }
 
     memset (frame, 0, sizeof (struct frameinfo));
-    frame->flags = FRAME_DIRTY;     /* XXX: remove me if we implement mount-as-readonly-first */
+
+    /* XXX: remove me if we implement mount-as-readonly-first */
+    frame->flags = FRAME_DIRTY;
+
     frame_set_refcount (frame, 1);
     return frame;
 }
@@ -171,7 +174,6 @@ frame_alloc (void)
     untyped_addr = ut_alloc (seL4_PageBits);
     if (!untyped_addr) {
         /* oops, out of memory! */
-        printf ("frame_alloc: out of memory\n");
         return 0;
     }
 
@@ -182,7 +184,10 @@ frame_alloc (void)
     struct frameinfo* frame = &frametable[index];
     frame->paddr = untyped_addr;
     frame->flags |= FRAME_FRAMETABLE;
-    frame->flags |= FRAME_DIRTY;        /* XXX: remove me later when remap-on-write implemented */
+
+    /* XXX: remove me later when remap-on-write implemented */
+    frame->flags |= FRAME_DIRTY;
+
     frame_set_refcount (frame, 1);
 
     frame_add_queue (frame);
@@ -201,7 +206,7 @@ frame_alloc_from_existing (struct frameinfo* old) {
         return NULL;
     }
 
-    /* membased shouldn't be in frametable - strictly speaking, OK but yeah */
+    /* membased shouldn't be in frametable */
     assert (!(old->flags & FRAME_FRAMETABLE));
 
     /* copy stuff */
@@ -212,10 +217,9 @@ frame_alloc_from_existing (struct frameinfo* old) {
     /* TODO: do we need to handle membased having next/prev pts? */
     assert (!old->prev && !old->next);
 
-    /* FIXME: assert old refcount was 1 */
+    /* TODO: what if refcount != 1? */
     free (old);
 
-    //printf ("new file = %p\n", new->file);
     return new;
 }
 
@@ -244,7 +248,6 @@ struct frameinfo*
 frame_select_swap_target (void) {
     struct frameinfo* target = frame_head;
     while (target && target->flags & FRAME_PINNED) {
-        printf ("skipping frame %p because it was pinned\n", target);
         target = target->next;
     }
 
@@ -316,38 +319,30 @@ frame_free (struct frameinfo* fi) {
     }
 
     if (fi->file) {
-        printf ("!!!!!!!!!! FREEING FILE??? !!!!!!!!!!!\n");
         free (fi->file);
     }
 
     fi->page = NULL;
 
     /* remove from frame queue */
-    if (!fi->next && !fi->prev) {
-        /* likely a loner + externally allocated */
-        printf ("was loner, skipping framequeue\n");
-        goto frame_free_cleanup;
+    if (fi->next || fi->prev) {
+        if (frame_head == fi) {
+            frame_head = fi->next;
+        }
+
+        if (frame_tail == fi) {
+            frame_tail = fi->prev;
+        }
+
+        /* cut ourselves out */
+        if (fi->prev) {
+            fi->prev->next = fi->next;
+        }
+
+        fi->prev = NULL;
+        fi->next = NULL;
     }
 
-    if (frame_head == fi) {
-        printf ("was head\n");
-        frame_head = fi->next;
-    }
-
-    if (frame_tail == fi) {
-        printf ("was tail\n");
-        frame_tail = fi->prev;
-    }
-
-    /* cut ourselves out */
-    if (fi->prev) {
-        fi->prev->next = fi->next;
-    }
-
-    fi->prev = NULL;
-    fi->next = NULL;
-
-frame_free_cleanup:
     if (fi->flags & FRAME_FRAMETABLE) {
         fi->flags &= ~FRAME_FRAMETABLE;
         allocated--;
@@ -356,25 +351,18 @@ frame_free_cleanup:
     }
 }
 
-#if 0
-/* shouldn't really be used except for debugging */
-void
-frametable_freeall (void) {
-    for (int i = 0; i < high_idx; i++) {
-        frame_free (frametable_get_frame (i));
-    }
-}
-#endif
-
 void
 frametable_stats (void) {
     printf ("Allocated frames: 0x%x\n", allocated);
 
-    /*for (int i = 0; i <= high_idx; i++) {
+#if 0
+    for (int i = 0; i <= high_idx; i++) {
         struct frameinfo* fi = frametable_get_frame (i);
         if (fi->flags & FRAME_ALLOCATED) {
-            printf ("\tFrame 0x%x:\tpaddr 0x%x\t0x%x ref(s)\n", i, fi->paddr, frame_get_refcount (fi));
+            printf ("\tFrame 0x%x:\tpaddr 0x%x\t0x%x ref(s)\n", i, fi->paddr,
+                frame_get_refcount (fi));
         }
     }
-    printf ("\n");*/
+    printf ("\n");
+#endif
 }

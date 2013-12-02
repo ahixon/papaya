@@ -8,8 +8,10 @@ int syscall_alloc_cnodes (struct pawpaw_event* evt) {
 	evt->reply = seL4_MessageInfo_new (0, 0, 0, 2);
     seL4_CPtr root_cptr = 0;
 
-    seL4_SetMR (1, thread_cspace_new_cnodes (current_thread, evt->args[0], &root_cptr));
-    seL4_SetMR (0, root_cptr);	/* root_cptr depends on above call, don't reorder */
+    seL4_SetMR (1, thread_cspace_new_cnodes (current_thread, evt->args[0],
+    	&root_cptr));
+
+    seL4_SetMR (0, root_cptr);	/* root_cptr depends on above; don't reorder */
 
     return PAWPAW_EVENT_NEEDS_REPLY;
 }
@@ -31,7 +33,9 @@ int syscall_create_ep_async (struct pawpaw_event* evt) {
 int syscall_bind_async_tcb (struct pawpaw_event* evt) {
 	evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
 
-	seL4_CPtr our_cap = cspace_copy_cap (cur_cspace, current_thread->croot, evt->args[0], seL4_AllRights);
+	seL4_CPtr our_cap = cspace_copy_cap (cur_cspace, current_thread->croot,
+		evt->args[0], seL4_AllRights);
+	
 	if (!our_cap) {
 		seL4_SetMR (0, 0);
 	} else {

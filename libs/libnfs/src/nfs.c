@@ -13,7 +13,7 @@
 #include <pawpaw.h>
 
 
-#define DEBUG_NFS 1
+//#define DEBUG_NFS 1
 #ifdef DEBUG_NFS
 #define debug(x...) printf(x)
 #else
@@ -116,7 +116,7 @@ nfs_init(const struct ip_addr *server)
     int port;
     /* Initialise our RPC transport layer */
     if(init_rpc(server)){
-        printf("Error receiving time using UDP time protocol\n");
+        debug("Error receiving time using UDP time protocol\n");
         return RPCERR_NOSUP;
     }
 
@@ -124,11 +124,11 @@ nfs_init(const struct ip_addr *server)
     port = portmapper_getport(server, NFS_NUMBER, NFS_VERSION);
     switch(port){
     case -1:
-        printf( "Communication error when acquiring NFS port from portmapper\n" );
+        debug( "Communication error when acquiring NFS port from portmapper\n" );
         return RPCERR_COMM;
     case -0:
     case -2:
-        printf( "Error when acquiring NFS port number from portmapper: Not supported\n" );
+        debug( "Error when acquiring NFS port number from portmapper: Not supported\n" );
         return RPCERR_NOSUP;
     default:
         debug( "NFS port number is %d\n", port);
@@ -360,7 +360,6 @@ nfs_write(const fhandle_t *fh, int offset, int count, const void *data,
     /* Limit the number of bytes to send to fit the packet */
     limit = pbuf->tot_len - pos - sizeof(count);
     if(count > limit){
-        printf ("!!!! LIMITING FROM 0x%x to 0x%x\n", count, limit);
         count = limit;
     }
     /* put the data in */

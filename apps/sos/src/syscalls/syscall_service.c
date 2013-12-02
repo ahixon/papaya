@@ -31,21 +31,23 @@ struct svc_wait* svc_waitlist = NULL;
 int syscall_service_register (struct pawpaw_event* evt) {
     evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
 
-    /* copy the thread's "service" endpoint cap into our cspace so we can dish it out */
-    seL4_Word our_cap = cspace_copy_cap (cur_cspace, current_thread->croot, evt->args[0], seL4_AllRights);
+    /* copy the thread's "service" endpoint cap into our cspace  */
+    seL4_Word our_cap = cspace_copy_cap (cur_cspace, current_thread->croot,
+        evt->args[0], seL4_AllRights);
 
     if (our_cap) {
         current_thread->service_cap = our_cap;
     }
 
-    /* check if we're registering a service and someone was waiting on us already */
+    /* check if we're registering a service + someone was waiting already */
     struct svc_wait* sw = svc_waitlist;
     struct svc_wait* prev = NULL;
     while (sw) {
         int delete = false;
         if (strcmp (current_thread->name, sw->name) == 0) {
             /* found it, wake it and remove */
-            seL4_CPtr client_cap = cspace_mint_cap(sw->thread->croot, cur_cspace, current_thread->service_cap,
+            seL4_CPtr client_cap = cspace_mint_cap(sw->thread->croot,
+                cur_cspace, current_thread->service_cap,
                 seL4_AllRights, seL4_CapData_Badge_new (sw->thread->pid));
 
             seL4_SetMR (0, client_cap);
@@ -84,20 +86,22 @@ int syscall_service_find (struct pawpaw_event* evt) {
     evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
 
     char service_name[MAX_SERVICE_NAME] = {0};
-    if (!copyin (current_thread, evt->args[0], evt->args[1], service_name, MAX_SERVICE_NAME)) {
+    if (!copyin (current_thread, evt->args[0], evt->args[1], service_name,
+        MAX_SERVICE_NAME)) {
+
         /* invalid request, ignore */
         return PAWPAW_EVENT_UNHANDLED;
     }
 
     seL4_CPtr cap = service_lookup (service_name);
     if (cap) {
-        seL4_CPtr client_cap = cspace_mint_cap(current_thread->croot, cur_cspace, cap,
-            seL4_AllRights, seL4_CapData_Badge_new (current_thread->pid));
+        seL4_CPtr client_cap = cspace_mint_cap(current_thread->croot,
+            cur_cspace, cap, seL4_AllRights,
+            seL4_CapData_Badge_new (current_thread->pid));
 
         seL4_SetMR (0, client_cap);
     } else if (seL4_GetMR (1) > 0) {
         /* if service asked to block, wait for it to come available */
-        //printf ("%s: requested service %s not ready, %s will sleep until available\n", __FUNCTION__, service_name, current_thread->name);
         struct svc_wait* sw = malloc (sizeof (struct svc_wait));
 
         sw->name = strdup (service_name);
@@ -119,9 +123,8 @@ int syscall_service_find (struct pawpaw_event* evt) {
 
 seL4_CPtr service_lookup (char* service_name) {
     thread_t found_thread = NULL;
-    thread_t check_thread = threadlist_first();
+    thread_t check_thread = threadlist_first ();
     while (check_thread) {
-        /* FIXME: shouldn't be comparing on thread name, rather name registered with */
         if (strcmp (check_thread->name, service_name) == 0) {
             found_thread = check_thread;
             break;

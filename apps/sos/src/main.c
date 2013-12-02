@@ -91,32 +91,31 @@ void syscall_event_dispose (struct pawpaw_event* evt) {
 }
 
 void swap_success (struct pawpaw_event* evt, struct frameinfo* frame) {
-    printf ("== swap callback\n");
     thread_t thread = (thread_t)evt->args[1];
     assert (thread);
 
-    /* print out the page contents */
-    struct pt_entry* page = page_fetch_existing (thread->as->pagetable, evt->args[0]);
+    /* get the page initially had the fault and then asked to swap in/out */
+    struct pt_entry* page = page_fetch_existing (thread->as->pagetable,
+        evt->args[0]);
+
     assert (page);
 
+    /* and we're done! */
     frame->flags &= ~FRAME_SWAPPING;
-    assert (frame->flags & FRAME_FRAMETABLE);  /* FIXME: in future be able to handle non frametable */
+    assert (frame->flags & FRAME_FRAMETABLE);
 
+    /* frame is the frame with new data, whereas page->frame was the original
+     * page's frame. If the page no longer has a frame, we just swapped out */
     if (!page->frame) {
-    /* page was the page that initally had the fault, whereas frame is the frame with the data */
-        printf ("copying file into new frame\n");
         /* temporarily steal file to prevent free */
         struct mmap* mmap = frame->file;
 
         struct frameinfo* replacement_frame = frame_new ();
         replacement_frame->file = mmap;
         frame->file = NULL;
-
-        /* release the frame if was swap out */
-        printf ("freeing fake page\n");
-        printf ("### %s: refcount was = %d\n", __FUNCTION__, frame_get_refcount (frame));
     
-        /* XXX: forcibly unmount */
+        /* XXX: forcibly unmount share from filesystem */
+        page_free (frame->pages->page);
         struct pagelist* pagenode = frame->pages;
         while (pagenode) {
             struct pagelist* next = pagenode->next;
@@ -127,67 +126,36 @@ void swap_success (struct pawpaw_event* evt, struct frameinfo* frame) {
             pagenode = next;
         }
     
-       
-
-        /*if (frame->page) {
-            printf ("uhh frame = %p while frame->page->frame = %p (refcount = %u)\n", frame, frame->page->frame, frame_get_refcount (frame));
-            printf ("cap for frame->page = 0x%x, while page->cap = 0x%x\n", frame->page->cap, page->cap);
-            //page_free (frame->page);
-            
-            //frame_free (frame->page->frame);
-        }*/
-        //printf ("now freeing actual frame page\n");
-        //frame_free (frame);
         struct pt_entry* orig_page;
 
-        /* this is the pagelist */
+        /* link new mmaped frame to pages that had frame data swapped out */
         seL4_Word refcount = evt->args[3];
         if (refcount == 1) {
             orig_page = (struct pt_entry*)evt->args[2];
-            printf ("orig page was %p\n", orig_page);
             orig_page->frame = replacement_frame;
             replacement_frame->page = orig_page;
         } else {
-            replacement_frame->flags |= FRAME_PAGELIST;
             /* point all the pages back to this guy */
             replacement_frame->pages = (struct pagelist*)evt->args[2];
             struct pagelist* pagenode = replacement_frame->pages;
             while (pagenode) {
-                printf ("an orig page was %p\n", pagenode->page);
                 pagenode->page->frame = replacement_frame;
                 pagenode = pagenode->next;
             }
         }
 
         frame_set_refcount (replacement_frame, refcount);
-
-#if 0
-        thread_t thread = threadlist_first();
-        while (thread) {
-            if (strcmp (thread->name, "thrash") == 0) {
-                pagetable_dump (thread->as->pagetable);
-                assert (!"done");
-            }
-
-            thread = thread->next;
-        }
-        
-        assert (!"failed to find thread");
-#endif
     }
 
     if (page->cap) {
-        printf ("flushing caches...\n");
         seL4_ARM_Page_FlushCaches (page->cap);        
         page_dump (page, (vaddr_t)evt->args[0]);
     }
 
 
     /* wake the thread up */
-    printf ("resuming thread..\n");
     seL4_Send (evt->reply_cap, evt->reply);
 
-    //printf ("disposing..\n");
     syscall_event_dispose (evt);
 }
 
@@ -201,7 +169,6 @@ void syscall_loop (seL4_CPtr ep) {
         /* look for the thread associated with the syscall */
         thread_t thread = thread_lookup (badge);
         if (!thread) {
-            printf ("syscall: thread lookup for %d failed\n", badge);
             continue;
         }
 
@@ -212,16 +179,16 @@ void syscall_loop (seL4_CPtr ep) {
         {
             struct pawpaw_event* evt = pawpaw_event_create (message, badge);
             if (!evt) {
-                printf ("syscall: failed to create event\n");
                 syscall_event_dispose (evt);
                 break;
             }
 
             /* only process valid events, and ignore everything else */
-            int result = pawpaw_event_process (&syscall_table, evt, save_reply_cap);
+            int result = pawpaw_event_process (&syscall_table, evt,
+                save_reply_cap);
+
             switch (result) {
                 case PAWPAW_EVENT_NEEDS_REPLY:
-                    printf ("-S- replying on cap 0x%x\n", evt->reply_cap);
                     seL4_Send (evt->reply_cap, evt->reply);
                     break;
                 case PAWPAW_EVENT_HANDLED:
@@ -233,7 +200,9 @@ void syscall_loop (seL4_CPtr ep) {
                 case PAWPAW_EVENT_INVALID:
                 case PAWPAW_EVENT_UNHANDLED:
                 default:
-                    printf ("syscall: 0x%x failed, killing thread %s\n", seL4_GetMR (0), thread->name);
+                    /*printf ("syscall: 0x%x failed, killing thread %s\n",
+                        seL4_GetMR (0), thread->name);*/
+
                     thread_destroy (thread);
                     break;
             }
@@ -257,8 +226,8 @@ void syscall_loop (seL4_CPtr ep) {
             /* find associated region, if any */
             struct as_region* reg = as_get_region_by_addr (thread->as, vaddr);
             if (reg) {
-                /* if we're mapping inside the stack region, update our "last used" stack
-                 * counter - stack grows downwards */
+                /* if we're mapping inside the stack region, update our
+                 * "last used" stack counter - stack grows downwards */
                 if (thread->as->special_regions[REGION_STACK] == reg) {
                     if (vaddr < thread->as->stack_vaddr) {
                         thread->as->stack_vaddr = vaddr;
@@ -268,7 +237,6 @@ void syscall_loop (seL4_CPtr ep) {
                 int status = PAGE_FAILED;
                 struct pawpaw_event* evt = pawpaw_event_create (message, badge);
                 if (!evt) {
-                    printf ("syscall: failed to create event\n");
                     syscall_event_dispose (evt);
                     thread_destroy (thread);
                     break;
@@ -280,16 +248,12 @@ void syscall_loop (seL4_CPtr ep) {
                 evt->args[0] = vaddr;
                 evt->args[1] = (seL4_Word)thread;
 
-                printf ("%s faulted on addr 0x%x\n", thread->name, vaddr);
+                /* FIXME: check if page is currently being swapped then WAIT,
+                 * then try again. Need a wait queue! */
 
-                /* FIXME: check if page is currently being swapped then WAIT, then try again:
-                    * swap in on swapped in page should do nothing
-                    * swap out on swapped in page should swap out
-                    * swap in on swapped out page should swap in
-                    * swap out on swapped out page should do nothing
-                 */
+                struct pt_entry *page = page_map (thread->as, reg, vaddr,
+                    &status, swap_success, evt);
 
-                struct pt_entry *page = page_map (thread->as, reg, vaddr, &status, swap_success, evt);
                 if (page) {
                     if (thread->pinned) {
                         /* pin root server related pages */
@@ -308,12 +272,9 @@ void syscall_loop (seL4_CPtr ep) {
                     /* waiting for page to be swapped, mmap_svc will tell us */
                     break;
                 }        
-
-                printf ("syscall: pagemap failed\n");
-            } else {
-                printf ("syscall: no such region for vaddr 0x%x\n", vaddr);
             }
 
+#if 0
             dprintf (0, "vm fault at 0x%08x, pc = 0x%08x, %s\n", seL4_GetMR(1),
                     seL4_GetMR(0),
                     seL4_GetMR(2) ? "Instruction Fault" : "Data fault");
@@ -323,7 +284,8 @@ void syscall_loop (seL4_CPtr ep) {
             addrspace_print_regions (thread->as);
             pagetable_dump (thread->as->pagetable);
 
-            dprintf (0, "killing thread %d (%s)...\n", thread->pid, thread->name);
+            dprintf (0, "killing thread %d (%s)\n", thread->pid, thread->name);
+#endif
             thread_destroy (thread);
             break;
         }
@@ -395,15 +357,13 @@ static void rootserver_init (seL4_CPtr* ipc_ep, seL4_CPtr* async_ep) {
 
     /* find available memory */
     ut_find_memory (&low, &high);
-    high = low + (0x1000 * 1024 * 1.5);  /* XXX: artificially limit memory to 1 MB - funny part is we can run most
-                                        * of the OS with like 250KB memory if you lazy load stuff */
 
     /* Initialise the untyped memory allocator */
     ut_allocator_init (low, high);
 
     /* Initialise the cspace manager */
-    err = cspace_root_task_bootstrap (cspace_ut_alloc_wrapper, cspace_ut_free_wrapper, ut_translate,
-                                     malloc, free);
+    err = cspace_root_task_bootstrap (cspace_ut_alloc_wrapper,
+        cspace_ut_free_wrapper, ut_translate, malloc, free);
     conditional_panic (err, "failed to initialise root CSpace\n");
 
     /* Initialise frametable */
@@ -414,7 +374,7 @@ static void rootserver_init (seL4_CPtr* ipc_ep, seL4_CPtr* async_ep) {
 
     /* Setup address space + pagetable for root server */
     cur_addrspace = addrspace_create (seL4_CapInitThreadPD);
-    conditional_panic (!cur_addrspace, "failed to create root server address space");
+    conditional_panic (!cur_addrspace, "failed to create rootsvr addrspace");
 
     /* Initialise PID and map ID generators */
     uid_init ();
@@ -450,11 +410,13 @@ static void rootserver_init (seL4_CPtr* ipc_ep, seL4_CPtr* async_ep) {
     conditional_panic( err, "Failed to bind async EP to TCB");
 
     /* Start internal badge map service */
-    thread_t badgemap_thread = thread_create_internal ("badgemap", cur_cspace, cur_addrspace, mapper_main);
+    thread_t badgemap_thread = thread_create_internal ("badgemap", cur_cspace,
+        cur_addrspace, mapper_main);
+
     conditional_panic (!badgemap_thread, "failed to start badgemap");
     thread_pin (badgemap_thread);
 
-    /* Create specific EP for badge map communication (compared to syscall EP) */
+    /* Create specific EP for badge map communication (cmp to syscall EP) */
     ep_addr = ut_alloc (seL4_EndpointBits);
     conditional_panic (!ep_addr, "no memory for badgemap endpoint");
     err = cspace_ut_retype_addr (ep_addr, 
@@ -462,7 +424,7 @@ static void rootserver_init (seL4_CPtr* ipc_ep, seL4_CPtr* async_ep) {
                                 cur_cspace, &_badgemap_ep);
     conditional_panic (err, "failed to retype badgemap endpoint");
 
-    /* Create specific EP for badge map communication (compared to syscall EP) */
+    /* Create specific EP for badge map communication (cmp to syscall EP) */
     ep_addr = ut_alloc (seL4_EndpointBits);
     conditional_panic (!ep_addr, "no memory for mmap endpoint");
     err = cspace_ut_retype_addr (ep_addr, 
@@ -471,7 +433,9 @@ static void rootserver_init (seL4_CPtr* ipc_ep, seL4_CPtr* async_ep) {
     conditional_panic (err, "failed to retype mmap endpoint");
 
     /* Start mmap svc */
-    thread_t mmap_thread = thread_create_internal ("mmap", cur_cspace, cur_addrspace, mmap_main);
+    thread_t mmap_thread = thread_create_internal ("mmap", cur_cspace,
+        cur_addrspace, mmap_main);
+
     conditional_panic (!mmap_thread, "failed to start mmap");
     thread_pin (mmap_thread);
 
@@ -479,11 +443,12 @@ static void rootserver_init (seL4_CPtr* ipc_ep, seL4_CPtr* async_ep) {
     ep_addr = ut_alloc (seL4_EndpointBits);
     conditional_panic (!ep_addr, "no memory for CPIO FS EP");
 
-    thread_t fs_cpio_thread = thread_create_internal ("fs_cpio", NULL, cur_addrspace, fs_cpio_main);
+    thread_t fs_cpio_thread = thread_create_internal ("fs_cpio", NULL,
+        cur_addrspace, fs_cpio_main);
+
     conditional_panic (!fs_cpio_thread, "failed to start fs_cpio");
     thread_pin (fs_cpio_thread);
 
-    /* XXX: racey, but #yolo */
     thread_setup_default_caps (fs_cpio_thread, rootserver_syscall_cap);
 
     err = cspace_ut_retype_addr (ep_addr, 
@@ -493,7 +458,9 @@ static void rootserver_init (seL4_CPtr* ipc_ep, seL4_CPtr* async_ep) {
 
     /* FIXME: move into thread.c somewhere */
     cspace_free_slot (fs_cpio_thread->croot, PAPAYA_INITIAL_FREE_SLOT);
-    seL4_CPtr last_cap = cspace_copy_cap (fs_cpio_thread->croot, cur_cspace, _fs_cpio_ep, seL4_AllRights);
+    seL4_CPtr last_cap = cspace_copy_cap (fs_cpio_thread->croot, cur_cspace,
+        _fs_cpio_ep, seL4_AllRights);
+
     assert (last_cap == PAPAYA_INITIAL_FREE_SLOT);
 }
 
@@ -501,7 +468,7 @@ static void rootserver_init (seL4_CPtr* ipc_ep, seL4_CPtr* async_ep) {
  * Main entry point - called by crt.
  */
 int main (void) {
-    dprintf (0, "\nPapaya starting...\n");
+    //dprintf (0, "\nPapaya starting...\n");
 
     /* initialise root server from whatever seL4 left us */
     rootserver_init (&rootserver_syscall_cap, &rootserver_async_cap);
@@ -509,11 +476,13 @@ int main (void) {
     /* start the system boot thread - this will create all basic
      * services, and start the boot application when they're all
      * ready */    
-    thread_t booter = thread_create_internal ("svc_init", cur_cspace, cur_addrspace, boot_thread);
+    thread_t booter = thread_create_internal ("svc_init", cur_cspace,
+        cur_addrspace, boot_thread);
+
     conditional_panic (!booter, "could not start boot thread\n");
 
     /* and just listen for IPCs */
-    dprintf (0, "Started.\n");
+    //dprintf (0, "Started.\n");
     syscall_loop (rootserver_syscall_cap);
 
     return 0;   /* not reached */

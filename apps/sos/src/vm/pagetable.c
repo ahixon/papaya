@@ -21,54 +21,6 @@
 
 extern seL4_CPtr _badgemap_ep;      /* XXX: move later */
 
-void
-pagetable_dump (pagetable_t pt) {
-    printf ("== dumping pagetable %p\n", pt);
-    for (int i = 0; i < PAGETABLE_L1_SIZE; i++) {
-        struct pt_table* table = pt->entries[i];
-        short printed = false;
-        if (table == NULL) {
-            continue;
-        }
-
-        printf ("0x%04x: ", i);
-
-        for (int j = 0; j < PAGETABLE_L2_SIZE; j++) {
-            struct pt_entry* entry = &table->entries[j];
-
-            if (entry->frame) {
-                if (printed) {
-                    printf ("\t");
-                } else {
-                    printed = true;
-                }
-
-
-                vaddr_t vaddr =
-                    (i << PAGETABLE_L1_BITS) | (j << PAGETABLE_L2_BITS);
-
-                /*paddr_t paddr = 
-                    entry.frame ? entry.frame->paddr : 0;*/
-
-                printf ("\t0x%03x: vaddr %08x PTE %p ", j, vaddr, entry);
-                printf ("frame %p => paddr %08x cap 0x%08x %s %s\n",
-                    entry->frame, entry->frame->paddr, entry->cap,
-                    //entry.frame->flags & FRAME_SHARED ? "SHARED" : "",
-                    "??",
-                    //entry.frame->flags & FRAME_SWAPPING ? "SWAPPING" : "");
-                    "??");
-                    //entry.frame->flags & );
-            }
-        }
-
-        if (!printed) {
-            printf ("\n");
-        }
-
-    }
-    printf ("\n");
-}
-
 pagetable_t
 pagetable_init (void) {
     pagetable_t pt = malloc (sizeof (struct pt_directory));
@@ -92,7 +44,6 @@ pagetable_kernel_install_pt (addrspace_t as, seL4_ARM_VMAttributes attributes,
 
     pt_addr = ut_alloc (seL4_PageTableBits);
     if (pt_addr == 0){
-        printf ("pagetable_kernel_install_pt: utalloc failed\n");
         return 0;
     }
 
@@ -101,9 +52,6 @@ pagetable_kernel_install_pt (addrspace_t as, seL4_ARM_VMAttributes attributes,
                                  seL4_ARM_PageTableObject, seL4_PageTableBits,
                                  cur_cspace, &pt_cap);
     if (err) {
-        printf ("%s: retype failed: %s\n",__FUNCTION__,
-            seL4_Error_Message (err));
-
         ut_free (pt_addr, seL4_PageTableBits);
         return 0;
     }
@@ -115,9 +63,9 @@ pagetable_kernel_install_pt (addrspace_t as, seL4_ARM_VMAttributes attributes,
                                  attributes);
 
     if (err) {
-        printf ("%s: seL4_ARM_PageTable_Map failed: %s\n",
-            __FUNCTION__, seL4_Error_Message(err));
-
+        /* functions in nmapping.c may have already mapped a PT for us; in that
+         * case, we don't actually have an error. TODO: Would be nice to 
+         * replace that with our nice region code though */
         if (err != seL4_DeleteFirst) {
             ut_free (pt_addr, seL4_PageTableBits);
             return 0;
@@ -165,7 +113,6 @@ page_fetch_new (addrspace_t as, seL4_ARM_VMAttributes attributes,
 
         table = malloc (sizeof (struct pt_table));
         if (!table) {
-            printf ("page_map: malloc failed\n");
             return NULL;
         }
 
@@ -174,7 +121,6 @@ page_fetch_new (addrspace_t as, seL4_ARM_VMAttributes attributes,
         /* now create the capability */
         pt_cap = pagetable_kernel_install_pt (as, attributes, vaddr, &pt_addr);
         if (!pt_cap) {
-            printf ("pagetable map failed\n");
             free (table);
             return NULL;
         }
@@ -202,7 +148,6 @@ page_fetch_existing (pagetable_t pt, vaddr_t vaddr) {
 
     struct pt_table* table = pt->entries[l1];
     if (!table) {
-        printf ("%s: failed - no page table @ L1 idx 0x%x\n", __FUNCTION__, l1);
         return NULL;
     }
 
@@ -232,7 +177,7 @@ page_fetch_existing (pagetable_t pt, vaddr_t vaddr) {
  *  - PAGE_SWAP_OUT Page is being swapped out to swapfile. You should reattempt
  *                  to map the page when your callback is called.
  *
- * Yes, this is a long function, but it's pretty readable (I think) :)
+ * Yes, this is a long function, but it [was] pretty readable :)
  */
 struct pt_entry*
 page_map (addrspace_t as, struct as_region *region, vaddr_t vaddr, int *status,
@@ -259,14 +204,12 @@ page_map (addrspace_t as, struct as_region *region, vaddr_t vaddr, int *status,
 
     /* check if page already allocated - ie has cap AND underyling frame */
     if (entry->cap && entry->frame && entry->frame->flags & FRAME_FRAMETABLE) {
-        printf ("%s: !!!!!!!!!!!!!!!! page already mapped and in frametable\n", __FUNCTION__);
         return entry;
     }
 
     if (entry->frame && entry->frame->flags & FRAME_SWAPPING) {
         /* underlying frame being swapped at the moment - caller should wait
          * until callback from original page is called, then try again */
-        printf ("%s: page still being swapped, not remapping\n", __FUNCTION__);
         /* FIXME: should have more specific flag here */
         *status = PAGE_SWAP_OUT;
         return NULL;
@@ -275,22 +218,17 @@ page_map (addrspace_t as, struct as_region *region, vaddr_t vaddr, int *status,
     /* no frame yet, or had frame but no physical address */
     if (!entry->frame || !entry->frame->paddr) {
         if (entry->frame) {
-            printf ("no frame yet, was mmaped page, allocing from existing\n");
             /* mmap'd page, with no physical memory backing yet - move into
              * frametable if we can alloc a frame */
             entry->frame = frame_alloc_from_existing (entry->frame);
-            /* FIXME: if this fails, we lose our frame info */
         } else {
-            printf ("regular page, just allocing\n");
             /* just a regular page, just alloc a frame normally */
             entry->frame = frame_alloc ();
 
             if (!entry->frame && as->pinned) {
-                printf ("%s: using reserved page because alloc failed + we are pinned\n", __FUNCTION__);
                 /* use reserved pages if we're all out */
                 paddr_t paddr = frame_get_reserved ();
                 if (!paddr) {
-                    printf ("%s: uh oh, no more reserved pages left...\n", __FUNCTION__);
                     /* well, we're screwed now, aren't we... */
                     *status = PAGE_FAILED;
                     return NULL;
@@ -298,7 +236,6 @@ page_map (addrspace_t as, struct as_region *region, vaddr_t vaddr, int *status,
 
                 entry->frame = frame_new_from_untyped (paddr);
                 if (!entry->frame) {
-                    printf ("%s: uh oh, malloc of frame failed...\n", __FUNCTION__);
                     /* well, we're screwed now, aren't we... */
                     *status = PAGE_FAILED;
                     return NULL;
@@ -309,7 +246,6 @@ page_map (addrspace_t as, struct as_region *region, vaddr_t vaddr, int *status,
         }
 
         if (!entry->frame) {
-            printf ("needing to swap out\n");
             /* no frames left, pick one to replace it and swap out if req'd */
             struct frameinfo* target = frame_select_swap_target ();
             if (target->flags & FRAME_DIRTY) {
@@ -319,23 +255,22 @@ page_map (addrspace_t as, struct as_region *region, vaddr_t vaddr, int *status,
                 assert (target->page);
 
                 /*
-                 * Need to do this instead of unmapping all the pages, and then mapping
-                 * the frame in again, because if it appears if frame refcount goes to zero,
-                 * seL4 empties the page for us, and we lose all our data.
+                 * Need to do this instead of unmapping all the pages, and then
+                 * mapping the frame in again, because if it appears if frame
+                 * refcount goes to zero, seL4 empties the page for us, and we
+                 * lose all our data.
                  *
                  * seL4 BUG or undocumented feature?! ¯\(°_o)/¯ 
                  */
                 seL4_CPtr target_copy;
 
-                /* FIXME: are we SURE we don't want free instead of unmap? */
                 if (frame_get_refcount (target) > 1) {
                     /* one to many frame=>page mapping (shared page); walk the
                      * list of relevent pages and free those */
 
                     struct pagelist* pagenode = target->pages;
-                    printf ("page addr = 0x%x or 0x%x\n", target->paddr, pagenode->page->frame->paddr);
-                    target_copy = cspace_copy_cap (cur_cspace, cur_cspace, pagenode->page->cap, seL4_AllRights);
-                    printf ("nb: had many refcount\n");
+                    target_copy = cspace_copy_cap (cur_cspace, cur_cspace,
+                        pagenode->page->cap, seL4_AllRights);
                     while (pagenode) {
                         if (!page_unmap (pagenode->page)) {
                             *status = PAGE_FAILED;
@@ -346,8 +281,9 @@ page_map (addrspace_t as, struct as_region *region, vaddr_t vaddr, int *status,
                     }
                 } else {
                     /* one to one frame=>page mapping */
-                    printf ("page addr = 0x%x or 0x%x\n", target->paddr, target->page->frame->paddr);
-                    target_copy = cspace_copy_cap (cur_cspace, cur_cspace, target->page->cap, seL4_AllRights);
+                    target_copy = cspace_copy_cap (cur_cspace, cur_cspace,
+                        target->page->cap, seL4_AllRights);
+
                     if (!page_unmap (target->page)) {
                         *status = PAGE_FAILED;
                         return NULL;
@@ -356,69 +292,35 @@ page_map (addrspace_t as, struct as_region *region, vaddr_t vaddr, int *status,
 
                 assert (target_copy);
 
-                /* move the frame into the root server, since vaddr is unknown */
-                /* FIXME: need to clean this up after swap OK */
+                /* move the frame into the root server since vaddr is unknown */
+                /* FIXME: need to clean/free after swap was successful */
                 seL4_CPtr cap;
                 seL4_Word dest_id;
-                printf ("Creating share region..\n");
-                struct as_region* reg = create_share_reg (&cap, &dest_id, false);
+                struct as_region* reg = create_share_reg(&cap, &dest_id, false);
                 if (!reg) {
                     *status = PAGE_FAILED;
                     return NULL;
                 }
 
-                /* share them */
-
-#if 0
-                printf ("created share @ vaddr 0x%x, mounting in pagetable\n", reg->vbase);
-                int share_status = PAGE_FAILED;
-                struct pt_entry* fake_page = page_map_shared (cur_addrspace, reg, reg->vbase,
-                    as, region, vaddr, false, &share_status, NULL, NULL);
-                assert (share_status == PAGE_SUCCESS);
-
-                printf ("done, OK\n", reg->vbase);
-#endif
-
                 /* get the PTE for the newly created region */
-                struct pt_entry* fake_page = page_fetch_new (cur_addrspace, reg->attributes,
-                    cur_addrspace->pagetable, reg->vbase);
+                struct pt_entry* fake_page = page_fetch_new (cur_addrspace,
+                    reg->attributes, cur_addrspace->pagetable, reg->vbase);
 
                 assert (fake_page);
-                fake_page->cap = target_copy;
-
-#if 0
-                err = cspace_ut_retype_addr (target->paddr,
-                                     seL4_ARM_SmallPageObject, seL4_PageBits,
-                                     cur_cspace, &(fake_page->cap));
-
-                if (err != seL4_NoError) {
-                    printf ("page_map: could not retype fake copy - still had stuff mapped: %s\n",
-                        seL4_Error_Message (err));
-
-                    assert (false);
-                }
-#endif
-
-                /*printf ("post unmap:\n");
-                page_dump (fake_page, 0);*/
 
                 /* and give it our frame */
-                printf ("assigned frame\n");
-                
+                fake_page->cap = target_copy;
                 fake_page->frame = target;
-                fake_page->frame->file = NULL;
-                evt->args[2] = (seL4_Word)target->page;    /* store old page pointer since we need to point all the
-                                                   old pages to the swapped out frame */
-                evt->args[3] = frame_get_refcount (target);
                 target->page = fake_page;
                 target->flags &= ~FRAME_PAGELIST;
                 frame_set_refcount (target, 1);
 
+                /* store old page pointer since we need to point all the old
+                 * pages to the swapped out frame  XXX: yuck, use a struct! */
+                evt->args[2] = (seL4_Word)target->page;    
+                evt->args[3] = frame_get_refcount (target);
 
                 /* schedule for swapping now that nobody has page mapped in */
-                printf ("%s: swapping paddr 0x%x\n", __FUNCTION__,
-                    target->paddr);
-
                 if (mmap_swap (PAGE_SWAP_OUT, reg->vbase, target, cb, evt)) {
                     *status = PAGE_SWAP_OUT;
                 } else {
@@ -427,7 +329,6 @@ page_map (addrspace_t as, struct as_region *region, vaddr_t vaddr, int *status,
 
                 return NULL;
             } else {
-                printf ("page was clean, unmapping and using that!\n");
                 /* should be clean, so no need to write out data */
                 /* FIXME: what if mmaped? */
                 /* FIXME: need to move to non-frametable version, setup
@@ -454,12 +355,8 @@ page_map (addrspace_t as, struct as_region *region, vaddr_t vaddr, int *status,
                                      seL4_ARM_SmallPageObject, seL4_PageBits,
                                      cur_cspace, &(entry->cap));
         if (err != seL4_NoError) {
-            printf ("page_map: could not retype: %s\n",
-                seL4_Error_Message (err));
-            /* FIXME: only free if we did the allocation, otherwise leave for
-             * whoever */
             //frame_free (entry->frame);
-            //entry->frame = NULL;
+            entry->frame = NULL;
 
             *status = PAGE_FAILED;
             return NULL;
@@ -468,11 +365,8 @@ page_map (addrspace_t as, struct as_region *region, vaddr_t vaddr, int *status,
 
     /* map the page capability into the thread's VSpace */
     if (!pagetable_kernel_map_page (entry, vaddr, region, as)) {
-        printf ("actual page map failed\n");
-        /* FIXME: only free if we did the allocation, otherwise leave for
-         * whoever */
         frame_free (entry->frame);
-        entry->frame = NULL;
+        //entry->frame = NULL;
 
         *status = PAGE_FAILED;
         return NULL;
@@ -484,7 +378,6 @@ page_map (addrspace_t as, struct as_region *region, vaddr_t vaddr, int *status,
     if (entry->frame->file) {
         entry->frame->flags |= FRAME_SWAPPING;
 
-        printf ("%s: swapping in page\n", __FUNCTION__);
         if (mmap_swap (PAGE_SWAP_IN, vaddr, entry->frame, cb, evt)) {
             *status = PAGE_SWAP_IN;
         } else {
@@ -502,7 +395,6 @@ page_map (addrspace_t as, struct as_region *region, vaddr_t vaddr, int *status,
         struct pagelist* pagenode_new = malloc (sizeof (struct pagelist));
 
         if (!pagenode_new || !pagenode_old) {
-            printf ("%s: failed to malloc pagenode\n", __FUNCTION__);
             page_unmap (entry);
 
             *status = PAGE_FAILED;
@@ -517,10 +409,8 @@ page_map (addrspace_t as, struct as_region *region, vaddr_t vaddr, int *status,
 
         entry->frame->flags |= FRAME_PAGELIST;
     } else {
-        printf ("(Y) refcount was %u\n", refcount);
         struct pagelist* pagenode = malloc (sizeof (struct pagelist));
         if (!pagenode) {
-            printf ("%s: failed to malloc pagenode\n", __FUNCTION__);
             page_unmap (entry);
 
             *status = PAGE_FAILED;
@@ -551,12 +441,7 @@ pagetable_free (pagetable_t pt) {
 
             /* now free the table cap + addrs */
             if (pt->table_caps [l1]) {
-                if (seL4_ARM_PageTable_Unmap (pt->table_caps [l1])) {
-                    printf ("%s: unmap failed\n", __FUNCTION__);
-                    /* FIXME: continue depending on error type since delete/free
-                    would be bad */
-                }
-
+                seL4_ARM_PageTable_Unmap (pt->table_caps [l1]);
                 cspace_delete_cap (cur_cspace, pt->table_caps [l1]);
             }
 
@@ -577,8 +462,6 @@ pagetable_free (pagetable_t pt) {
  */
 int
 page_unmap (struct pt_entry* entry) {
-    printf ("unmapping PTE %p\n", entry);
-
     if (!entry) {
         return false;
     }
@@ -587,7 +470,7 @@ page_unmap (struct pt_entry* entry) {
     if (entry->cap) {
         //seL4_ARM_Page_FlushCaches(entry->cap);
         seL4_ARM_Page_Unmap (entry->cap);
-        //cspace_revoke_cap (cur_cspace, entry->cap); /* FIXME: hmm */
+        //cspace_revoke_cap (cur_cspace, entry->cap);
         cspace_delete_cap (cur_cspace, entry->cap);
 
         entry->cap = 0;
@@ -602,14 +485,9 @@ page_unmap (struct pt_entry* entry) {
  */
 int
 page_free (struct pt_entry* entry) {
-    printf ("freeing page %p\n", entry);
-
-    /*if (!page_unmap (entry)) {
-        return false;
-    }*/
-
     page_unmap (entry);
 
+    /* TODO: is this correct? */
     if (entry->frame) {
         /* remove ourselves from the pagelist TODO: move into frametable.c */
         if (entry->frame->flags & FRAME_PAGELIST) {
@@ -625,7 +503,6 @@ page_free (struct pt_entry* entry) {
                         entry->frame->pages = plnext;
                     }
 
-                    printf ("-- removed ourselves from pagelist\n");
                     free (plentry);
                     break;
                 }
@@ -639,7 +516,6 @@ page_free (struct pt_entry* entry) {
         entry->frame = NULL;
     }
 
-
     /* don't need to "free" page pointer per-se since it's part of
      * pagetable (L2) struct */
 
@@ -650,7 +526,7 @@ page_free (struct pt_entry* entry) {
  * Maps in a new page at a given virtual address in one address space,
  * sharing the underlying frame from another page in another address space.
  *
- * This function definitely needs more parameters....
+ * This function definitely needs more parameters.... /s
  */
 struct pt_entry*
 page_map_shared (addrspace_t as_dst, struct as_region* reg_dst, vaddr_t dst,
@@ -664,12 +540,10 @@ page_map_shared (addrspace_t as_dst, struct as_region* reg_dst, vaddr_t dst,
         as_dst, reg_dst->attributes, as_dst->pagetable, dst);
 
     if (!src_entry || !dst_entry) {
-        printf ("%s: missing source or dest PTE\n", __FUNCTION__);
         return NULL;
     }
 
     if (!src_entry->frame || !src_entry) {
-        printf ("!!!! SOURCE PAGE %p HAD NO PHYSICAL FRAME - mapping\n", src_entry);
         src_entry = page_map (as_src, reg_src, src, status, cb, evt);
 
         if (!src_entry || *status != PAGE_SUCCESS) {
@@ -693,7 +567,6 @@ page_map_shared (addrspace_t as_dst, struct as_region* reg_dst, vaddr_t dst,
 
     /* update underlying frame refcount */
     unsigned int refcount = frame_get_refcount (dst_entry->frame);
-    printf ("refcount was %u\n", refcount);
     frame_set_refcount (dst_entry->frame, ++refcount);
 
     /* duplicate the kernel's page table entry */
@@ -701,17 +574,12 @@ page_map_shared (addrspace_t as_dst, struct as_region* reg_dst, vaddr_t dst,
         cur_cspace, cur_cspace, src_entry->cap, seL4_AllRights);
 
     if (!dst_entry->cap) {
-        printf ("%s: copy cap for shared page failed\n", __FUNCTION__);
         page_free (dst_entry);
         return NULL;
     }
 
-    printf ("%s: copied cap for 0x%x, now 0x%x\n", __FUNCTION__, dst, dst_entry->cap);
-    printf ("dst entry = %p and frame = %p\n", dst_entry, dst_entry->frame);
-
     /* and map that new PTE cap into the dest address space */
     if (!pagetable_kernel_map_page (dst_entry, dst, reg_dst, as_dst)) {
-        printf ("%s: PTE kernel map failed\n", __FUNCTION__);
         page_free (dst_entry);
         return NULL;
     }
@@ -720,13 +588,11 @@ page_map_shared (addrspace_t as_dst, struct as_region* reg_dst, vaddr_t dst,
 
     /* update mapped list */
     assert (refcount >= 2);
-    printf ("### %s: refcount now = %d\n", __FUNCTION__, frame_get_refcount (dst_entry->frame));
     if (refcount == 2) {
         struct pagelist* pagenode_old = malloc (sizeof (struct pagelist));
         struct pagelist* pagenode_new = malloc (sizeof (struct pagelist));
 
         if (!pagenode_new || !pagenode_old) {
-            printf ("%s: failed to malloc pagenode\n", __FUNCTION__);
             page_unmap (entry);
 
             *status = PAGE_FAILED;
@@ -743,7 +609,6 @@ page_map_shared (addrspace_t as_dst, struct as_region* reg_dst, vaddr_t dst,
     } else {
         struct pagelist* pagenode = malloc (sizeof (struct pagelist));
         if (!pagenode) {
-            printf ("%s: failed to malloc pagenode\n", __FUNCTION__);
             page_unmap (entry);
 
             *status = PAGE_FAILED;
@@ -754,10 +619,6 @@ page_map_shared (addrspace_t as_dst, struct as_region* reg_dst, vaddr_t dst,
         pagenode->next = entry->frame->pages;
         entry->frame->pages = pagenode;
     }
-
-    printf ("mapped OK, refcount now %u\n", frame_get_refcount(entry->frame));
-
-
 
     *status = PAGE_SUCCESS;
     return dst_entry;
@@ -779,23 +640,72 @@ pagetable_pin (pagetable_t pt) {
             struct pt_entry* entry = &table->entries[j];
 
             if (entry->frame) {
-                /* FIXME: remove from frmaetable queue instead */
+                /* TODO: remove from frmaetable queue instead */
                 entry->frame->flags |= FRAME_PINNED;
             }
         }
     }
 }
 
-void 
-page_dump (struct pt_entry* page, vaddr_t vaddr) {
+
+void
+pagetable_dump (pagetable_t pt) {
+    printf ("== dumping pagetable %p\n", pt);
+    for (int i = 0; i < PAGETABLE_L1_SIZE; i++) {
+        struct pt_table* table = pt->entries[i];
+        short printed = false;
+        if (table == NULL) {
+            continue;
+        }
+
+        printf ("0x%04x: ", i);
+
+        for (int j = 0; j < PAGETABLE_L2_SIZE; j++) {
+            struct pt_entry* entry = &table->entries[j];
+
+            if (entry->frame) {
+                if (printed) {
+                    printf ("\t");
+                } else {
+                    printed = true;
+                }
+
+
+                vaddr_t vaddr =
+                    (i << PAGETABLE_L1_BITS) | (j << PAGETABLE_L2_BITS);
+
+                printf ("\t0x%03x: vaddr %08x PTE %p ", j, vaddr, entry);
+                printf ("frame %p => paddr %08x cap 0x%08x %s %s\n",
+                    entry->frame, entry->frame->paddr, entry->cap,
+                    //entry.frame->flags & FRAME_SHARED ? "SHARED" : "",
+                    "??",
+                    //entry.frame->flags & FRAME_SWAPPING ? "SWAPPING" : "");
+                    "??");
+                    //entry.frame->flags & );
+            }
+        }
+
+        if (!printed) {
+            printf ("\n");
+        }
+
+    }
+    printf ("\n");
+}
+
+/*
+ * Prints an xxd-like representation of a given page.
+ */
+void  page_dump (struct pt_entry* page, vaddr_t vaddr) {
     assert (page->cap);
-    seL4_CPtr cap = cspace_copy_cap (cur_cspace, cur_cspace, page->cap, seL4_AllRights);
+    seL4_CPtr cap = cspace_copy_cap (cur_cspace, cur_cspace, page->cap,
+        seL4_AllRights);
+    
     assert (cap);
 
     int err = map_page (cap, seL4_CapInitThreadPD,
         FRAMEWINDOW_VSTART, seL4_AllRights, seL4_ARM_Default_VMAttributes);
 
-    printf ("err = %d\n", err);
     assert (!err);
 
     for (int i = 0; i < PAGE_SIZE; i += 0x10) {

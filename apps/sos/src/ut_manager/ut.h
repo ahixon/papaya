@@ -76,18 +76,18 @@ void ut_allocator_init(seL4_Word low, seL4_Word high);
  * @param sizebits the amount of contiguous and aligned memory to reserve (2^sizebits)
  * @return the address of the reserved memory which can be passed to ut_translate
  */
-seL4_Word ut_alloc_debug (const char* line, const int lineno, int sizebits);
-//seL4_Word ut_alloc(int sizebits);
-#define ut_alloc(sizebits)	(ut_alloc_debug (__FUNCTION__, __LINE__, sizebits))
+//seL4_Word ut_alloc_debug (const char* line, const int lineno, int sizebits);
+seL4_Word ut_alloc(int sizebits);
+//#define ut_alloc(sizebits)	(ut_alloc_debug (__FUNCTION__, __LINE__, sizebits))
 
 /**
  * Free reserved memory
  * @param addr the address that should be freed
  * @param sizebits the size that was used for the allocation
  */
-//void ut_free(seL4_Word addr, int sizebits);
-void ut_free_debug (const char* func, const int lineno, seL4_Word addr, int sizebits);
-#define ut_free(addr, sizebits) (ut_free_debug (__FUNCTION__, __LINE__, addr, sizebits))
+void ut_free(seL4_Word addr, int sizebits);
+//void ut_free_debug (const char* func, const int lineno, seL4_Word addr, int sizebits);
+//#define ut_free(addr, sizebits) (ut_free_debug (__FUNCTION__, __LINE__, addr, sizebits))
 
 void ut_stats (void);
 
