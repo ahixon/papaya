@@ -319,7 +319,7 @@ int vfs_stat (struct pawpaw_event* evt) {
     char* remaining = NULL;
 
     /* if the client changes this under us, weird stuff might happen; save it */
-    ((char*)evt->share->buf)[PAWPAW_IPC_PAGE_SIZE - 1] = '\0';
+    ((char*)evt->share->buf)[PAPAYA_IPC_PAGE_SIZE - 1] = '\0';
     char* requested_filename = strdup (evt->share->buf);
     char* orig_filename = strdup (requested_filename);
     int best_depth = -1;
