@@ -33,6 +33,8 @@
 #include <cpio/cpio.h>
 #include <vm/pagetable.h>
 #include <vm/frametable.h>
+ #include <syscalls/syscall_table.h>
+
 
 seL4_CPtr _mmap_ep;
 extern seL4_CPtr _badgemap_ep;	/* XXX */
@@ -161,7 +163,7 @@ mmap_queue_schedule (int direction, vaddr_t vaddr, struct frameinfo *frame,
 		return false;
 	}
 
-	assert (frame);
+	//assert (frame);
 
 	if (direction == PAGE_SWAP_IN) {
 		assert (frame->file);
@@ -277,6 +279,84 @@ mmap_queue_schedule (int direction, vaddr_t vaddr, struct frameinfo *frame,
 		mmap_move_done (q);
 		return true;
 		/* and we go back to waiting on our EP */
+	} else if (direction == BUFFER_OPEN_LOAD) {
+		seL4_Word share_id = cid_next ();
+		maps_append (share_id, 0, vaddr);
+
+		/* create a "valid badge" in the badgemap so we can mount the shared 
+		 * buffer */
+		seL4_CPtr badge_cap = cspace_mint_cap (cur_cspace, cur_cspace,
+			_badgemap_ep, seL4_AllRights, seL4_CapData_Badge_new (share_id));
+
+		assert (badge_cap);
+
+	    seL4_CPtr recv_cap = cspace_alloc_slot (cur_cspace);
+	    assert (recv_cap);
+	    seL4_SetCapReceivePath (cur_cspace->root_cnode, recv_cap, CSPACE_DEPTH);
+
+	    printf ("OK, asking VFS to open our file '%s'\n", (char*)vaddr);
+
+	    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 4);
+	    seL4_SetCap (0, badge_cap);
+	    seL4_SetMR (0, VFS_OPEN);
+	    seL4_SetMR (1, share_id);
+	    seL4_SetMR (2, FM_READ);
+	    seL4_SetMR (3, 0);
+
+	    /* XXX: hack of the century - should really ask VFS async
+	     * for cap */
+	    seL4_CPtr nfs_fs_cap = service_lookup ("fs_nfs");
+	    while (!nfs_fs_cap) {
+	    	printf ("failed to find nfs service\n");
+	    	nfs_fs_cap = service_lookup ("fs_nfs");
+	        //return false;
+	    }
+
+	    printf ("calling on %d\n", nfs_fs_cap);
+	    seL4_MessageInfo_t reply = seL4_Call (nfs_fs_cap, msg);
+
+	    if (seL4_GetMR (0) != 0) {
+	        printf ("%s: failed to open file\n", __FUNCTION__);
+	        //return false;
+	        mmap_move_done (q);
+	        q->frame = NULL;
+	    	return true;
+	    }
+
+	    assert (seL4_MessageInfo_get_capsUnwrapped (reply) == 0);
+
+	    if (seL4_MessageInfo_get_extraCaps (reply) != 1) {
+	        /* could not find file */
+	        printf ("%s: did not have cap\n", __FUNCTION__);
+	        return false;
+	    }
+
+	   	printf ("yum, setting evt arg\n");
+	    evt->args[2] = recv_cap;
+
+	    /* then, load in the first page worth of the file into kmem, so we
+	     * can read the headers we need */
+
+	    printf ("sweeto, trying to read in data...\n");
+	    msg = seL4_MessageInfo_new (0, 0, 1, 3);
+	    seL4_SetCap (0, badge_cap);
+	    seL4_SetMR (0, VFS_READ);
+	    seL4_SetMR (1, share_id);
+	    seL4_SetMR (2, PAGE_SIZE);
+	    //seL4_SetMR (3, 0);  /* offset */
+
+	    printf ("ASKING TO READ FILE\n");
+	    seL4_Call (recv_cap, msg);
+	    if (seL4_GetMR (0) <= 0) {
+	        printf ("%s: read was empty/failed\n", __FUNCTION__);
+	        //return NULL;
+	        return false;
+	    }
+
+	    printf("read was ok\n");
+
+	    mmap_move_done (q);
+	    return true;
 	}
 
 	return false;

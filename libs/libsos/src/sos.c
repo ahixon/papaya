@@ -23,6 +23,18 @@ struct sos_fhandle {
     struct sos_fhandle* next;
 };
 
+static char* cwd = "/";
+
+void setcwd (char* incwd) {
+    /* TODO: strdrup and free()-dom! */
+    cwd = incwd;
+}
+
+char* getcwd (void) {
+    /* strdup this to avoid users shooting themselves in the foot? */
+    return cwd;
+}
+
 fildes_t last_fd = 0;                   /* FIXME: should be bitmap */
 struct sos_fhandle* open_list = NULL;   /* FIXME: should be hashmap */
 
@@ -59,7 +71,19 @@ fildes_t open(const char *path, fmode_t mode) {
     seL4_SetCapReceivePath (PAPAYA_ROOT_CNODE_SLOT, recv_cap, PAPAYA_CSPACE_DEPTH);
 
     seL4_SetCap (0, share->cap);
-	strcpy (share->buf, path);
+    memset (share->buf, 0, PAPAYA_IPC_PAGE_SIZE);
+    if (path && path[0] != '/') {
+        strcpy (share->buf, cwd);
+        int cwdlen = strlen (cwd);
+        if (cwdlen > 0 && cwd[cwdlen - 1] != '/') {
+            strcat (share->buf, "/");
+        }
+        strcat (share->buf, path);
+        /* XXX: check if buffer overflows */
+    } else {
+        strcpy (share->buf, path);  
+    }
+
     seL4_SetMR (0, VFS_OPEN);
     seL4_SetMR (1, share->id);
     seL4_SetMR (2, mode);
@@ -172,7 +196,7 @@ int write(fildes_t file, const char *buf, size_t nbyte) {
     return wrote;
 }
 
-int getdirent (int pos, char *name, size_t nbyte) {
+int getdirent (int pos, char *path, size_t nbyte) {
 	seL4_MessageInfo_t msg;
 
     if (!vfs_ep) {
@@ -195,7 +219,9 @@ int getdirent (int pos, char *name, size_t nbyte) {
     seL4_SetCapReceivePath (PAPAYA_ROOT_CNODE_SLOT, recv_cap, PAPAYA_CSPACE_DEPTH);
 
     seL4_SetCap (0, share->cap);
-    strcpy (share->buf, name);
+    memset (share->buf, 0, PAPAYA_IPC_PAGE_SIZE);
+    strcpy (share->buf, cwd);
+
     seL4_SetMR (0, VFS_LISTDIR);
     seL4_SetMR (1, share->id);
     seL4_SetMR (2, pos);
@@ -204,7 +230,7 @@ int getdirent (int pos, char *name, size_t nbyte) {
     seL4_Call (vfs_ep, msg);
     int read = seL4_GetMR (0);
     if (read >= 0) {
-        memcpy (name, share->buf, nbyte);
+        memcpy (path, share->buf, nbyte);
         pawpaw_share_unmount (share);
         return read;
     } else {
@@ -225,7 +251,18 @@ int stat (const char *path, stat_t *buf) {
         return -1;
     }
 
-    memcpy (share->buf, path, strlen (path));
+    memset (share->buf, 0, PAPAYA_IPC_PAGE_SIZE);
+    if (path && path[0] != '/') {
+        strcpy (share->buf, cwd);
+        int cwdlen = strlen (cwd);
+        if (cwdlen > 0 && cwd[cwdlen - 1] != '/') {
+            strcat (share->buf, "/");
+        }
+        strcat (share->buf, path);
+        /* XXX: check if buffer overflows */
+    } else {
+        strcpy (share->buf, path);  
+    }
 
     msg = seL4_MessageInfo_new (0, 0, 1, 2);
 
@@ -238,7 +275,6 @@ int stat (const char *path, stat_t *buf) {
     seL4_SetCapReceivePath (PAPAYA_ROOT_CNODE_SLOT, recv_cap, PAPAYA_CSPACE_DEPTH);
 
     seL4_SetCap (0, share->cap);
-    strcpy (share->buf, path);
     seL4_SetMR (0, VFS_STAT);
     seL4_SetMR (1, share->id);
 

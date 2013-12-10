@@ -38,22 +38,24 @@ int vfs_open (struct pawpaw_event* evt);
 int vfs_read (struct pawpaw_event* evt);
 int vfs_write (struct pawpaw_event* evt);
 int vfs_close (struct pawpaw_event* evt);
+int vfs_stat (struct pawpaw_event* evt);
+int vfs_listdir (struct pawpaw_event* evt);
 int vfs_register_cap (struct pawpaw_event* evt);
 int vfs_write_offset (struct pawpaw_event* evt);
 int vfs_read_offset (struct pawpaw_event* evt);
 
 struct pawpaw_eventhandler_info handlers[VFS_NUM_EVENTS] = {
     {   0,  0,  0   },      //              //
-    {   vfs_register_cap,   0,  HANDLER_REPLY                       },  /* for async cap registration */
+    {   vfs_register_cap,   0,  HANDLER_REPLY },  /* for async cap reg */
     {   0,  0,  0   },      //              //
-    {   vfs_open,           3,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },  // shareid, replyid, mode - replies with EP to file (badged version of listen cap)
-    {   vfs_read,           2,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },      //              //
-    {   vfs_write,          2,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },      //              //
+    {   vfs_open,           3,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },
+    {   vfs_read,           2,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },
+    {   vfs_write,          2,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },
     {   vfs_close,          0,  HANDLER_REPLY },
-    {   0,  0,  0   },      /* listdir */
-    {   0,  0,  0   },      /* stat */
+    {   vfs_listdir,        3,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },
+    {   vfs_stat,           1,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },
     {   vfs_read_offset,    6,  HANDLER_AUTOMOUNT                   },
-    {   vfs_write_offset,   6,  HANDLER_REPLY | HANDLER_AUTOMOUNT                   },
+    {   vfs_write_offset,   6,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },
 };
 
 struct pawpaw_event_table handler_table = { VFS_NUM_EVENTS, handlers, "nfs" };
@@ -162,8 +164,7 @@ void vfs_lookup_cb (uintptr_t token, enum nfs_stat status, fhandle_t *fh, fattr_
             {-1}            /* mtime */
         };
 
-        enum rpc_stat res = nfs_create (&mnt_point, current_event->share->buf, &attributes, vfs_create_cb, 0);
-        printf ("create was %d\n", res);
+        nfs_create (&mnt_point, current_event->share->buf, &attributes, vfs_create_cb, 0);
         return;
     } else {
         current_event->reply = seL4_MessageInfo_new (0, 0, 0, 1);
@@ -251,7 +252,6 @@ int vfs_read (struct pawpaw_event* evt) {
     }
 
     current_event = evt;
-    //printf ("read was %d\n", res);
     return PAWPAW_EVENT_HANDLED_SAVED;
 }
 
@@ -281,17 +281,17 @@ int vfs_write (struct pawpaw_event* evt) {
 
 int vfs_open (struct pawpaw_event* evt) {
     assert (evt->share);
-    printf ("fs_nfs: want to open '%s'\n", (char*)evt->share->buf);
 
     /* FIXME: does not handle path names deeper than root level */
 
+    printf ("hello from nfs open\n");
     char* fname = strdup (evt->share->buf);
     enum rpc_stat res = nfs_lookup (&mnt_point, fname, &vfs_lookup_cb, 0);
     if (res != RPC_OK) {
+        printf ("lookup res failed\n");
         return PAWPAW_EVENT_HANDLED;
     }
 
-    printf ("lookup was %d\n", res);
     current_event = evt;
 
     return PAWPAW_EVENT_HANDLED_SAVED;
@@ -317,7 +317,6 @@ int vfs_close (struct pawpaw_event* evt) {
 
 static seL4_CPtr cap = 0;
 int vfs_register_cap (struct pawpaw_event* evt) {
-    printf ("got register\n");
     /* FIXME: regsiter cap, badge pair and lookup with 2nd argument of
      * async open */
 
@@ -331,6 +330,142 @@ int vfs_register_cap (struct pawpaw_event* evt) {
 
 static seL4_CPtr lookup_cap (struct pawpaw_event* evt) {
     return cap;
+}
+
+void vfs_readdir_cb (uintptr_t token, enum nfs_stat status, 
+                                 int num_files, char* file_names[],
+                                 nfscookie_t nfscookie) {
+    current_event->reply = seL4_MessageInfo_new (0, 0, 0, 2);
+
+    if (status == NFS_OK && current_event->args[0] < num_files) {
+        /* FIXME: handle cookie */
+        printf ("got response, was inside num_files\n");
+
+        char* fname = file_names[current_event->args[0]];
+        printf ("fname was %s\n", fname);
+
+        strcpy (current_event->share->buf, fname);
+        seL4_SetMR (0, strlen (fname));
+        seL4_SetMR (1, nfscookie);
+    } else {
+        seL4_SetMR (0, 0);
+    }
+
+    seL4_Send (current_event->reply_cap, current_event->reply);
+
+    /* and free */
+    pawpaw_event_dispose (current_event);
+    current_event = NULL;
+}
+
+void vfs_listdir_lookup_cb (uintptr_t token, enum nfs_stat status, fhandle_t *fh, fattr_t *fattr) {
+    current_event->reply = seL4_MessageInfo_new (0, 0, 0, 2);
+
+    if (status == NFS_OK) {
+        printf ("lookup success, reading dir on handle\n");
+        nfs_readdir (fh, current_event->args[0], vfs_readdir_cb, 0);
+        return;
+    } else {
+        printf ("lookup failure\n");
+        seL4_SetMR (0, -1);
+    }
+
+    seL4_Send (current_event->reply_cap, current_event->reply);
+
+    /* and free */
+    pawpaw_event_dispose (current_event);
+    current_event = NULL;
+}
+
+int vfs_listdir (struct pawpaw_event* evt) {
+    assert (evt->share);
+
+    /* FIXME: does not handle path names deeper than one level */
+
+    char *fname = evt->share->buf;
+    // strcpy (fname, ".");
+    // strcat (fname, evt->share->buf);    /* XXX: ensure < 1024 */
+    //strcpy (fname, evt->share->buf);
+    //printf ("doing nfs lookup on '%s'\n", fname);
+    if (strcmp (fname, ".") == 0 || strcmp (fname, "/") == 0) {
+        printf ("nfs: from mount point, just doing read of %d\n", evt->args[0]);
+        nfs_readdir (&mnt_point, evt->args[0], vfs_readdir_cb, 0);
+    } else {
+        printf ("nfs: looking up %s from mountpoint\n", fname);
+        enum rpc_stat res = nfs_lookup (&mnt_point, fname, &vfs_listdir_lookup_cb, 0);
+        if (res != RPC_OK) {
+            return PAWPAW_EVENT_HANDLED;
+        }
+    }
+
+    current_event = evt;
+
+    return PAWPAW_EVENT_HANDLED_SAVED;
+}
+
+void vfs_stat_lookup_cb (uintptr_t token, enum nfs_stat status, fhandle_t *fh, fattr_t *fattr) {
+    if (status == NFS_OK) {
+        printf ("nfs lookup ok\n");
+        current_event->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+        seL4_SetMR (0, 0);
+        stat_t *res = current_event->share->buf;
+
+        res->st_fmode = 0;
+
+        if (fattr->mode & S_IRUSR ||
+            fattr->mode & S_IRGRP ||
+            fattr->mode & S_IROTH) {
+            res->st_fmode |= FM_READ;
+        }
+
+        if (fattr->mode & S_IWUSR ||
+            fattr->mode & S_IWGRP ||
+            fattr->mode & S_IWOTH) {
+            res->st_fmode |= FM_WRITE;
+        }
+
+        if (fattr->mode & S_IXUSR ||
+            fattr->mode & S_IXGRP ||
+            fattr->mode & S_IXOTH) {
+            res->st_fmode |= FM_EXEC;
+        }
+
+        res->st_type = ST_FILE;
+        res->st_size = fattr->size;
+
+        /* XXX: terrible */
+        memcpy (&(res->st_ctime), &(fattr->ctime), sizeof (timeval_t));
+        memcpy (&(res->st_atime), &(fattr->atime), sizeof (timeval_t));
+
+        /* TODO: close fh would be nice */
+    } else {
+        current_event->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+        seL4_SetMR (0, -1);
+    }
+
+    seL4_Send (current_event->reply_cap, current_event->reply);
+
+    /* and free */
+    pawpaw_event_dispose (current_event);
+    current_event = NULL;
+}
+
+int vfs_stat (struct pawpaw_event* evt) {
+    assert (evt->share);
+    printf ("fs_nfs: want to stat '%s'\n", (char*)evt->share->buf);
+
+    /* FIXME: does not handle path names deeper than root level */
+
+
+    char* fname = strdup (evt->share->buf);
+    enum rpc_stat res = nfs_lookup (&mnt_point, fname, &vfs_stat_lookup_cb, 0);
+    if (res != RPC_OK) {
+        return PAWPAW_EVENT_HANDLED;
+    }
+
+    current_event = evt;
+
+    return PAWPAW_EVENT_HANDLED_SAVED;
 }
 
 void vfs_write_offset_cb (uintptr_t token, enum nfs_stat status, fattr_t *fattr, int count) {
@@ -580,6 +715,7 @@ int main (void) {
     /* init NFS */
     ipaddr_aton (CONFIG_SOS_GATEWAY, &gateway);
     if (nfs_init (&gateway) != RPC_OK) {
+        printf("NFS: init failed\n");
         return -1;
     }
 
@@ -587,6 +723,7 @@ int main (void) {
 
     /* TODO: don't just mount the NFS dir, let the user pick! */
     if ((err = nfs_mount (SOS_NFS_DIR, &mnt_point))){
+        printf("NFS: mount failed\n");
         return -1;
     }
 
@@ -610,6 +747,10 @@ int main (void) {
     seL4_SetMR (0, VFS_REGISTER_CAP);
     seL4_SetCap (0, service_ep);
     seL4_Call (vfs_ep, msg);
+
+    /* XXX: so root server can talk to us directly */
+    pawpaw_register_service (service_ep);
+    printf ("NFS: registered\n");
 
     /* setup done, now listen to VFS or other people we've given our EP to */
     pawpaw_event_loop (&handler_table, interrupt_handler, service_ep);

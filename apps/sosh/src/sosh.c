@@ -61,7 +61,9 @@ static int cat(int argc, char **argv) {
 
     close(stdout_fd);
 
-    if (num_read == -1 || num_written == -1) {
+    if (num_read == -1) {
+        printf ("error on read\n");
+    } else if (num_written == -1) {
         printf("error on write\n");
         return 1;
     }
@@ -191,14 +193,11 @@ static int dir(int argc, char **argv) {
         return 1;
     }
 
+    char* cwd = NULL;
     if (argc == 2) {
-        r = stat(argv[1], &sbuf);
-        if (r < 0) {
-            printf("stat(%s) failed: %d\n", argv[1], r);
-            return 0;
-        }
-        prstat(argv[1]);
-        return 0;
+        cwd = getcwd();
+        setcwd (argv[1]);
+        //printf("** set cwd to '%s'\n", argv[1]);
     }
 
     while (1) {
@@ -220,6 +219,61 @@ static int dir(int argc, char **argv) {
         prstat(buf);
         i++;
     }
+
+    if (cwd) {
+        //printf ("** setting back cwd = %s\n", cwd);
+        setcwd (cwd);
+    }
+
+    return 0;
+}
+
+static int sosh_stat(int argc, char** argv) {
+    int r;
+
+    if (argc != 2) {
+        printf("usage: %s file\n", argv[0]);
+        return 1;
+    }
+
+    r = stat(argv[1], &sbuf);
+    if (r < 0) {
+        printf("stat(%s) failed: %d\n", argv[1], r);
+        return 0;
+    }
+    prstat(argv[1]);
+    return 0;
+}
+
+/* TODO: handle parent and current directories */
+static int cd(int argc, char** argv) {
+    if (argc != 2) {
+        printf("usage: %s dir\n", argv[0]);
+        return 1;
+    }
+
+    char newpath[BUF_SIZ] = {0};
+    char* cur_cwd = getcwd();
+
+    if (argv[1][0] != '/') {
+        /* relative path */
+        strcpy (newpath, cur_cwd);
+    }
+
+    /* ensure it ends with a / */
+    int plen = strlen (newpath);
+    if (plen && newpath[plen - 1] != '/') {
+        strcat (newpath, "/");
+    }
+    strcat (newpath, argv[1]);
+
+    /* XXX: delete trailing slashes, otherwise breaks NFS */
+    plen = strlen (newpath);
+    if (plen > 1 && newpath[plen - 1] == '/') {
+        newpath[plen - 1] = '\0';
+    }
+
+    setcwd (strdup (newpath));
     return 0;
 }
 
@@ -231,8 +285,9 @@ struct command {
 };
 
 #define NUM_COMMANDS 8
-struct command commands[] = { { "dir", dir }, { "ls", dir }, { "cat", cat }, {
-        "cp", cp }, { "ps", ps }, { "kill", kill }, { "exec", exec }, { "help", help } };
+struct command commands[] = { { "dir", dir }, { "ls", dir }, { "cat", cat },
+        { "cp", cp }, { "ps", ps }, { "kill", kill }, { "exec", exec },
+        { "help", help }, { "stat", sosh_stat }, { "cd", cd } };
 
 static int help(int argc, char **argv) {
     for (int i = 0; i < NUM_COMMANDS; i++) {
@@ -262,7 +317,7 @@ int main(void) {
 
     while (!done) {
         if (new) {
-            printf("$ ");
+            printf("sosh:%s$ ", getcwd ());
         }
 
         if (new || found) {

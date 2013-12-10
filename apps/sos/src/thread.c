@@ -23,6 +23,7 @@
 #include <cpio/cpio.h>
 
 #include <services/services.h>
+#include <syscalls/syscall_table.h>
 
 #define verbose 5
 #include <sys/debug.h>
@@ -507,71 +508,30 @@ struct as_region* share_reg = NULL;
 seL4_CPtr share_badge = 0;
 seL4_Word share_id = 0;
 
-#if 0
-thread_t thread_create_from_cpio (char* path, seL4_CPtr rootsvr_ep) {
+thread_t thread_create_from_fs_oneblock (char* path, seL4_CPtr rootsvr_ep, void* cb, struct pawpaw_event *oldevt) {
     /* FIXME: make common with syscall_share.c */
     if (!share_reg) {
-        share_reg = create_share_reg (&share_badge, &share_id);
+        share_reg = create_share_reg (&share_badge, &share_id, true);
     }
+
+    struct pawpaw_event *evt = malloc (sizeof (struct pawpaw_event));
+    assert (evt);
 
     int len = strlen (path);
     memcpy ((char*)share_reg->vbase, path, len);
     *(char*)(share_reg->vbase + len) = '\0';
 
-    seL4_CPtr recv_cap = cspace_alloc_slot (cur_cspace);
-    assert (recv_cap);
-    seL4_SetCapReceivePath (cur_cspace->root_cnode, recv_cap, CSPACE_DEPTH);
+    evt->args = malloc (sizeof (seL4_Word) * 6);
+    evt->args[0] = (seL4_Word)path;
+    evt->args[1] = share_reg->vbase;
+    //evt->args[2] = recv_cap;
+    evt->args[3] = 0;
+    evt->args[4] = rootsvr_ep;
+    evt->args[5] = (seL4_Word)oldevt;
 
-    seL4_MessageInfo_t msg = seL4_MessageInfo_new (0, 0, 1, 3);
-    seL4_SetCap (0, share_badge);
-    seL4_SetMR (0, VFS_OPEN);
-    seL4_SetMR (1, share_id);
-    seL4_SetMR (2, FM_READ);
-
-    printf ("OK, asking VFS to open our file...\n");
-    /* XXX: holy shit no */
-    for (int i = 0; i < 1000; i++) {
-        seL4_Yield();
-    }
-
-    seL4_MessageInfo_t reply = seL4_Call (_fs_cpio_ep, msg);
-
-    if (seL4_GetMR (0) != 0) {
-        printf ("%s: failed to open file\n", __FUNCTION__);
-        return NULL;
-    }
-
-    assert (seL4_MessageInfo_get_capsUnwrapped (reply) == 0);
-
-    if (seL4_MessageInfo_get_extraCaps (reply) != 1) {
-        /* could not find file */
-        printf ("%s: did not have cap\n", __FUNCTION__);
-        return NULL;
-    }
-
-    /* then, load in the first page worth of the file into kmem, so we
-     * can read the headers we need */
-
-    msg = seL4_MessageInfo_new (0, 0, 1, 3);
-    seL4_SetCap (0, share_badge);
-    seL4_SetMR (0, VFS_READ);
-    seL4_SetMR (1, share_id);
-    seL4_SetMR (2, PAGE_SIZE);
-    //seL4_SetMR (3, 0);  /* offset */
-
-    printf ("ASKING TO READ FILE\n");
-    seL4_Call (recv_cap, msg);
-    if (seL4_GetMR (0) <= 0) {
-        printf ("%s: read was empty/failed\n", __FUNCTION__);
-        return NULL;
-    }
-
-    return thread_create_from_fs (path, (char*)share_reg->vbase, recv_cap, 0,
-        rootsvr_ep);
-
-    /* FIXME: free shared buf page */
+    mmap_swap (BUFFER_OPEN_LOAD, share_reg->vbase, (struct frameinfo*)path, cb, evt);
+    return NULL;
 }
-#endif
 
 thread_t thread_create_from_cpio (char* path, seL4_CPtr rootsvr_ep) {
     char* elf_base;

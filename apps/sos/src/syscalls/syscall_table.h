@@ -42,4 +42,5 @@ int syscall_alloc_dma (struct pawpaw_event* evt);
 seL4_CPtr service_lookup (char* name);
 struct as_region* create_share_reg (seL4_CPtr *cap, seL4_Word *dest_id, int map);
 
+void finish_thread_create (struct pawpaw_event *evt, struct frameinfo* frame);
 #endif

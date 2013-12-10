@@ -30,9 +30,8 @@ svc_vfs=async
 svc_dev=async
 
 # NFS and dependencies
-svc_net=async
-fs_nfs=sync
-
+svc_net=sync
+fs_nfs=async
 fs_dev=sync
 
 # Pin swap-related processes before we enable swapping
@@ -53,6 +52,6 @@ dev_console=sync
 # or a CPIO file. CPIO has priority.
 #/bin/sosh=boot
 #/mnt/cpio/sosh=boot
-sosh=boot
-sosh=boot
+sosh.bin=boot
+#sosh=boot
 #thrash=boot

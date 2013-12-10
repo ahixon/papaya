@@ -149,7 +149,7 @@ void swap_success (struct pawpaw_event* evt, struct frameinfo* frame) {
 
     if (page->cap) {
         seL4_ARM_Page_FlushCaches (page->cap);        
-        page_dump (page, (vaddr_t)evt->args[0]);
+        //page_dump (page, (vaddr_t)evt->args[0]);
     }
 
 

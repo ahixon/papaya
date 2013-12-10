@@ -21,6 +21,33 @@ int syscall_thread_suicide (struct pawpaw_event* evt) {
     return PAWPAW_EVENT_HANDLED;
 }
 
+void finish_thread_create (struct pawpaw_event *evt, struct frameinfo* frame) {
+    char* path = (char*)evt->args[0];
+    char* block = (char*)evt->args[1];
+
+    if (frame) {
+        thread_t child = thread_create_from_fs (path, block, evt->args[2], evt->args[3], evt->args[4]);
+        if (child) {
+            seL4_SetMR (0, child->pid);
+        } else {
+            seL4_SetMR (0, -1);
+        }
+    } else {
+        seL4_SetMR (0, -1);
+    }
+
+    struct pawpaw_event* oldevt = (struct pawpaw_event*)evt->args[5];
+    if (oldevt) {
+        seL4_Send (oldevt->reply_cap, oldevt->reply);
+
+        /* and free */
+        pawpaw_event_dispose (oldevt);
+
+        //return PAWPAW_EVENT_HANDLED;
+        /* FIXME: free shared buf page */
+    }
+}
+
 int syscall_thread_create (struct pawpaw_event* evt) {
     evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
 
@@ -34,16 +61,9 @@ int syscall_thread_create (struct pawpaw_event* evt) {
 
     /* FIXME: WELL, I BROKE THE NFS FILE LOADING BUT HAVE NO TIME TO FIX IT - OOPS */
     //thread_t child = thread_create_from_fs (thread_path, rootserver_syscall_cap);
-    thread_t child = thread_create_from_cpio (thread_path, rootserver_syscall_cap);
-
-    if (child) {
-    	seL4_SetMR (0, child->pid);
-    } else {
-    	seL4_SetMR (0, -1);
-    }
-
-    seL4_SetMR (0, -1);
-    return PAWPAW_EVENT_NEEDS_REPLY;
+    //thread_t child = thread_create_from_cpio (thread_path, rootserver_syscall_cap);
+    thread_create_from_fs_oneblock (thread_path, rootserver_syscall_cap, finish_thread_create, evt);
+    return PAWPAW_EVENT_HANDLED_SAVED;
 }
 
 int syscall_thread_destroy (struct pawpaw_event* evt) {

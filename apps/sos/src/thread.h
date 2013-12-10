@@ -50,7 +50,7 @@ struct thread {
 thread_t thread_create_from_fs (char* name, char *file, seL4_CPtr file_cap, int file_size, seL4_CPtr rootsvr_ep);
 thread_t thread_create_from_cpio (char* path, seL4_CPtr rootsvr_ep);
 thread_t thread_create_internal (char* name, cspace_t *existing_cspace, addrspace_t existing_addrspace, void* initial_pc);
-
+thread_t thread_create_from_fs_oneblock (char* path, seL4_CPtr rootsvr_ep, void* cb, struct pawpaw_event *oldevt);
 
 thread_t thread_alloc (void);
 void thread_destroy (thread_t thread);

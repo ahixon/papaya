@@ -18,6 +18,7 @@
  * off to it, if successful */
 int vfs_open (struct pawpaw_event* evt) {
     if (!evt->share) {
+        printf ("fs_dev: no share\n");
         evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
         seL4_SetMR (0, -1);
         return PAWPAW_EVENT_NEEDS_REPLY;
@@ -36,6 +37,7 @@ int vfs_open (struct pawpaw_event* evt) {
     }
 
     if (!ret) {
+        printf ("fs_dev: no file called '%s'\n", (char*)evt->share->buf);
         evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
         seL4_SetMR (0, -1);
         return PAWPAW_EVENT_NEEDS_REPLY;
@@ -46,6 +48,7 @@ int vfs_open (struct pawpaw_event* evt) {
 
     /* can't execute devices */
     if (evt->args[0] & FM_EXEC) {
+        printf ("fs_dev: execute invalid\n");
         evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
         seL4_SetMR (0, -1);
         return PAWPAW_EVENT_NEEDS_REPLY;
@@ -74,14 +77,15 @@ int vfs_open (struct pawpaw_event* evt) {
 }
 
 int vfs_listdir (struct pawpaw_event* evt) {
+    evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+
     if (!evt->share) {
-        evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
         seL4_SetMR (0, -1);
         return PAWPAW_EVENT_NEEDS_REPLY;
     }
 
     int i = 0;
-    int read = -1;
+    int read = 0;
     struct ventry* entry = entries;
     while (entry) {
         if (i == evt->args[0]) {
@@ -165,12 +169,7 @@ void interrupt_handler (struct pawpaw_event* evt) {
 
     assert (seL4_MessageInfo_get_extraCaps (reply) == 1);
     ve->vnode = pawpaw_event_get_recv_cap ();
-    ve->next = NULL;
-
-    if (entries) {
-        ve->next = entries;
-    }
-
+    ve->next = entries;
     entries = ve;
 }
 

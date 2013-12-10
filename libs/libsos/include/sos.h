@@ -128,6 +128,9 @@ void sleep(int msec);
 /* Sleeps for the specified number of milliseconds.
  */
 
+void setcwd (char* cwd);
+char* getcwd (void);
+
 
 /*************************************************************************/
 /*                                   */

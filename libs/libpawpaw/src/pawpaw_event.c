@@ -130,11 +130,13 @@ int pawpaw_event_process (struct pawpaw_event_table* table, struct pawpaw_event 
 
     /* event is valid, but no function handler defined */
     if (eh.func == 0) {
+        printf ("** no handler\n");
         return PAWPAW_EVENT_UNHANDLED;
     }
 
    	/* bad argument count */
     if (argc != eh.argcount) {
+        printf ("** bad arg count\n");
     	return PAWPAW_EVENT_INVALID;
     }
 
@@ -163,6 +165,7 @@ int pawpaw_event_process (struct pawpaw_event_table* table, struct pawpaw_event 
     if (eh.flags & HANDLER_REPLY) {
         evt->reply_cap = save_reply_func ();
         if (!(evt->reply_cap)) {
+            printf ("** no reply cap\n");
             return PAWPAW_EVENT_INVALID;
         }
     }

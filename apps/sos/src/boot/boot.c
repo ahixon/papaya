@@ -151,30 +151,34 @@ int boot_thread (void) {
 
             if (type == BOOT_TYPE_BOOT) {
                 /* XXX: sleep a little first */
-                sleep (3000);
+                sleep (12000);
             }
 
             printf ("Starting '%s' as %s...\n", app, type_str);
-            thread_t thread = thread_create_from_cpio (app,
+            if (type != BOOT_TYPE_BOOT) {
+                thread_t thread = thread_create_from_cpio (app,
                                                        rootserver_syscall_cap);
+                if (!thread) {
+                    printf ("boot: failed to start '%s' - in CPIO archive?\n", app);
+                    if (type != BOOT_TYPE_BOOT) {
+                        /* only panic if regular boot service */
+                        panic ("failed to start boot application");
+                    }
 
-            if (!thread) {
-                printf ("boot: failed to start '%s' - in CPIO archive?\n", app);
-                if (type != BOOT_TYPE_BOOT) {
-                    /* only panic if regular boot service */
-                    panic ("failed to start boot application");
+                } else {
+                    printf ("\tstarted with PID %d\n", thread->pid);
+
+                    if (type == BOOT_TYPE_SYNC) {
+                        /* XXX: should wait for EP rather than sleeping */
+                        sleep (8000);
+                    } else if (type == BOOT_TYPE_BOOT && thread) {
+                        /* boot thread started, we are done! */
+                        printf ("Boot complete.\n");
+                        break;
+                    }
                 }
             } else {
-                printf ("\tstarted with PID %d\n", thread->pid);
-
-                if (type == BOOT_TYPE_SYNC) {
-                    /* XXX: should wait for EP rather than sleeping */
-                    sleep (3000);
-                } else if (type == BOOT_TYPE_BOOT && thread) {
-                    /* boot thread started, we are done! */
-                    printf ("Boot complete.\n");
-                    break;
-                }
+                thread_create_from_fs_oneblock (app, rootserver_syscall_cap, finish_thread_create, NULL);
             }
         }
 

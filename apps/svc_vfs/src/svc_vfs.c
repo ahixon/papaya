@@ -78,35 +78,65 @@ int parse_pathname (char* current_path_part, char* end, struct fs_node* fs,
 
     /* base case */
     if (current_path_part == NULL) {
+        printf ("**** WOAH FOUND THE END AT %p LEVEL %d\n", fs, level);
         *remaining = NULL;
         *dest_fs = fs;
+        *best_depth = level;
         return true;
     }
 
     /* changes current_path_part and next_path_part */
+    /*if (level == 0) {
+        current_path_part = get_next_path_part (current_path_part, end);
+    }*/
+
     char* next_path_part = get_next_path_part (current_path_part, end);
+    char* later_path_part = NULL;
+    if (next_path_part) {
+        later_path_part = get_next_path_part (next_path_part, end);
+    }
+
+    /* consume slashes */
+    /*while (next_path_part && strlen (next_path_part) == 0) {
+        current_path_part = next_path_part;
+        next_path_part = get_next_path_part (current_path_part, end);
+    }*/
 
     /* keep digging through all matching children filesystems
        recursively */
     struct fs_node* child = fs->children;
-    while (child) {
-        if (strcmp (child->dirname, current_path_part)) {
+    while (child && next_path_part) {
+        //printf ("-- child '%s' == '%s'?\n", child->dirname, next_path_part);
+        if (strcmp (child->dirname, next_path_part) == 0) {
             /* sub-call NOT terminating here will set dest_fs and remaining */
             /* XXX: don't return, but keep checking if we want to allow nested
              * mounted FS ala FreeBSD */
+
+            if (later_path_part) {
+                /* put it back */
+                *(char*)(later_path_part - 1) = '/';
+            }
+
             if (parse_pathname (next_path_part, end, child, dest_fs, remaining,
                 best_depth, level + 1)) {
 
                 return true;
+            }
+
+            if (later_path_part) {
+                *(char*)(later_path_part - 1) = '\0';
             }
         }
 
         child = child->next;
     }
 
+    //printf ("ok but does '%s' == fs's '%s'?\n", current_path_part, fs->dirname);
     if (strcmp (current_path_part, fs->dirname) == 0) {
+        //printf("!!YUP!!\n");
         /* ok wasn't a child this was as far as we got */
         if (level > *best_depth) {
+            printf ("**** WOAH FOUND THE END AT %p LEVEL %d\n", fs, level);
             /* found deeper, update */
             *remaining = next_path_part;
             *dest_fs = fs;
@@ -162,6 +192,7 @@ int fs_register_cap (struct pawpaw_event* evt) {
 
 int fs_mount (struct pawpaw_event* evt) {
     if (!evt->share) {
+        printf ("vfs: no share\n");
         return PAWPAW_EVENT_UNHANDLED;
     }
 
@@ -173,6 +204,7 @@ int fs_mount (struct pawpaw_event* evt) {
 
     if (mountpoint == end) {
         /* mountpoint empty */
+        printf ("vfs: mountpoint empty\n");
         return PAWPAW_EVENT_UNHANDLED;
     }
 
@@ -188,6 +220,7 @@ int fs_mount (struct pawpaw_event* evt) {
 
     if (!fs) {
         /* no such fs type */
+        printf("vfs: unknown fs type '%s'\n", fstype);
         return PAWPAW_EVENT_UNHANDLED;
     }
 
@@ -199,30 +232,38 @@ int fs_mount (struct pawpaw_event* evt) {
     /* allow mount on arbitrary directory - FIXME: does not check depth limit */
     int done = false;
     while (!done) {
+        printf("parsing %s...\n", mountpoint);
         int consumed = parse_pathname (mountpoint, end, fs_root, &parent_fs,
             &remaining, &best_depth, 0);
 
         if (consumed) {
+            printf("was fully consumed\n");
             if (parent_fs) {
                 if (parent_fs->fs) {
                     /* already mounted on that path */
+                    printf ("vfs: path already mounted\n");
                     return PAWPAW_EVENT_UNHANDLED;
                 } else {
                     /* had structure but nothing mounted, seems OK */
+                    done = true;
                     break;
                 }
             }
         }
 
-        char* next_part = remaining;
-        if (!next_part) {
-            next_part = get_next_path_part (remaining, end);
+        printf("had path remaining\n");
+
+        if (!remaining) {
+            printf("or apparently not? setting back to %s\n", mountpoint);
+            remaining = strdup(orig_mountpoint);
         }
 
-        if (next_part) {
+        if (remaining) {
+            printf("creating new node @ '%s'\n", remaining);
+
             /* create parent "folder" */
             struct fs_node *new_parent = malloc (sizeof (struct fs_node));
-            new_parent->dirname = remaining;
+            new_parent->dirname = strdup(remaining);
             new_parent->fs = NULL;
             new_parent->mounter_badge = 0;
             new_parent->children = NULL;
@@ -236,6 +277,7 @@ int fs_mount (struct pawpaw_event* evt) {
             free (mountpoint);
             mountpoint = strdup (orig_mountpoint);
             end = mountpoint + strlen(mountpoint);
+            printf("retrying\n");
         }
     }
 
@@ -267,13 +309,20 @@ int vfs_open (struct pawpaw_event* evt) {
     char* orig_filename = strdup (requested_filename);
     int best_depth = -1;
 
+    printf ("vfs: want to open '%s'\n", requested_filename);
     parse_pathname (requested_filename,
         requested_filename + strlen(requested_filename), fs_root, &node,
         &remaining, &best_depth, 0);
 
-    if (remaining) {
-        int offset = remaining - requested_filename;
-        strcpy (node->fs->share->buf, orig_filename + offset);
+    if (best_depth > -1) {
+        if (remaining) {
+            printf ("had remaining path '%s'\n", remaining);
+            int offset = remaining - requested_filename;
+            strcpy (node->fs->share->buf, orig_filename + offset);
+        } else {
+            printf ("no more remaining path, zeroing\n");
+            *(char*)node->fs->share->buf = '\0';
+        }
 
         /* pass buck to the FS layer to see if it knows anything about file */
         seL4_MessageInfo_t lookup_msg = seL4_MessageInfo_new (0, 0, 0, 4);
@@ -291,6 +340,7 @@ int vfs_open (struct pawpaw_event* evt) {
             seL4_SetCap (0, pawpaw_event_get_recv_cap());
             seL4_SetMR (0, 0);
         } else {
+            printf ("vfs: open failed with err %d\n", seL4_GetMR (0));
             /* open failed - no cap came back */
             evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
             seL4_SetMR (0, -1);
@@ -310,6 +360,68 @@ int vfs_open (struct pawpaw_event* evt) {
     return PAWPAW_EVENT_NEEDS_REPLY;
 }
 
+/* XXX: merge logic with vfs_stat */
+int vfs_listdir (struct pawpaw_event* evt) {
+    if (!evt->share) {
+        return PAWPAW_EVENT_UNHANDLED;
+    }
+
+    struct fs_node* node = NULL;
+    char* remaining = NULL;
+
+    /* if the client changes this under us, weird stuff might happen; save it */
+    ((char*)evt->share->buf)[PAPAYA_IPC_PAGE_SIZE - 1] = '\0';
+    char* requested_filename = strdup (evt->share->buf);
+    char* orig_filename = strdup (requested_filename);
+    int best_depth = -1;
+
+    printf ("** about to listdir on '%s' @ %d\n", requested_filename, evt->args[0]);
+
+    parse_pathname (requested_filename,
+        requested_filename + strlen(requested_filename), fs_root, &node,
+        &remaining, &best_depth, 0);
+
+    if (best_depth > -1) {
+        /* path success */
+        printf ("path success; best depth = %d\n", best_depth);
+        if (remaining) {
+            printf ("had remaining path '%s'\n", remaining);
+            int offset = remaining - requested_filename;
+            strcpy (node->fs->share->buf, orig_filename + offset);
+        } else {
+            printf ("no more remaining path, zeroing\n");
+            *(char*)node->fs->share->buf = '\0';
+        }
+
+        /* pass to the FS layer to see if it knows anything about the file */
+        seL4_MessageInfo_t lookup_msg = seL4_MessageInfo_new (0, 0, 1, 4);
+        
+        seL4_SetMR (0, VFS_LISTDIR);
+        seL4_SetMR (1, node->fs->share->id);
+        seL4_SetMR (2, evt->args[0]);
+        seL4_SetMR (3, evt->args[1]);
+        seL4_SetCap (0, evt->share->cap);
+
+        seL4_Call (node->fs->cap, lookup_msg);
+        int success = seL4_GetMR (0);
+        if (success == 0) {
+            memcpy (evt->share->buf, node->fs->share->buf, sizeof (stat_t));
+        }
+
+        evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+        seL4_SetMR (0, success);
+    } else {
+        /* path failure - use orig_filename since other gets mangled */
+        evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
+        seL4_SetMR (0, -1);
+    }
+
+    free (requested_filename);
+    free (orig_filename);
+
+    return PAWPAW_EVENT_NEEDS_REPLY;
+}
+
 int vfs_stat (struct pawpaw_event* evt) {
     if (!evt->share) {
         return PAWPAW_EVENT_UNHANDLED;
@@ -324,14 +436,24 @@ int vfs_stat (struct pawpaw_event* evt) {
     char* orig_filename = strdup (requested_filename);
     int best_depth = -1;
 
+    printf ("** about to stat on '%s'\n", requested_filename);
+
     parse_pathname (requested_filename,
         requested_filename + strlen(requested_filename), fs_root, &node,
         &remaining, &best_depth, 0);
 
-    if (remaining) {
+    if (best_depth > -1) {
+        assert (node);
         /* path success */
-        int offset = remaining - requested_filename;
-        strcpy (node->fs->share->buf, orig_filename + offset);
+        printf ("path success; best depth = %d\n", best_depth);
+        if (remaining) {
+            printf ("had remaining path '%s'\n", remaining);
+            int offset = remaining - requested_filename;
+            strcpy (node->fs->share->buf, orig_filename + offset);
+        } else {
+            printf ("no more remaining path, zeroing\n");
+            *(char*)node->fs->share->buf = '\0';
+        }
 
         /* pass to the FS layer to see if it knows anything about the file */
         seL4_MessageInfo_t lookup_msg = seL4_MessageInfo_new (0, 0, 0, 2);
@@ -339,6 +461,7 @@ int vfs_stat (struct pawpaw_event* evt) {
         seL4_SetMR (0, VFS_STAT);
         seL4_SetMR (1, node->fs->share->id);
 
+        printf ("doing stat..\n");
         seL4_Call (node->fs->cap, lookup_msg);
         int success = seL4_GetMR (0);
         if (success == 0) {
@@ -367,7 +490,7 @@ struct pawpaw_eventhandler_info handlers[VFS_NUM_EVENTS] = {
     {   0,  0,  0   },      //  read 
     {   0,  0,  0   },      //  write
     {   0,  0,  0   },      //  close
-    {   0,  0,  0   },      //  listdir
+    {   vfs_listdir,        3,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },
     {   vfs_stat,           1,  HANDLER_REPLY | HANDLER_AUTOMOUNT   },
 };
 

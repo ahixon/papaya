@@ -47,7 +47,7 @@ int vfs_open (struct pawpaw_event* evt) {
         if (current_reader) {
             /* only one reader permitted */
             evt->reply = seL4_MessageInfo_new (0, 0, 0, 1);
-            seL4_SetMR (0, -1);
+            seL4_SetMR (0, -2);
             return PAWPAW_EVENT_NEEDS_REPLY;
         }
     }

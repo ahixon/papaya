@@ -8,6 +8,7 @@
 #define MMAP_RESULT		2
 
 #define MMAP_IRQ		1
+#define BUFFER_OPEN_LOAD	42
 
 int mapper_main (void);
 int mmap_main (void);

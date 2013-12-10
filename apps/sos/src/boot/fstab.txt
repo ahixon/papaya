@@ -11,8 +11,8 @@
 # new service thread with provided options as arguments.
 
 # FIXME: apparently order matters here
-/dev	dev	none
 /	nfs	none
+/dev	dev	none
 
 # TODO: assumes no mnt/cpio folder in NFS mountpoint
 # VFS should query all filesystems under that path and combine their
