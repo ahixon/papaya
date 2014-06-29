@@ -1,5 +1,3 @@
-/* @LICENSE(CUSTOM) */
-
 /* An implementation of malloc as described in the K&R C programming book */
 
 #ifndef _LIBC_K_R_MALLOC_H_

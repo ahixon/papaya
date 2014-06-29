@@ -1,4 +1,3 @@
-# @LICENSE(NICTA_CORE)
 libs-$(CONFIG_LIB_SOS) += libsos
 
 libsos: common libpawpaw

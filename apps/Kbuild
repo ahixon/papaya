@@ -1,5 +1,3 @@
-# @LICENSE(NICTA_CORE)
-
 libc=libsel4c
 
 -include $(wildcard ${SEL4_APPS_PATH}/*/Kbuild)

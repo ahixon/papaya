@@ -1,8 +1,9 @@
 /* Simple shell to run on SOS */
 /* 
- * Orignally written by Gernot Heiser 
+ * Originally written by Gernot Heiser 
  * - updated by Ben Leslie 2003  
  * - updated by Charles Gray 2006
+ * - modified by Alex Hixon 2013
  */
 
 #include <assert.h>

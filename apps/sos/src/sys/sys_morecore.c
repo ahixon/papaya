@@ -1,5 +1,3 @@
-/* @LICENSE(NICTA_CORE) */
-
 /* This implementation of morecore is inspired by the K&R C programming book. */
 /* Instead of calling sbrk, we use a statically allocated morecore area.      */
 /* Implemented by Michael von Tessin, 19 Oct 2010.                            */

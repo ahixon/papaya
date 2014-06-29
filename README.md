@@ -62,4 +62,4 @@ License
 
 Released under the MIT license.
 
-seL4 is subject to its own license terms.
+seL4, and a number of the libraries are subject to their own license terms.

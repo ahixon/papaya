@@ -1,11 +1,7 @@
-/* @LICENSE(NICTA_CORE) */
-
 #include <stdio.h>
 #include <sel4/sel4.h>
 
 #include "ttyout.h"
-
-
 
 struct __file __stdin = {
 	0,

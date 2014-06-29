@@ -1,5 +1,3 @@
-# @LICENSE(NICTA_CORE)
-
 # Targets
 TARGETS := $(notdir $(SOURCE_DIR)).bin
 

@@ -1,6 +1,7 @@
 The MIT License (MIT)
 
-This license applies only to Papaya. seL4 is subject to its own licenses.
+This license applies only to Papaya. seL4 and several libraries are subject to
+their own licenses.
 
 Copyright (c) 2013-2014 Alex Hixon
 
